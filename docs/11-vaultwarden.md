@@ -44,7 +44,6 @@ adminToken:
   existingSecret: vaultwarden-admin
   existingSecretKey: admin-token
 signupsAllowed: false
-webSocketEnabled: true
 persistence:
   enabled: true
   storageClass: nfs-storage
