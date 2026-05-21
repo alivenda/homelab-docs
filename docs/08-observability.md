@@ -67,14 +67,62 @@ helm install monitoring prometheus-community/kube-prometheus-stack \
 
 ## Add Loki
 
+The `grafana/loki-stack` chart was deprecated. Use the maintained `grafana/loki` chart (monolithic mode is the right shape for a homelab) and install Promtail from its own chart.
+
 ```bash
 helm repo add grafana https://grafana.github.io/helm-charts
-helm install loki grafana/loki-stack \
+```
+
+Loki in single-binary mode — `loki-values.yaml`:
+
+```yaml
+deploymentMode: SingleBinary
+loki:
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  auth_enabled: false
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    storageClass: nfs-storage
+    size: 10Gi
+# Disable the scaled-out components — they don't run in SingleBinary mode
+read:
+  replicas: 0
+write:
+  replicas: 0
+backend:
+  replicas: 0
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+```
+
+```bash
+helm install loki grafana/loki \
   --namespace monitoring \
-  --set promtail.enabled=true \
-  --set loki.persistence.enabled=true \
-  --set loki.persistence.storageClassName=nfs-storage \
-  --set loki.persistence.size=10Gi
+  --values loki-values.yaml
+```
+
+Promtail (separate chart now):
+
+```bash
+helm install promtail grafana/promtail \
+  --namespace monitoring \
+  --set config.clients[0].url=http://loki:3100/loki/api/v1/push
 ```
 
 ## Grafana Dashboards
@@ -100,5 +148,5 @@ Import these from the Grafana UI (Dashboards → Import → paste the ID):
 
     ```bash
     kubectl get pods -n monitoring
-    # Expected: prometheus-server, grafana, loki, promtail all Running
+    # Expected: prometheus-*, grafana-*, loki-0, promtail-* all Running
     ```
