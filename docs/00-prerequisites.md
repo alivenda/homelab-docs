@@ -85,7 +85,7 @@ Running CM4 modules means everything you deploy needs to exist as an arm64 image
 Specific shapes the friction takes:
 
 - Some Helm charts hardcode amd64 in initContainer images or sidecar versions. Check `values.yaml` for `image.tag` fields you can override before assuming a chart works.
-- CI plugin ecosystems (Drone, Woodpecker) lag on multiarch. Plugins that work locally on your laptop may not have arm64 builds. When in doubt, run the build natively inside the runner instead of via plugin.
+- CI plugin ecosystems (Drone, Woodpecker) lag on multiarch. Plugins that work locally on your machine may not have arm64 builds. When in doubt, run the build natively inside the runner instead of via plugin.
 - Vendor images (database GUIs, observability sidecars, niche connectors) are the most common amd64-only offenders. Self-host the open-source equivalent if you hit one.
 - Multiarch tags are inconsistent. `:latest` may be multiarch while `:1.2.3` is amd64-only, or vice versa. Always pin a tag, then verify with `docker manifest inspect <image>:<tag>`.
 

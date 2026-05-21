@@ -44,7 +44,7 @@ sudo tailscale up --advertise-routes=10.0.0.0/24,10.0.10.0/24,10.0.20.0/24,10.0.
 Then:
 
 - In the Tailscale admin console, approve the subnet routes.
-- Install Tailscale on your phone/laptop.
+- Install Tailscale on your phone or any other device you want to reach the homelab from.
 - Optional: enable MagicDNS so node hostnames resolve over Tailscale.
 
 !!! note "UDM firewall and Tailscale"
@@ -64,9 +64,9 @@ Then:
 - [ ] In UniFi Network, three VLANs visible: 10/20/30, each with a DHCP scope, each on a separate WiFi SSID if applicable
 - [ ] From a VLAN 10 device: `ping 10.0.0.60` (cube01 on VLAN 20) succeeds
 - [ ] From a VLAN 30 device: `ping` to anything in VLAN 20 fails EXCEPT Home Assistant on port 8123
-- [ ] From your laptop with Tailscale up: `ping 10.0.0.60` over Tailscale works
+- [ ] From your machine with Tailscale up: `ping 10.0.0.60` over Tailscale works
 
 ```bash
 tailscale status   # on cube01 - should show advertised routes accepted
-tailscale status   # on your laptop - should show cube01 reachable
+tailscale status   # on your machine - should show cube01 reachable
 ```

@@ -6,7 +6,7 @@ Replace the manual per-node steps in Runbook 3 with a single Ansible playbook. P
 |---|---|
 | **Difficulty** | Intermediate |
 | **Time Estimate** | 2–3 hours upfront, saves hours forever |
-| **Runs On** | Your laptop (or any control machine) |
+| **Runs On** | Your machine (the Ansible control host) |
 | **Replaces** | Manual setup steps in Runbook 3 + k3s install |
 | **DevOps Skills** | Configuration management, idempotency, infrastructure as code |
 
@@ -35,9 +35,9 @@ Quick reference for tasks in this guide:
 The two k3s install tasks in Step 8 of this runbook intentionally use `ansible.builtin.shell`. The k3s upstream install is a curl-piped script — wrapping it in a more idiomatic module would not improve correctness and would obscure the canonical install path. Use `creates: /usr/local/bin/k3s` on the task to keep it idempotent.
 
 !!! tip
-    Add the `kubernetes.core` collection to your `requirements.yml` before R5: `ansible-galaxy collection install kubernetes.core`. The `kubeconfig:` parameter on `kubernetes.core.k8s` lets you run cluster ops from your laptop against the remote API.
+    Add the `kubernetes.core` collection to your `requirements.yml` before R5: `ansible-galaxy collection install kubernetes.core`. The `kubeconfig:` parameter on `kubernetes.core.k8s` lets you run cluster ops from your machine against the remote API.
 
-## Step 1: Install Ansible on Your Laptop
+## Step 1: Install Ansible on Your Machine
 
 Ansible is agentless — it runs locally and talks to nodes over SSH. No agent install on the CM4s.
 
