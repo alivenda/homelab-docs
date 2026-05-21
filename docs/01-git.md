@@ -196,7 +196,7 @@ In each repo, create `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -205,13 +205,13 @@ repos:
       - id: detect-private-key
 
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.30.1  # check latest at github.com/gitleaks/gitleaks/releases
+    rev: v8.30.1
     hooks:
       - id: gitleaks
 
   # Terraform-specific — ONLY include this block in homelab-terraform
   - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.86.0
+    rev: v1.105.0
     hooks:
       - id: terraform_fmt
       - id: terraform_validate
@@ -221,13 +221,16 @@ Then install the hooks into git:
 
 ```bash
 pre-commit install
+
+# And periodically bump rev tags to the latest stable releases:
+pre-commit autoupdate
 ```
 
 !!! warning "Terraform hook scope"
     The Terraform hook block above must only be included in `homelab-terraform/.pre-commit-config.yaml`. In repos with no `.tf` files, `terraform_validate` will fail and block every commit.
 
 !!! tip "Stale `rev:` tag"
-    If a commit fails with `error: pathspec 'vX.Y.Z' did not match any file(s)`, the `rev:` tag is stale or wrong. Confirm the exact tag at the upstream `/releases` page, then run `pre-commit clean` to wipe the cached clones before retrying.
+    If a commit fails with `error: pathspec 'vX.Y.Z' did not match any file(s)`, the `rev:` tag is stale or wrong. Confirm the exact tag at the upstream `/releases` page, then run `pre-commit clean` to wipe the cached clones before retrying. `pre-commit autoupdate` rewrites every `rev:` in your config to the latest tag from upstream — run it in a separate commit so the version bumps are easy to review.
 
 ## Step 5: Secret Management with sops + age
 
