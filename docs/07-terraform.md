@@ -9,7 +9,7 @@ Three things in your homelab are good Terraform fits: Cloudflare DNS records, Un
 |---|---|
 | **Difficulty** | Intermediate |
 | **Time Estimate** | 3–4 hours |
-| **Runs On** | Your laptop |
+| **Runs On** | Your machine |
 | **Depends On** | Runbook 6, Runbook 2 |
 
 ## Where Terraform Genuinely Fits
@@ -53,7 +53,7 @@ homelab-terraform/
 
 ## Remote State
 
-By default, Terraform writes state to `terraform.tfstate` in the working directory. That's local-only — every laptop has a different view, and `.gitignore` blocks committing it. For a homelab this is fine if you only run Terraform from one machine. For anything more, use a remote backend.
+By default, Terraform writes state to `terraform.tfstate` in the working directory. That's local-only — every machine has a different view, and `.gitignore` blocks committing it. For a homelab this is fine if you only run Terraform from one host. For anything more, use a remote backend.
 
 Two reasonable options:
 
@@ -103,7 +103,7 @@ Two reasonable options:
     }
     ```
 
-    `terraform login` once on your laptop. State lives in Terraform Cloud; their free tier handles homelab-scale usage indefinitely.
+    `terraform login` once on your machine. State lives in Terraform Cloud; their free tier handles homelab-scale usage indefinitely.
 
 ## Cloudflare Module
 

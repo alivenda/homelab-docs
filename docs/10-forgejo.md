@@ -171,7 +171,7 @@ spec:
     ```
 
 - [ ] Web UI reachable at `https://git.yourdomain.com` — login as `forgejo_admin` works.
-- [ ] Push a test repo from your laptop:
+- [ ] Push a test repo from your machine:
 
     ```bash
     git remote add forgejo https://git.yourdomain.com/forgejo_admin/test.git

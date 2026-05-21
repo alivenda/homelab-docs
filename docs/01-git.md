@@ -16,10 +16,10 @@ Resist the urge to put everything in one mono-repo. Each repo below has a distin
 | Repo | Purpose | Consumer |
 |---|---|---|
 | `homelab-docs` | These runbooks, diagrams, decisions log | You (humans) |
-| `homelab-ansible` | OS provisioning playbooks (Runbook 4) | Your laptop |
+| `homelab-ansible` | OS provisioning playbooks (Runbook 4) | Your machine |
 | `homelab-manifests` | k3s YAML, Helm values, IngressRoutes | ArgoCD |
-| `homelab-terraform` | Cloudflare DNS, UniFi config, cloud practice | Your laptop → Woodpecker |
-| `homelab-secrets` | Encrypted secrets (sops/age) — **PRIVATE** | Your laptop (sops); Sealed Secrets controller for in-cluster manifests |
+| `homelab-terraform` | Cloudflare DNS, UniFi config, cloud practice | Your machine → Woodpecker |
+| `homelab-secrets` | Encrypted secrets (sops/age) — **PRIVATE** | Your machine (sops); Sealed Secrets controller for in-cluster manifests |
 
 **Why separate repos:**
 
@@ -47,7 +47,7 @@ Three viable patterns:
 
 You will create two Personal Access Tokens (PATs) over the course of this runbook — one for your local `gh` CLI to create and push to repos, and a second (later, after Runbook 5) for ArgoCD to pull from `homelab-manifests`. Different jobs, different permission scopes.
 
-### Token 1: Local `gh` CLI / development laptop
+### Token 1: Local `gh` CLI / development machine
 
 Sign in to GitHub. Go to **Settings → Developer Settings → Personal access tokens → Fine-grained tokens → Generate new token**.
 
@@ -234,7 +234,7 @@ pre-commit autoupdate
 
 ## Step 5: Secret Management with sops + age
 
-The `homelab-secrets` repo (and any tfvars in `homelab-terraform`) get encrypted with sops + age. Public keys are committed; private keys live only on your laptop and any device that needs to decrypt.
+The `homelab-secrets` repo (and any tfvars in `homelab-terraform`) get encrypted with sops + age. Public keys are committed; private keys live only on your machine and any device that needs to decrypt.
 
 ```bash
 # Install

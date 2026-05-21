@@ -51,7 +51,7 @@ Visit `http://<nas-ip>:9001`, log in, create a bucket named `homelab`.
 ### Create the Velero credentials file
 
 ```bash
-# On the laptop or wherever you'll run helm install
+# On your machine (wherever you'll run helm install)
 cat > minio-creds <<EOF
 [default]
 aws_access_key_id = <USER>

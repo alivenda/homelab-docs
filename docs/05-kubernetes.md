@@ -12,7 +12,7 @@ Deploy k3s across all 4 CM4 nodes, using the SATA SSD on Node 3 for NFS persiste
 !!! note "If you ran Runbook 4 (Ansible)"
     R4's playbooks already installed NFS on cube03 and k3s on all 4 nodes. **Skip Steps 1–4 below** — they are the imperative reference for what Ansible did, useful for understanding but redundant if you ran the playbook. Resume at [Step 5: Install Helm](#step-5-install-helm).
 
-## Step 0: Get `kubectl` working on your laptop
+## Step 0: Get `kubectl` working on your machine
 
 Every step from here on uses `kubectl`. Install it locally and copy the kubeconfig so you can talk to the cluster without SSHing into cube01 first:
 
@@ -82,7 +82,7 @@ curl -sfL https://get.k3s.io | \
   K3S_TOKEN=<paste_token_from_Step_2> sh -
 ```
 
-Verify from your laptop: `kubectl get nodes` (should show all 4 nodes Ready).
+Verify from your machine: `kubectl get nodes` (should show all 4 nodes Ready).
 
 ## Step 4: Label Nodes by Capacity
 
@@ -232,7 +232,7 @@ curl -sfL https://get.k3s.io | sh -s - server \
 
 ## Step 12: Sealed Secrets (cluster-side secret management)
 
-You now have two flavors of secrets: those that live in `homelab-secrets` as sops + age (Terraform tfvars, Cloudflare tokens consumed by your laptop) and those that need to be Kubernetes Secrets at runtime (DB passwords, OAuth client secrets, image-pull credentials). Don't commit raw `kubectl create secret` commands to Git — install Sealed Secrets so you can commit encrypted manifests to `homelab-manifests` safely.
+You now have two flavors of secrets: those that live in `homelab-secrets` as sops + age (Terraform tfvars, Cloudflare tokens consumed by your machine) and those that need to be Kubernetes Secrets at runtime (DB passwords, OAuth client secrets, image-pull credentials). Don't commit raw `kubectl create secret` commands to Git — install Sealed Secrets so you can commit encrypted manifests to `homelab-manifests` safely.
 
 ```bash
 helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
@@ -240,7 +240,7 @@ helm install sealed-secrets sealed-secrets/sealed-secrets \
   --namespace sealed-secrets --create-namespace \
   --set fullnameOverride=sealed-secrets-controller
 
-# Install the kubeseal CLI on your laptop
+# Install the kubeseal CLI on your machine
 # macOS
 brew install kubeseal
 # Arch / CachyOS
@@ -284,7 +284,7 @@ rm cf-token-plain.yaml   # never commit plaintext
 ```
 
 !!! tip "Two-layer secrets discipline"
-    sops + age for repo-side (laptop reads them), Sealed Secrets for cluster-side (ArgoCD reads them). The encryption keys are different — sops uses your age private key on the laptop; Sealed Secrets uses the controller's private key inside the cluster.
+    sops + age for repo-side (your machine reads them), Sealed Secrets for cluster-side (ArgoCD reads them). The encryption keys are different — sops uses your age private key on your machine; Sealed Secrets uses the controller's private key inside the cluster.
 
     Back up the Sealed Secrets controller key:
 
