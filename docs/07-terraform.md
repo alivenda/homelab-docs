@@ -112,7 +112,7 @@ terraform {
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
   }
 }
@@ -128,27 +128,29 @@ locals {
   ]
 }
 
-resource "cloudflare_record" "services" {
+resource "cloudflare_dns_record" "services" {
   for_each = toset(local.services)
   zone_id  = var.cloudflare_zone_id
   name     = each.value
-  content  = var.traefik_ip   # provider v4 renamed `value` → `content`
+  content  = var.traefik_ip
   type     = "A"
   proxied  = false
   ttl      = 300
 }
 ```
 
-!!! warning "Provider v4 field rename"
-    The Cloudflare provider renamed `value` → `content` in v4. If you copy-paste an older snippet that uses `value`, `terraform apply` will fail with an unknown-attribute error. Always check the [provider docs](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs) against your pinned version.
+!!! warning "v5 renamed the resource"
+    Provider v5 renamed `cloudflare_record` → `cloudflare_dns_record` (and earlier in v4, the field `value` → `content`). If you're migrating from a v4 codebase, run `terraform apply` after upgrading the provider — v5 ships state upgraders that auto-rewrite v4 state on first plan. Always check the [provider docs](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs) against your pinned version.
 
 ## UniFi Module
+
+The `paultyng/unifi` provider was archived in April 2026. The maintained drop-in successor is `ubiquiti-community/unifi` (v0.41.x schema-compatible). `filipowm/unifi` v1.x is a more aggressive refactor with schema changes — fine if you're starting fresh, but the drop-in is the safer first move.
 
 ```hcl
 terraform {
   required_providers {
     unifi = {
-      source  = "paultyng/unifi"
+      source  = "ubiquiti-community/unifi"
       version = "~> 0.41"
     }
   }
@@ -163,7 +165,7 @@ provider "unifi" {
 ```
 
 !!! warning
-    The `paultyng/unifi` provider is community-maintained and lags newer UDM features. Verify your UDM firmware version is supported.
+    Community-maintained UniFi providers lag newer UDM features. Verify your UDM firmware version is supported before pinning a release.
 
 ## Secret Handling
 
