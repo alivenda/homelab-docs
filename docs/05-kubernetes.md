@@ -155,7 +155,7 @@ helm install nfs-provisioner \
 
 ```bash
 kubectl create namespace argocd
-kubectl apply -n argocd -f \
+kubectl apply -n argocd --server-side --force-conflicts -f \
   https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Initial admin password
@@ -164,6 +164,9 @@ kubectl -n argocd get secret argocd-initial-admin-secret \
 ```
 
 Save the printed password to Vaultwarden.
+
+!!! note "Why `--server-side`"
+    The upstream `install.yaml` is large enough that a client-side `kubectl apply` can hit the 256 KB annotation limit on the embedded CRDs. The current ArgoCD docs recommend server-side apply with `--force-conflicts` for the initial install.
 
 ## Step 9: Access ArgoCD (before Traefik is up)
 
