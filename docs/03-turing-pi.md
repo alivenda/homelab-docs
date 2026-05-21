@@ -50,19 +50,20 @@ The BMC (Baseboard Management Controller) starts automatically within 10–20 se
 DietPi is a lightweight Debian-based OS optimized for single-board computers and recommended in the official Turing Pi k3s guide.
 
 1. Download the DietPi image for Raspberry Pi 2/3/4 (ARM 64-bit) from [dietpi.com](https://dietpi.com).
-2. Install `rpiboot` on your PC (required for the PC to see CM4 eMMC storage).
-3. Connect USB 2.0 on the Turing Pi 2 (vertical port next to HDMI) to your PC with a USB A-to-A cable (or USB A-to-C if needed).
-4. For each node, put it into USB mass-storage mode so your PC sees the eMMC as a disk. From an SSH session to the BMC:
+2. Install `rpiboot` on your PC (required for the PC to see CM4 eMMC storage). Windows: [rpiboot_setup.exe](https://github.com/raspberrypi/usbboot/raw/master/win32/rpiboot_setup.exe). Mac/Linux: build from [raspberrypi/usbboot](https://github.com/raspberrypi/usbboot).
+3. Connect the vertical USB 2.0 port on the Turing Pi 2 (adjacent to HDMI) to your PC with a **USB A-to-A cable**. The Turing Pi docs explicitly note that USB A-to-C cables have caused intermittent failures — use A-to-A.
+4. Power on the target node (BMC UI or `tpi power on -n <node>`) before the next step — MSD mode requires the module to be running.
+5. For each node, put it into USB mass-storage mode so your PC sees the eMMC as a disk. SSH into the BMC and run:
 
     ```bash
-    # Example: put node 1 into MSD mode
-    tpi advanced msd -n 1
+    # Route node 1's eMMC to the BMC USB port as a mass-storage device
+    tpi usb device -n 1
     ```
 
-    Or use the BMC web UI: Nodes → select node → Advanced → MSD mode.
+    Or use the BMC web UI: **Nodes → select node → USB → Device mode**. On your PC, `rpiboot` should detect the CM4 storage and present it as a new disk.
 
-5. Flash via Raspberry Pi Imager using "Use custom" with the DietPi image.
-6. Before completing the flash, mount the boot partition and edit `dietpi.txt`:
+6. Flash via Raspberry Pi Imager using "Use custom" with the DietPi image.
+7. Before completing the flash, mount the boot partition and edit `dietpi.txt`:
 
     ```ini
     AUTO_SETUP_LOCALE=C.UTF-8
@@ -83,8 +84,8 @@ DietPi is a lightweight Debian-based OS optimized for single-board computers and
     AUTO_SETUP_SSH_SERVER_INDEX=-2
     ```
 
-7. Also edit `cmdline.txt` to enable cgroups (required for k3s). Append to the end of the single line: `cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1`
-8. Repeat for all 4 nodes, incrementing the static IP and hostname.
+8. Also edit `cmdline.txt` to enable cgroups (required for k3s). Append to the end of the single line: `cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1`
+9. Repeat for all 4 nodes, incrementing the static IP and hostname.
 
 !!! tip "Jump to Ansible now"
     **STOP HERE and jump to Runbook 4 (Ansible).** Steps 4 and 5 below are MANUAL alternatives — Runbook 4 automates the cgroups edit, NFS server install, SSD mount, and k3s install across all 4 nodes with one playbook. Only do Steps 4–5 manually if you want to understand the per-node config before letting Ansible take over.
