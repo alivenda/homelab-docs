@@ -59,9 +59,11 @@ server:
     WOODPECKER_FORGEJO_URL: https://git.yourdomain.com
     WOODPECKER_OPEN: "false"
     WOODPECKER_ADMIN: yourforgejousername
-  envFrom:
-    - secretRef:
-        name: woodpecker-secrets   # provides FORGEJO_CLIENT, FORGEJO_SECRET, AGENT_SECRET
+  # The chart pulls additional env vars from the named Secret. Make sure
+  # the SealedSecret's keys match the env names exactly:
+  #   WOODPECKER_FORGEJO_CLIENT, WOODPECKER_FORGEJO_SECRET, WOODPECKER_AGENT_SECRET
+  extraSecretNamesForEnvFrom:
+    - woodpecker-secrets
   persistentVolume:
     enabled: true
     storageClass: nfs-storage
@@ -71,16 +73,15 @@ server:
 agent:
   env:
     WOODPECKER_BACKEND: kubernetes
-  envFrom:
-    - secretRef:
-        name: woodpecker-secrets
+  extraSecretNamesForEnvFrom:
+    - woodpecker-secrets
   replicaCount: 2
 
 nodeSelector:
   storage: large
 ```
 
-Map the secret keys to the env var names Woodpecker expects. For Helm charts that don't honor `envFrom` directly on a per-key basis, use `existingSecret` or `extraEnv` to wire `WOODPECKER_FORGEJO_CLIENT` ← `forgejo-client-id`, etc. — check the chart docs.
+When you seal the credentials in Step 3, name the keys to match the Woodpecker env vars (`WOODPECKER_FORGEJO_CLIENT`, `WOODPECKER_FORGEJO_SECRET`, `WOODPECKER_AGENT_SECRET`) so `envFrom` wires them directly — no per-key mapping needed.
 
 Install:
 
@@ -110,7 +111,10 @@ Standard IngressRoute for `ci.yourdomain.com`. Same shape as [Vaultwarden Step 3
 
 ## Sample Pipeline (build → push → bump manifest)
 
-The kubernetes backend doesn't have a docker socket, so use [kaniko](https://github.com/GoogleContainerTools/kaniko) to build OCI images without Docker:
+The kubernetes backend doesn't have a Docker socket. Use [BuildKit](https://github.com/moby/buildkit) (rootless) to build OCI images directly inside a build pod — no daemon, no socket mount, no privileged container.
+
+!!! note "Kaniko was archived in June 2025"
+    Earlier versions of this runbook recommended kaniko. The kaniko project was archived upstream; BuildKit's rootless image (`moby/buildkit:rootless`) is the maintained replacement and works identically for CI-style "build and push" flows.
 
 ```yaml
 # In your app repo: .woodpecker.yml
@@ -120,13 +124,16 @@ when:
 
 steps:
   build-and-push:
-    image: gcr.io/kaniko-project/executor:latest
+    image: moby/buildkit:rootless
+    environment:
+      BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
     commands:
-      - /kaniko/executor
-          --context=$CI_WORKSPACE
-          --dockerfile=Dockerfile
-          --destination=git.yourdomain.com/youruser/myapp:${CI_COMMIT_SHA}
-          --destination=git.yourdomain.com/youruser/myapp:latest
+      - |
+        buildctl-daemonless.sh build \
+          --frontend dockerfile.v0 \
+          --local context=. \
+          --local dockerfile=. \
+          --output type=image,\"name=git.yourdomain.com/youruser/myapp:${CI_COMMIT_SHA},git.yourdomain.com/youruser/myapp:latest\",push=true
 
   update-manifest:
     image: alpine/git:latest
@@ -143,8 +150,8 @@ steps:
     secrets: [ forgejo_token ]
 ```
 
-!!! note "Why kaniko over docker-in-docker"
-    Kaniko builds OCI images entirely in user space — no daemon, no privileged container, no socket mount. It's the standard pattern for image builds in any kubernetes-native CI system. For Forgejo registry auth, mount the credentials in `/kaniko/.docker/config.json` via a Secret (omitted from the sample for brevity).
+!!! note "Registry auth for BuildKit"
+    For pushes to a private Forgejo registry, mount a Docker-config-format Secret at `/home/user/.docker/config.json` in the build pod (Woodpecker `volumes:` or k8s backend pod-template overrides). The same `config.json` pattern works for any OCI registry.
 
 !!! tip "Forgejo's built-in container registry"
     Enable Forgejo's container registry under `[packages]` in `app.ini` so pipelines push/pull images without Docker Hub.
