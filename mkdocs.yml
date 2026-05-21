@@ -1,0 +1,89 @@
+site_name: Homelab Runbooks
+site_description: Turing Pi 2 + 4x CM4 k3s homelab — from zero to self-hosted everything
+site_url: https://docs.example.com/
+repo_url: https://github.com/yourusername/homelab-docs
+repo_name: homelab-docs
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.tracking
+    - toc.follow
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+  - pymdownx.caret
+  - pymdownx.keys
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Runbook 0 — Prerequisites: 00-prerequisites.md
+  - Runbook 1 — Git: 01-git.md
+  - Runbook 2 — Networking: 02-networking.md
+  - Runbook 3 — Turing Pi: 03-turing-pi.md
+  - Runbook 4 — Ansible: 04-ansible.md
+  - Runbook 5 — Kubernetes: 05-kubernetes.md
+  - Runbook 6 — Traefik: 06-traefik.md
+  - Runbook 7 — Terraform: 07-terraform.md
+  - Runbook 8 — Observability: 08-observability.md
+  - Runbook 9 — Backups: 09-backups.md
+  - Runbook 10 — Forgejo: 10-forgejo.md
+  - Runbook 11 — Vaultwarden: 11-vaultwarden.md
+  - Runbook 12 — Nextcloud: 12-nextcloud.md
+  - Runbook 13 — Immich: 13-immich.md
+  - Runbook 14 — Paperless-ngx: 14-paperless.md
+  - Runbook 15 — Home Assistant: 15-home-assistant.md
+  - Runbook 16 — CI/CD: 16-cicd.md
+  - Version History: version-history.md
+
+extra:
+  generator: false
