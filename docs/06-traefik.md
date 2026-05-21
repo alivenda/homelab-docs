@@ -34,16 +34,21 @@ kubectl create namespace traefik   # skip if you created it in R5 Step 13
 ```yaml
 ports:
   web:
-    redirectTo:
-      port: websecure
-      scheme: https
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
   websecure:
     tls:
       enabled: true
 service:
   type: LoadBalancer
-  spec:
-    loadBalancerIP: 10.0.0.70
+  # Kubernetes deprecated spec.loadBalancerIP in 1.24+.
+  # Pin the MetalLB IP via an annotation instead.
+  annotations:
+    metallb.universe.tf/loadBalancerIPs: 10.0.0.70
 additionalArguments:
   - "--certificatesresolvers.cloudflare.acme.dnschallenge=true"
   - "--certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare"
@@ -121,10 +126,9 @@ spec:
     Traefik's built-in ACME client (used above) is sufficient for this guide. If you later swap to a different ingress (`nginx-ingress`, Istio, etc.) or want a single cert lifecycle across multiple controllers, install [cert-manager](https://cert-manager.io) — the k8s-native standard for certificate management, works with the same Cloudflare DNS-01 you set up here:
 
     ```bash
-    helm repo add jetstack https://charts.jetstack.io
-    helm install cert-manager jetstack/cert-manager \
+    helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
       --namespace cert-manager --create-namespace \
-      --set installCRDs=true
+      --set crds.enabled=true
     ```
 
 ## Verification
@@ -150,4 +154,4 @@ spec:
     # Expected: issuer references Let's Encrypt, not self-signed
     ```
 
-- [ ] HTTP redirects to HTTPS automatically (the `web` entryPoint's `redirectTo` in values.yaml).
+- [ ] HTTP redirects to HTTPS automatically (the `web` entryPoint's `http.redirections.entryPoint` in `values.yaml`).
