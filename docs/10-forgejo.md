@@ -11,35 +11,34 @@ Self-hosted Git server.
 
 Deploy Forgejo via the official Helm chart instead of docker-compose. This keeps the Git server inside the cluster's GitOps lifecycle: persistent volumes go through the NFS provisioner, the workload is visible to ArgoCD, and an IngressRoute (Runbook 6) gives you HTTPS without exposing NodePorts.
 
-## Step 1: Seal the admin credentials
+## Step 1: Seal the admin and DB credentials
 
-Don't pass the admin password via `--set` — it ends up in shell history and `ps` output. Seal it first, then reference the Secret from `values.yaml`.
+Don't pass passwords via `--set` — they end up in shell history and `ps` output. Seal them first, then reference the Secret from `values.yaml`.
 
 ```bash
 # Generate
 FORGEJO_ADMIN_PW=$(openssl rand -base64 24)
+FORGEJO_DB_PW=$(openssl rand -base64 24)
 
 echo "Forgejo admin password: $FORGEJO_ADMIN_PW"   # save to Vaultwarden
+echo "Forgejo DB password: $FORGEJO_DB_PW"         # save to Vaultwarden
 
 # Create the namespace
 kubectl create namespace forgejo
 
 # Build a plain Secret manifest, then seal it
-kubectl create secret generic forgejo-admin \
+kubectl create secret generic forgejo-credentials \
   --namespace forgejo \
-  --from-literal=username=forgejo_admin \
-  --from-literal=password="$FORGEJO_ADMIN_PW" \
+  --from-literal=admin-password="$FORGEJO_ADMIN_PW" \
+  --from-literal=db-password="$FORGEJO_DB_PW" \
   --dry-run=client -o yaml \
   | kubeseal --controller-name=sealed-secrets-controller \
              --controller-namespace=sealed-secrets \
              --format yaml \
-  > forgejo-admin-sealed.yaml
+  > forgejo-credentials-sealed.yaml
 
-# Commit to homelab-manifests/apps/forgejo/forgejo-admin-sealed.yaml
+# Commit to homelab-manifests/apps/forgejo/forgejo-credentials-sealed.yaml
 ```
-
-!!! note "No separate DB secret"
-    The chart removed its bundled PostgreSQL sub-chart in v14 — for a homelab single-instance deployment, Forgejo's built-in SQLite is the natural fit and needs no separate credential. If you scale Forgejo or want to share Postgres across services, deploy [bitnami/postgresql](https://artifacthub.io/packages/helm/bitnami/postgresql) separately and point `gitea.config.database` at it.
 
 ## Step 2: Install via Helm
 
@@ -55,28 +54,39 @@ service:
     type: ClusterIP
 gitea:
   admin:
-    existingSecret: forgejo-admin   # references our SealedSecret
+    username: forgejo_admin
+    existingSecret: forgejo-credentials   # references our SealedSecret
     email: admin@yourdomain.com
   config:
     server:
       DOMAIN: git.yourdomain.com
       ROOT_URL: https://git.yourdomain.com/
       SSH_DOMAIN: git.yourdomain.com
-    # SQLite is the chart default; no `database:` block needed for single-instance.
+postgresql:
+  enabled: true
+  auth:
+    existingSecret: forgejo-credentials
+    secretKeys:
+      adminPasswordKey: db-password
+      userPasswordKey: db-password
+  global:
+    storageClass: nfs-storage
 nodeSelector:
   storage: large
 ```
 
-Install (the chart is published as an OCI artifact — no `helm repo add` needed):
+Install:
 
 ```bash
-helm install forgejo oci://code.forgejo.org/forgejo-helm/forgejo \
+helm repo add forgejo https://code.forgejo.org/forgejo-helm
+helm repo update
+helm install forgejo forgejo/forgejo \
   --namespace forgejo \
   --values values.yaml
 ```
 
 !!! warning "Chart key naming"
-    The Forgejo Helm chart inherits Gitea's chart-internal key naming (the `gitea.` prefix), since Forgejo forked it. This is not a bug — check the chart README at [code.forgejo.org/forgejo-helm](https://code.forgejo.org/forgejo-helm/forgejo-helm) for any value name changes if you upgrade the chart later.
+    The Forgejo Helm chart inherits Gitea's chart-internal key naming (the `gitea.` prefix), since Forgejo forked it. This is not a bug — check chart docs at [code.forgejo.org/forgejo-helm](https://code.forgejo.org/forgejo-helm/forgejo-helm) for any value name changes if you upgrade the chart later.
 
 ## Step 3: GitOps-managed install (recommended)
 
@@ -92,9 +102,9 @@ metadata:
 spec:
   project: default
   sources:
-    - repoURL: code.forgejo.org/forgejo-helm   # OCI registry, no scheme prefix
+    - repoURL: https://code.forgejo.org/forgejo-helm
       chart: forgejo
-      targetRevision: 17.0.0   # pin a version, don't track latest
+      targetRevision: 9.0.0   # pin a version, don't track latest
       helm:
         valueFiles:
           - $values/apps/forgejo/values.yaml
@@ -167,7 +177,7 @@ spec:
 
     ```bash
     kubectl get pods -n forgejo
-    # Expected: forgejo-0 (1/1 Running). SQLite is in-pod, no separate DB pod.
+    # Expected: forgejo-0 + forgejo-postgresql-0 all 1/1 Running
     ```
 
 - [ ] Web UI reachable at `https://git.yourdomain.com` — login as `forgejo_admin` works.
