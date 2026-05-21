@@ -61,18 +61,35 @@ EOF
 
 ### Install Velero
 
+The Velero chart's schema changed in v3.0.0+: `backupStorageLocation` is now an array, `provider` lives inside each entry, and the old `deployRestic` flag was renamed `deployNodeAgent`.
+
+`velero-values.yaml`:
+
+```yaml
+configuration:
+  backupStorageLocation:
+    - name: default
+      provider: aws       # use 'aws' provider for any S3-compatible target
+      bucket: homelab
+      default: true
+      config:
+        region: minio
+        s3Url: http://10.0.0.50:9000   # NAS IP
+        s3ForcePathStyle: "true"
+
+deployNodeAgent: true       # replaces deployRestic; needed for PVC-content backups
+
+credentials:
+  useSecret: true
+  # secretContents.cloud comes in via --set-file at install time
+```
+
 ```bash
 helm repo add vmware-tanzu https://vmware-tanzu.github.io/helm-charts
 
 helm install velero vmware-tanzu/velero \
   --namespace velero --create-namespace \
-  --set configuration.provider=aws \
-  --set configuration.backupStorageLocation.bucket=homelab \
-  --set configuration.backupStorageLocation.config.region=minio \
-  --set configuration.backupStorageLocation.config.s3Url=http://<nas-ip>:9000 \
-  --set configuration.backupStorageLocation.config.s3ForcePathStyle=true \
-  --set deployRestic=true \
-  --set credentials.useSecret=true \
+  --values velero-values.yaml \
   --set-file credentials.secretContents.cloud=./minio-creds
 
 # Verify
