@@ -84,20 +84,20 @@ homelab-ansible/
 ```yaml
 all:
   hosts:
-    cube01:
+    ruby:
       ansible_host: 10.0.0.60
       node_role: server
       emmc_size: 32
-    cube02:
+    emerald:
       ansible_host: 10.0.0.61
       node_role: agent
       emmc_size: 32
-    cube03:
+    topaz:
       ansible_host: 10.0.0.62
       node_role: agent
       emmc_size: 16
       nfs_server: true
-    cube04:
+    amethyst:
       ansible_host: 10.0.0.63
       node_role: agent
       emmc_size: 16
@@ -109,13 +109,13 @@ all:
 
 k3s_server:
   hosts:
-    cube01:
+    ruby:
 
 k3s_agents:
   hosts:
-    cube02:
-    cube03:
-    cube04:
+    emerald:
+    topaz:
+    amethyst:
 ```
 
 !!! tip
@@ -168,16 +168,16 @@ vault_password_file = ~/.ansible-vault-pass
       ansible.builtin.blockinfile:
         path: /etc/hosts
         block: |
-          10.0.0.60 cube01
-          10.0.0.61 cube02
-          10.0.0.62 cube03
-          10.0.0.63 cube04
+          10.0.0.60 ruby
+          10.0.0.61 emerald
+          10.0.0.62 topaz
+          10.0.0.63 amethyst
 ```
 
 ## Step 7: NFS Playbook
 
 ```yaml
-- hosts: cube03
+- hosts: topaz
   become: true
   tasks:
     - name: Install NFS server
@@ -259,7 +259,7 @@ Generate a strong token with `openssl rand -hex 32` and save to Vaultwarden. Sav
 ```bash
 ansible-playbook playbooks/site.yml --check    # dry run
 ansible-playbook playbooks/site.yml            # apply
-ansible-playbook playbooks/bootstrap.yml --limit cube02
+ansible-playbook playbooks/bootstrap.yml --limit emerald
 ```
 
 !!! tip

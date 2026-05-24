@@ -10,11 +10,11 @@ Deploy k3s across all 4 CM4 nodes, using the SATA SSD on Node 3 for NFS persiste
 | **Depends On** | Runbook 3 (or 4) |
 
 !!! note "If you ran Runbook 4 (Ansible)"
-    R4's playbooks already installed NFS on cube03 and k3s on all 4 nodes. **Skip Steps 1–4 below** — they are the imperative reference for what Ansible did, useful for understanding but redundant if you ran the playbook. Resume at [Step 5: Install Helm](#step-5-install-helm).
+    R4's playbooks already installed NFS on topaz and k3s on all 4 nodes. **Skip Steps 1–4 below** — they are the imperative reference for what Ansible did, useful for understanding but redundant if you ran the playbook. Resume at [Step 5: Install Helm](#step-5-install-helm).
 
 ## Step 0: Get `kubectl` working on your machine
 
-Every step from here on uses `kubectl`. Install it locally and copy the kubeconfig so you can talk to the cluster without SSHing into cube01 first:
+Every step from here on uses `kubectl`. Install it locally and copy the kubeconfig so you can talk to the cluster without SSHing into ruby first:
 
 ```bash
 # macOS
@@ -24,7 +24,7 @@ sudo pacman -S kubectl
 # Ubuntu / Debian (snap)
 sudo snap install kubectl --classic
 
-# Pull the kubeconfig from cube01 and rewrite the server URL
+# Pull the kubeconfig from ruby and rewrite the server URL
 mkdir -p ~/.kube
 scp root@10.0.0.60:/etc/rancher/k3s/k3s.yaml ~/.kube/config
 sed -i 's/127.0.0.1/10.0.0.60/' ~/.kube/config
@@ -34,7 +34,7 @@ kubectl get nodes
 # Expected: 4 nodes Ready
 ```
 
-## Step 1: Install NFS Server on cube03
+## Step 1: Install NFS Server on topaz
 
 ```bash
 apt install -y nfs-kernel-server
@@ -46,13 +46,13 @@ exportfs -ar
 !!! tip
     `no_root_squash` with subnet restriction is a homelab tradeoff, not a production-grade NFS security posture. It works because every node on `10.0.0.0/24` is yours and the data is yours. Do not copy this config into a multi-tenant environment.
 
-On cube01, cube02, and cube04:
+On ruby, emerald, and amethyst:
 
 ```bash
 apt install -y nfs-common
 ```
 
-## Step 2: Install k3s Server (cube01)
+## Step 2: Install k3s Server (ruby)
 
 ```bash
 # Generate the cluster token ONCE and save to Vaultwarden — use the SAME value in Step 3
@@ -74,7 +74,7 @@ curl -sfL https://get.k3s.io | sh -s - \
 
 ## Step 3: Join Worker Nodes
 
-Run on each of cube02, cube03, cube04 (use the same `K3S_TOKEN` value from Step 2):
+Run on each of emerald, topaz, amethyst (use the same `K3S_TOKEN` value from Step 2):
 
 ```bash
 curl -sfL https://get.k3s.io | \
@@ -86,16 +86,16 @@ Verify from your machine: `kubectl get nodes` (should show all 4 nodes Ready).
 
 ## Step 4: Label Nodes by Capacity
 
-cube01 is the control plane; the other three are workers. Use labels to express both role and storage capacity for scheduling:
+ruby is the control plane; the other three are workers. Use labels to express both role and storage capacity for scheduling:
 
 ```bash
 # Control plane
-kubectl label nodes cube01 node-role.kubernetes.io/control-plane=true storage=large
+kubectl label nodes ruby node-role.kubernetes.io/control-plane=true storage=large
 
 # Workers
-kubectl label nodes cube02 kubernetes.io/role=worker storage=large
-kubectl label nodes cube03 kubernetes.io/role=worker storage=small role=nfs
-kubectl label nodes cube04 kubernetes.io/role=worker storage=small
+kubectl label nodes emerald kubernetes.io/role=worker storage=large
+kubectl label nodes topaz kubernetes.io/role=worker storage=small role=nfs
+kubectl label nodes amethyst kubernetes.io/role=worker storage=small
 ```
 
 ## Step 5: Install Helm
@@ -190,12 +190,12 @@ Then:
 ## Step 10: Control-plane redundancy (SPOF awareness)
 
 !!! warning
-    cube01 is the only k3s server in this cluster. If it dies, the control plane is offline and workloads keep running but you cannot deploy, scale, or restart anything until cube01 is recovered. For a real homelab this is acceptable — but you must have etcd snapshots and a documented restore path.
+    ruby is the only k3s server in this cluster. If it dies, the control plane is offline and workloads keep running but you cannot deploy, scale, or restart anything until ruby is recovered. For a real homelab this is acceptable — but you must have etcd snapshots and a documented restore path.
 
 k3s ships with etcd-snapshot built in. Snapshot regularly:
 
 ```bash
-# On cube01, take a manual snapshot now to verify it works
+# On ruby, take a manual snapshot now to verify it works
 sudo k3s etcd-snapshot save
 ls /var/lib/rancher/k3s/server/db/snapshots/
 
@@ -210,12 +210,12 @@ sudo systemctl restart k3s
 
 Back up the snapshots directory to your NAS (Runbook 9 picks this up if you add it to the restic include list).
 
-## Step 11: Restore procedure (when cube01 dies)
+## Step 11: Restore procedure (when ruby dies)
 
-If cube01 is unrecoverable: reflash DietPi (Runbook 3), re-bootstrap with Ansible (Runbook 4), then restore etcd from your latest snapshot instead of running k3s server fresh:
+If ruby is unrecoverable: reflash DietPi (Runbook 3), re-bootstrap with Ansible (Runbook 4), then restore etcd from your latest snapshot instead of running k3s server fresh:
 
 ```bash
-# On the new cube01, copy the latest snapshot from your NAS to:
+# On the new ruby, copy the latest snapshot from your NAS to:
 # /var/lib/rancher/k3s/server/db/snapshots/
 
 # Install k3s with --cluster-reset --cluster-reset-restore-path
@@ -223,12 +223,12 @@ curl -sfL https://get.k3s.io | sh -s - server \
   --cluster-reset \
   --cluster-reset-restore-path=/var/lib/rancher/k3s/server/db/snapshots/<latest>
 
-# Once it's up, agents (cube02-04) need to be re-joined with the
+# Once it's up, the worker agents (emerald, topaz, amethyst) need to be re-joined with the
 # same K3S_TOKEN they used before.
 ```
 
 !!! tip
-    Document your K3S_TOKEN in Vaultwarden the day you stand the cluster up. Losing it on top of losing cube01 turns a 2-hour rebuild into a full cluster rebuild.
+    Document your K3S_TOKEN in Vaultwarden the day you stand the cluster up. Losing it on top of losing ruby turns a 2-hour rebuild into a full cluster rebuild.
 
 ## Step 12: Sealed Secrets (cluster-side secret management)
 

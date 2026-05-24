@@ -9,7 +9,7 @@ Lightweight self-hosted Bitwarden-compatible server.
 |---|---|
 | **Difficulty** | Beginner |
 | **Time Estimate** | 30 minutes |
-| **Runs On** | Any node (fine on cube04) |
+| **Runs On** | Any node (fine on amethyst) |
 | **Depends On** | Runbook 6 (HTTPS required) |
 
 Deploy Vaultwarden via the well-maintained community Helm chart instead of docker-compose. Same operational benefits as Forgejo: NFS-backed persistence, ArgoCD visibility, single Traefik IngressRoute.

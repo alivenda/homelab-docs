@@ -107,10 +107,10 @@ velero backup create homelab-$(date +%Y%m%d)
 
 ## Restic Setup
 
-Restic backs up filesystem-level data: DB dumps, config files, k3s server manifests. Run this **on a host with access to the cluster databases** — typically cube01 (where `kubectl` works) and the NAS (where mount happens).
+Restic backs up filesystem-level data: DB dumps, config files, k3s server manifests. Run this **on a host with access to the cluster databases** — typically ruby (where `kubectl` works) and the NAS (where mount happens).
 
 ```bash
-# On cube01
+# On ruby
 apt install -y restic
 mkdir -p /mnt/backups
 mount -t nfs <NAS_IP>:/volume1/backups /mnt/backups
@@ -124,7 +124,7 @@ restic init
 
 ## Backup Script
 
-Run on cube01 (where `kubectl` works against the cluster). Comment out the lines for services you haven't deployed yet — pulling a DB from a pod that doesn't exist will fail the whole script under `set -euo pipefail`.
+Run on ruby (where `kubectl` works against the cluster). Comment out the lines for services you haven't deployed yet — pulling a DB from a pod that doesn't exist will fail the whole script under `set -euo pipefail`.
 
 ```bash
 #!/bin/bash
