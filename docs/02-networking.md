@@ -1,6 +1,6 @@
 # Runbook 2: Network Segmentation and VPN
 
-VLAN plan, firewall, and remote access via Tailscale. Sets up the network model that every later runbook assumes (cube01–04 on Lab VLAN, MetalLB pool reserved, mDNS scoped, Tailscale subnet routing).
+VLAN plan, firewall, and remote access via Tailscale. Sets up the network model that every later runbook assumes (cluster nodes on Lab VLAN, MetalLB pool reserved, mDNS scoped, Tailscale subnet routing).
 
 | | |
 |---|---|
@@ -39,10 +39,13 @@ Within the static range of each VLAN. Cluster nodes are assigned via netplan on 
 | Device | VLAN | IP | Assignment |
 |---|---|---|---|
 | UDM | default | `10.0.0.1` | UDM default |
-| cube01 (k3s control plane, Tailscale subnet router) | lab | `10.0.20.10` | netplan on node |
-| cube02 | lab | `10.0.20.11` | netplan on node |
-| cube03 | lab | `10.0.20.12` | netplan on node |
-| cube04 | lab | `10.0.20.13` | netplan on node |
+| UniFi switch | default | `10.0.0.2` | UDM DHCP reservation |
+| UniFi AP | default | `10.0.0.3` | UDM DHCP reservation |
+| Turing Pi 2 BMC | default | `10.0.0.4` | UDM DHCP reservation |
+| ruby (cube01) (k3s control plane, Tailscale subnet router) | lab | `10.0.20.10` | netplan on node |
+| emerald (cube02) (Tailscale subnet router failover) | lab | `10.0.20.11` | netplan on node |
+| topaz (cube03) | lab | `10.0.20.12` | netplan on node |
+| amethyst (cube04) | lab | `10.0.20.13` | netplan on node |
 | Apple TV | iot | `10.0.30.10` | UDM DHCP reservation |
 
 ### WiFi SSID mapping
@@ -82,10 +85,10 @@ Internet
      └─ phones · laptops · home desktop
 
    VLAN 20  Lab  10.0.20.0/24                [mDNS off]
-     ├─ cube01  .10   k3s control plane + Tailscale subnet router
-     ├─ cube02  .11   k3s worker
-     ├─ cube03  .12   k3s worker
-     ├─ cube04  .13   k3s worker
+     ├─ ruby      (cube01)  .10   k3s control plane + Tailscale subnet router
+     ├─ emerald   (cube02)  .11   k3s worker + Tailscale subnet router (failover)
+     ├─ topaz     (cube03)  .12   k3s worker
+     ├─ amethyst  (cube04)  .13   k3s worker
      └─ MetalLB pool  .200–.250  (Traefik VIP and other LoadBalancer services)
 
    VLAN 30  IoT  10.0.30.0/24                [mDNS on]
@@ -94,7 +97,7 @@ Internet
 
    mDNS reflector:  Trusted ↔ IoT only  (for AirPlay/Bonjour discovery)
 
-   Tailscale subnet routes advertised by cube01:
+   Tailscale subnet routes advertised by ruby (cube01):
      10.0.0.0/24    (Default — UDM admin from afar)
      10.0.10.0/24   (Trusted — reach home desktop remotely)
      10.0.20.0/24   (Lab — cluster admin)
@@ -164,7 +167,7 @@ UniFi → **UniFi Devices → [your switch] → Ports**. For each relevant port 
 | Port use | Native network |
 |---|---|
 | Home desktop | Trusted (VLAN 10) |
-| cube01–04 (Turing Pi 2 ethernet) | Lab (VLAN 20) |
+| ruby, emerald, topaz, amethyst (Turing Pi 2 ethernet) | Lab (VLAN 20) |
 | UDM uplink, AP uplink, downstream switches | Default (or a trunk allowing all VLANs) |
 
 !!! note "Access vs trunk ports"
@@ -200,19 +203,17 @@ Leave the Default LAN in the built-in **Internal** zone — it's the management 
 
 ### Step 3b: Set the zone matrix defaults
 
-In the Zone Matrix, set the default action for each zone pair as below. Intra-zone (a zone to itself) is implicitly Allow — devices on the same VLAN talk freely.
+In the Zone Matrix, set the default action for each zone pair as below. Intra-zone (a zone to itself) is implicitly Allow — devices on the same VLAN talk freely. Cells marked `Block*` are overridden by a specific allow policy in Step 3c.
 
-| From → To | Default action |
-|---|---|
-| Internal → Trusted / Lab / IoT | Allow (management reach from Default LAN) |
-| Trusted → Lab | **Block** (overridden by policy in 3c) |
-| Trusted → IoT | Allow (full admin reach) |
-| Lab → Trusted | Block |
-| Lab → IoT | Block |
-| IoT → Trusted | Block |
-| IoT → Lab | **Block** (overridden by policy in 3c) |
-| any custom zone → External (Internet) | Allow |
-| External → any custom zone | Block (default; no port forwards) |
+| From ↓ / To → | Internal | Trusted | Lab | IoT | External |
+|---|---|---|---|---|---|
+| **Internal** | (intra) | Allow | Block | Block | Allow |
+| **Trusted** | Allow | (intra) | Block* | Allow | Allow |
+| **Lab** | Block | Block | (intra) | Block | Allow |
+| **IoT** | Block | Block | Block* | (intra) | Allow |
+| **External** | Block | Block | Block | Block | (n/a) |
+
+The asymmetry around Internal is deliberate: Trusted reaches Internal (so you can admin the switch, AP, and Turing Pi BMC from your desktop), but Lab and IoT cannot (cluster workloads and smart bulbs have no business reaching the management plane). Internal → Trusted stays Allow so UDM/AP firmware update flows that initiate from the controller side still work.
 
 ### Step 3c: Add allow policies (the explicit exceptions)
 
@@ -246,27 +247,93 @@ UDM accepts management on every VLAN gateway IP by default. Where you connect fr
 !!! warning "Consider disabling UDM management on IoT"
     UniFi → Networks → IoT → Advanced → "Allow this network to use the Local Management Service" — turn off. There is no reason a smart bulb should be able to reach the gateway UI.
 
-## Step 5: Tailscale Subnet Router on cube01
+## Step 5: Tailscale Subnet Router
 
-!!! warning "Requires cube01"
-    This step needs cube01 booted and reachable. If you have not finished Runbook 3 yet, complete Steps 1–4 of this runbook now (UDM, devices, firewall, UDM access) and return for Step 5 after the cluster nodes are flashed.
+Install Tailscale on two cluster nodes (ruby + emerald) so the subnet router survives reboots. Configure ACLs so only your devices can reach the advertised subnets.
 
-Install Tailscale on cube01 and advertise the subnets you want to reach remotely:
+!!! warning "Requires ruby (cube01) and emerald (cube02)"
+    This step needs the first two cluster nodes booted and reachable. If you have not finished Runbook 3 yet, complete Steps 1–4 of this runbook now (UDM, devices, firewall, UDM access) and return for Step 5 after the cluster nodes are flashed.
+
+### Step 5a: Generate a pre-authorized auth key
+
+In the Tailscale admin console → **Settings → Keys → Generate auth key**:
+
+- **Reusable:** on (you will use it on two nodes)
+- **Ephemeral:** off (subnet routers must persist across reboots)
+- **Pre-approved:** on (machine joins without manual approval)
+- **Tags:** `tag:homelab-router` (referenced from ACLs in Step 5d)
+- **Expiration:** 24h (long enough for the install session, short enough that a leaked key dies fast)
+
+Copy the `tskey-auth-...` value. Don't commit it. Store in Vaultwarden if you need it past today.
+
+### Step 5b: Install on ruby (cube01)
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --advertise-routes=10.0.0.0/24,10.0.10.0/24,10.0.20.0/24
+
+sudo tailscale up \
+  --authkey=tskey-auth-XXXXX \
+  --advertise-routes=10.0.0.0/24,10.0.10.0/24,10.0.20.0/24 \
+  --advertise-tags=tag:homelab-router \
+  --ssh
 ```
 
-Then in the Tailscale admin console → Machines → cube01 → **Edit route settings**, approve the three advertised routes.
+`--ssh` enables Tailscale SSH on this node — SSH that authenticates via your Tailnet identity, no separate key management. Optional but very convenient when admin-ing from a phone.
 
-Install Tailscale on your phone, laptop, or any device you want to reach the homelab from. Optional: enable **MagicDNS** in the admin console so node hostnames resolve over Tailscale.
+### Step 5c: Install on emerald (cube02) for failover
 
-!!! note "Why IoT is intentionally excluded"
+Same auth key (it's reusable). Same routes. Tailscale will pick one router as primary and switch to the other automatically if the primary goes offline. Brief (~30s) blip during failover.
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+
+sudo tailscale up \
+  --authkey=tskey-auth-XXXXX \
+  --advertise-routes=10.0.0.0/24,10.0.10.0/24,10.0.20.0/24 \
+  --advertise-tags=tag:homelab-router \
+  --ssh
+```
+
+!!! note "Why a second subnet router matters"
+    Ruby will reboot regularly — k3s upgrades, kernel updates, Ansible runs. Without a failover router, every reboot kills your remote access to the entire homelab until ruby comes back up. The failover takes five minutes to set up now and removes a sharp foot-gun forever.
+
+### Step 5d: Configure Tailscale ACLs
+
+Out of the box every Tailnet member can reach every advertised route. With three subnets exposed (default, trusted, lab), an ACL is what scopes "who can reach what."
+
+Tailscale admin console → **Access Controls → Edit file**. Replace the default Allow-All with:
+
+```json
+{
+  "tagOwners": {
+    "tag:homelab-router": ["autogroup:owner"]
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["autogroup:owner"],
+      "dst": ["10.0.0.0/24:*", "10.0.10.0/24:*", "10.0.20.0/24:*"]
+    }
+  ]
+}
+```
+
+`autogroup:owner` is "devices owned by the Tailnet owner" — i.e., yours. Any future device added for someone else (family, friend) gets zero access until you write an explicit ACL for them.
+
+### Step 5e: Approve advertised routes
+
+Pre-authorized auth keys join the Tailnet without manual approval, but **subnet routes still need per-machine approval**. In the admin console → Machines → ruby (cube01) → **Edit route settings** → check all three subnets → Save. Repeat for emerald (cube02).
+
+Install Tailscale on your phone, laptop, or any device you want to reach the homelab from.
+
+!!! note "MagicDNS — leave off for now"
+    MagicDNS makes Tailscale's `100.100.100.100` resolver handle DNS for Tailscale-connected clients. If you later run AdGuard in-cluster as your home DNS, the two resolvers can race for clients on the Tailnet while at home. Leave MagicDNS disabled until you've decided which DNS layer wins — or scope it later with Tailscale's "Restrict to domain" feature.
+
+!!! note "Why IoT is intentionally excluded from advertised routes"
     Advertising the IoT subnet would let a compromised Tailscale client (browser zero-day, bad npm install) pivot into IoT devices. IoT firmware is rarely patched and a great place for an attacker to hide persistence. The marginal usability gain (direct IP access to smart devices from afar) is small — Home Assistant exposes IoT control via a web UI that you can reach over Tailscale through the Lab subnet.
 
 !!! note "UDM firewall and Tailscale"
-    Tailscale uses outbound UDP 41641 (or falls back to a relay over 443/TCP). UDM's default outbound is open, so this works without rules. If you locked outbound down on Lab VLAN, explicitly allow UDP 41641 outbound from cube01.
+    Tailscale uses outbound UDP 41641 (or falls back to a relay over 443/TCP). UDM's default outbound is open, so this works without rules. If you locked outbound down on Lab VLAN, explicitly allow UDP 41641 outbound from ruby (cube01) and emerald (cube02).
 
 ### Alternative: WireGuard on UDM
 
@@ -285,14 +352,16 @@ Tailscale is easier (NAT traversal handled, no port forward needed). WireGuard o
 - [ ] mDNS enabled on Trusted and IoT, disabled on Lab and Default
 - [ ] IPv6 disabled on both WAN and every VLAN
 - [ ] SSIDs `home` (Trusted) and `home-iot` (IoT) created and assigned
-- [ ] Wired ports for home desktop and cube01–04 set to the right Native VLAN
+- [ ] Wired ports for home desktop and all four cluster nodes set to the right Native VLAN
 - [ ] Policy Engine: three custom zones (Trusted, Lab, IoT), zone matrix Block-by-default between custom pairs, two allow policies (trusted→lab services, iot→HA)
 - [ ] From a Trusted device: `https://10.0.10.1` loads UDM UI
-- [ ] From a Trusted device: `curl https://10.0.20.10:6443` reaches cube01 k3s API
-- [ ] From a Trusted device: arbitrary high-port connection to cube01 (e.g. `nc -zv 10.0.20.10 9999`) is **refused** — proves the policy restricts to listed ports, not any
+- [ ] From a Trusted device: `curl https://10.0.20.10:6443` reaches ruby (cube01) k3s API
+- [ ] From a Trusted device: arbitrary high-port connection to ruby (cube01) (e.g. `nc -zv 10.0.20.10 9999`) is **refused** — proves the policy restricts to listed ports, not any
 - [ ] From an IoT device: `ping 10.0.20.10` fails (no policy allows it)
 - [ ] From an IoT device: `curl http://<HA-IP>:8123` succeeds (iot-to-HA policy)
 - [ ] From a phone on `home` SSID: AirPlay from Photos / Music finds Apple TV in the picker and casts successfully — proves mDNS reflector is working
 - [ ] From a Trusted device with Tailscale connected via cellular: `ping 10.0.20.10` over Tailscale works
-- [ ] `tailscale status` on cube01 shows advertised routes accepted
-- [ ] `tailscale status` on your phone/laptop shows cube01 reachable
+- [ ] `tailscale status` on ruby (cube01) AND emerald (cube02) shows advertised routes accepted
+- [ ] Tailscale admin console: ACL file in place, only `autogroup:owner` has access to advertised subnets
+- [ ] Failover test: `sudo tailscale down` on ruby — verify remote access still works via emerald within ~30s, then `tailscale up` ruby to restore
+- [ ] `tailscale status` on your phone/laptop shows ruby (cube01) reachable
