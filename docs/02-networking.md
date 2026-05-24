@@ -8,6 +8,10 @@ VLAN plan, firewall, and remote access via Tailscale. Sets up the network model 
 | **Time Estimate** | 2–3 hours |
 | **Runs On** | UDM + a Turing Pi node for Tailscale subnet routing |
 | **Prerequisites** | UDM powered and reachable on default LAN |
+| **Targets** | UniFi OS 5.x · Network application 10.x |
+
+!!! warning "UDM version assumption"
+    Step 3 (firewall) targets the **Policy Engine / Zone-Based Firewall** introduced in UniFi OS 4 and current in 5.x. On UniFi OS 3.x or earlier, the firewall is configured under **Settings → Firewall → LAN IN** with a different model (default-allow + targeted drops) and these steps do not apply 1:1. Check **System → About** in the UniFi UI to confirm your version.
 
 ## Network Plan
 
@@ -136,27 +140,98 @@ UDM Settings → **Internet → Primary Connection → IPv6**: set to **Disabled
 !!! warning "IPv6 has two settings — both matter"
     The per-VLAN IPv6 toggle (Step 1, item 7) only stops UDM from handing IPv6 to LAN clients. It does **not** stop UDM from accepting an IPv6 prefix from your ISP. Without disabling at WAN, clients could still be reachable over IPv6 via SLAAC even though you "disabled IPv6 on the LAN."
 
-## Step 2: Firewall Rules
+## Step 2: Connect devices to VLANs
 
-UniFi processes firewall rules per-zone and per-direction. Source zone, destination zone, action, source network, destination network, protocol, ports. Higher rule = higher priority within the same zone+direction pair.
+VLAN networks are inert until devices are attached. Two paths: WiFi (SSID-to-VLAN binding) and wired (switch port profile).
 
-For each rule below, create under **Settings → Firewall → LAN IN** (traffic *entering* a LAN/VLAN from another LAN/VLAN).
+### Step 2a: Create WiFi SSIDs
 
-| # | Action | From | To | Ports | Note |
+UniFi Network → **WiFi → Create New SSID** for each row in the SSID mapping table:
+
+| SSID | Network | Notes |
+|---|---|---|
+| `home` | Trusted | personal devices |
+| `home-iot` | IoT | Apple TV, smart home |
+
+For each SSID: select the matching network from the **Network** dropdown, set a strong password (store in Vaultwarden), and enable **PMF (Protected Management Frames)** as Required or Optional — prevents deauth attacks on modern clients.
+
+### Step 2b: Configure wired switch port profiles
+
+Every wired device needs its switch port assigned to the right network. By default, switch ports are on the Default LAN — meaning a desktop you cable up will land on `10.0.0.0/24` regardless of which VLAN you intended.
+
+UniFi → **UniFi Devices → [your switch] → Ports**. For each relevant port click into it and set **Native VLAN / Network** to the right VLAN:
+
+| Port use | Native network |
+|---|---|
+| Home desktop | Trusted (VLAN 10) |
+| cube01–04 (Turing Pi 2 ethernet) | Lab (VLAN 20) |
+| UDM uplink, AP uplink, downstream switches | Default (or a trunk allowing all VLANs) |
+
+!!! note "Access vs trunk ports"
+    A port set to a single Native network is in **access mode** — it carries one untagged VLAN. Use this for endpoint devices (desktop, cube node, IoT device).
+
+    A port that needs to carry multiple VLANs (uplink to another switch, port for a virtualization host with tagged VLAN interfaces) should be left on Default with **all VLANs allowed** — this is **trunk mode** and how the AP gets all SSIDs/VLANs to broadcast.
+
+### Step 2c: Apple TV DHCP reservation
+
+Connect the Apple TV to the `home-iot` SSID. After it gets an initial DHCP lease, find it in **UniFi → Clients → Apple TV → Settings → Fixed IP Address** and set to `10.0.30.10` (per the Static IP allocations table). Reboot the Apple TV to apply.
+
+## Step 3: Firewall with Policy Engine (Zone-Based)
+
+UniFi OS 4+ moved the firewall from the legacy `LAN IN / LAN OUT` rule list into the **Policy Engine**, which uses zones and a zone matrix. The model:
+
+- **Zones** group networks. Built-in zones include Internal, External (WAN), Gateway, VPN, Hotspot/Guest, DMZ.
+- **Zone Matrix** sets the default action (Allow / Block) between every pair of zones.
+- **Policies** override the matrix for specific flows (source zone, destination zone, ports).
+
+The big win: **default-deny between custom zones is built in.** You list only what's allowed; everything else is dropped.
+
+### Step 3a: Create custom zones
+
+UniFi → **Settings → Policy Engine → Zone Matrix → Add Zone** (UI labels may vary slightly between Network application versions — look for zone configuration under Policy Engine). Create three zones and assign each VLAN:
+
+| Zone | Networks |
+|---|---|
+| Trusted | VLAN 10 |
+| Lab | VLAN 20 |
+| IoT | VLAN 30 |
+
+Leave the Default LAN in the built-in **Internal** zone — it's the management plane and should reach the custom zones by default.
+
+### Step 3b: Set the zone matrix defaults
+
+In the Zone Matrix, set the default action for each zone pair as below. Intra-zone (a zone to itself) is implicitly Allow — devices on the same VLAN talk freely.
+
+| From → To | Default action |
+|---|---|
+| Internal → Trusted / Lab / IoT | Allow (management reach from Default LAN) |
+| Trusted → Lab | **Block** (overridden by policy in 3c) |
+| Trusted → IoT | Allow (full admin reach) |
+| Lab → Trusted | Block |
+| Lab → IoT | Block |
+| IoT → Trusted | Block |
+| IoT → Lab | **Block** (overridden by policy in 3c) |
+| any custom zone → External (Internet) | Allow |
+| External → any custom zone | Block (default; no port forwards) |
+
+### Step 3c: Add allow policies (the explicit exceptions)
+
+UniFi → **Policy Engine → Policies → Create Policy**. Each policy overrides a zone-matrix Block for a specific flow:
+
+| Name | From | To | Action | Protocol | Ports |
 |---|---|---|---|---|---|
-| 1 | Accept | VLAN 10 (Trusted) | VLAN 20 (Lab) | `80, 443, 22, 6443` | HTTPS to services, SSH to nodes, k3s API |
-| 2 | Accept | VLAN 10 (Trusted) | VLAN 30 (IoT) | `any` | full admin reach to smart devices |
-| 3 | Accept | VLAN 30 (IoT) | VLAN 20 (Lab) | `8123` | Home Assistant only |
-| 4 | Drop | VLAN 30 (IoT) | VLAN 10 (Trusted) | `any` | IoT must not reach Trusted |
-| 5 | Drop | VLAN 30 (IoT) | VLAN 20 (Lab) | `any` | catch-all after rule 3 |
-| 6 | Drop | VLAN 20 (Lab) | VLAN 10 (Trusted) | `any` | lab workloads stay off Trusted |
+| trusted-to-lab-services | Trusted | Lab | Allow | TCP | `80, 443, 22, 6443` |
+| iot-to-home-assistant | IoT | Lab | Allow | TCP | `8123` |
 
-UniFi auto-handles established/related connections, so reply traffic for accepted flows just works. No explicit "allow established" rule needed.
+That's it. Two policies plus the zone matrix replace what used to be 6–8 rules in the legacy UI. Anything not in a policy falls through to the matrix default (Block for the inter-zone pairs above).
+
+!!! note "Why the matrix-then-policies model is better"
+    With legacy `LAN IN` rules, the implicit "allow everything else" meant you had to remember to add catch-all drops for every flow you wanted restricted. Forget one and you had a silent hole. The zone matrix makes the default explicit: Block is the baseline, Allow requires a policy. Audit becomes "list the policies" instead of "spot the missing drop."
 
 !!! note "UDM is in the data path for inter-VLAN traffic"
-    Because UDM is the L3 router between VLANs, every Trusted → Lab service request flows through UDM. Performance is fine for homelab scale (gigabit class), but it means firewall rules apply on every request and UDM CPU sees the load. The alternative (MetalLB in BGP mode with UDM peering) eliminates this but requires UDM Pro/SE with BGP enabled.
+    Because UDM is the L3 router between VLANs, every Trusted → Lab service request flows through UDM. Performance is fine for homelab scale (gigabit class), but it means firewall policies apply on every request and UDM CPU sees the load. The alternative (MetalLB in BGP mode with UDM peering) eliminates this but requires UDM Pro/SE with BGP enabled.
 
-## Step 3: Reaching UDM
+## Step 4: Reaching UDM
 
 UDM accepts management on every VLAN gateway IP by default. Where you connect from determines the IP.
 
@@ -171,10 +246,10 @@ UDM accepts management on every VLAN gateway IP by default. Where you connect fr
 !!! warning "Consider disabling UDM management on IoT"
     UniFi → Networks → IoT → Advanced → "Allow this network to use the Local Management Service" — turn off. There is no reason a smart bulb should be able to reach the gateway UI.
 
-## Step 4: Tailscale Subnet Router on cube01
+## Step 5: Tailscale Subnet Router on cube01
 
 !!! warning "Requires cube01"
-    This step needs cube01 booted and reachable. If you have not finished Runbook 3 yet, complete Steps 1–3 of this runbook now (UDM, firewall, UDM access) and return for Step 4 after the cluster nodes are flashed.
+    This step needs cube01 booted and reachable. If you have not finished Runbook 3 yet, complete Steps 1–4 of this runbook now (UDM, devices, firewall, UDM access) and return for Step 5 after the cluster nodes are flashed.
 
 Install Tailscale on cube01 and advertise the subnets you want to reach remotely:
 
@@ -210,10 +285,14 @@ Tailscale is easier (NAT traversal handled, no port forward needed). WireGuard o
 - [ ] mDNS enabled on Trusted and IoT, disabled on Lab and Default
 - [ ] IPv6 disabled on both WAN and every VLAN
 - [ ] SSIDs `home` (Trusted) and `home-iot` (IoT) created and assigned
+- [ ] Wired ports for home desktop and cube01–04 set to the right Native VLAN
+- [ ] Policy Engine: three custom zones (Trusted, Lab, IoT), zone matrix Block-by-default between custom pairs, two allow policies (trusted→lab services, iot→HA)
 - [ ] From a Trusted device: `https://10.0.10.1` loads UDM UI
-- [ ] From a Trusted device: `ping 10.0.20.10` (cube01) succeeds
-- [ ] From an IoT device: `ping 10.0.20.10` fails (blocked by rule 5)
-- [ ] From an IoT device: `curl http://<HA-IP>:8123` succeeds (rule 3)
+- [ ] From a Trusted device: `curl https://10.0.20.10:6443` reaches cube01 k3s API
+- [ ] From a Trusted device: arbitrary high-port connection to cube01 (e.g. `nc -zv 10.0.20.10 9999`) is **refused** — proves the policy restricts to listed ports, not any
+- [ ] From an IoT device: `ping 10.0.20.10` fails (no policy allows it)
+- [ ] From an IoT device: `curl http://<HA-IP>:8123` succeeds (iot-to-HA policy)
+- [ ] From a phone on `home` SSID: AirPlay from Photos / Music finds Apple TV in the picker and casts successfully — proves mDNS reflector is working
 - [ ] From a Trusted device with Tailscale connected via cellular: `ping 10.0.20.10` over Tailscale works
 - [ ] `tailscale status` on cube01 shows advertised routes accepted
 - [ ] `tailscale status` on your phone/laptop shows cube01 reachable
