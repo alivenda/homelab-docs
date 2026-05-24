@@ -8,8 +8,8 @@ Initial hardware assembly, firmware update, OS flashing, and network configurati
 |---|---|
 | **Board** | Turing Pi 2 (mini-ITX cluster board) |
 | **Modules** | 4× CM4, all with 8 GB RAM and WiFi |
-| **High-storage nodes** | 2× CM4108032 (8 GB RAM, 32 GB eMMC) — cube01, cube02 |
-| **Low-storage nodes** | 2× CM4108016 (8 GB RAM, 16 GB eMMC) — cube03, cube04 |
+| **High-storage nodes** | 2× CM4108032 (8 GB RAM, 32 GB eMMC) — ruby (Node 1), emerald (Node 2) |
+| **Low-storage nodes** | 2× CM4108016 (8 GB RAM, 16 GB eMMC) — topaz (Node 3), amethyst (Node 4) |
 | **Total Cluster** | 16 cores, 32 GB RAM, 96 GB eMMC combined |
 | **Networking** | Onboard 1 Gbps managed switch, 2× RJ45 (bridged) |
 | **Storage I/O** | 2× SATA III (Node 3), 4× M.2 slots (NOT usable with CM4) |
@@ -22,18 +22,18 @@ Initial hardware assembly, firmware update, OS flashing, and network configurati
 
 | Node | Hardware | Role |
 |---|---|---|
-| `cube01` (10.0.0.60) | 32 GB eMMC | k3s control plane + worker; image cache |
-| `cube02` (10.0.0.61) | 32 GB eMMC | Worker for heavier apps (databases, Forgejo, Nextcloud) |
-| `cube03` (10.0.0.62) | 16 GB eMMC + SATA SSD | NFS server + light worker (data on SSD) |
-| `cube04` (10.0.0.63) | 16 GB eMMC | Light worker (Vaultwarden, monitoring agents) |
+| `ruby (Node 1)` (10.0.0.60) | 32 GB eMMC | k3s control plane + worker; image cache |
+| `emerald (Node 2)` (10.0.0.61) | 32 GB eMMC | Worker for heavier apps (databases, Forgejo, Nextcloud) |
+| `topaz (Node 3)` (10.0.0.62) | 16 GB eMMC + SATA SSD | NFS server + light worker (data on SSD) |
+| `amethyst (Node 4)` (10.0.0.63) | 16 GB eMMC | Light worker (Vaultwarden, monitoring agents) |
 
 ## Step 1: Hardware Assembly
 
 1. Install CM4 modules onto the Turing Pi 2 adapter boards. Align the sides and notch with the slot, then press vertically until the side arms click into place.
-2. Place the 32 GB modules in slots 1 and 2 (cube01, cube02). Place the 16 GB modules in slots 3 and 4 (cube03, cube04).
+2. Place the 32 GB modules in slots 1 and 2 (ruby (Node 1), emerald (Node 2)). Place the 16 GB modules in slots 3 and 4 (topaz (Node 3), amethyst (Node 4)).
 3. Attach heatsinks to each CM4 (Waveshare aluminum heatsinks with thermal tape work well).
 4. Insert the adapter boards into the 4 SO-DIMM slots on the Turing Pi 2 board.
-5. Connect a SATA SSD to the onboard SATA connector for cube03 (Node 3 slot). Do **not** hot-plug — connect while powered off.
+5. Connect a SATA SSD to the onboard SATA connector for topaz (Node 3) (Node 3 slot). Do **not** hot-plug — connect while powered off.
 6. Connect one RJ45 port to your UDM/network switch.
 7. Connect a PicoPSU or ATX PSU via the 24-pin ATX connector. Power up.
 
@@ -76,7 +76,7 @@ DietPi is a lightweight Debian-based OS optimized for single-board computers and
     AUTO_SETUP_NET_STATIC_MASK=255.255.255.0
     AUTO_SETUP_NET_STATIC_GATEWAY=10.0.0.1
     AUTO_SETUP_NET_STATIC_DNS=1.1.1.1 8.8.8.8
-    AUTO_SETUP_NET_HOSTNAME=cube01         # cube01-cube04 per node
+    AUTO_SETUP_NET_HOSTNAME=ruby           # ruby (Node 1), emerald (Node 2), topaz (Node 3), amethyst (Node 4)
     AUTO_SETUP_HEADLESS=1
     AUTO_SETUP_AUTOSTART_TARGET_INDEX=7
     AUTO_SETUP_AUTOSTART_LOGIN_USER=root
@@ -101,14 +101,14 @@ DietPi is a lightweight Debian-based OS optimized for single-board computers and
     apt update && apt upgrade -y
     ```
 
-## Step 5: Prepare SATA SSD on Node 3 (cube03)
+## Step 5: Prepare SATA SSD on Node 3 (topaz (Node 3))
 
 !!! note "Superseded by Ansible"
     Runbook 4's NFS playbook does this automatically. This step is here as the imperative reference for what Ansible runs.
 
 Node 3 connects to the SATA ports. This SSD will serve as NFS storage for the entire cluster.
 
-1. SSH into cube03 and identify the disk: `fdisk -l`
+1. SSH into topaz (Node 3) and identify the disk: `fdisk -l`
 2. Format and mount:
 
     ```bash
@@ -133,7 +133,7 @@ What you actually need from the UPS is not the runtime, it is the USB or network
 **Topology:**
 
 - UPS connects to one host (typically the NAS, since it runs 24/7) via USB. That host runs `nut-server` in `upsd` mode and exposes the UPS status over the network.
-- Every node (cube01–04) runs `nut-client` in `upsmon` mode, talking to the NAS `upsd`. When `upsd` reports `LOW_BATTERY`, all clients run their configured shutdown command.
+- Every cluster node runs `nut-client` in `upsmon` mode, talking to the NAS `upsd`. When `upsd` reports `LOW_BATTERY`, all clients run their configured shutdown command.
 - Order matters: workers shut down first, then control plane, then NAS last (so NFS stays mounted until the cluster is fully drained).
 
 ```bash
@@ -161,7 +161,7 @@ This is a maturity layer — skip it for the first cluster build, add it once ev
     for i in 60 61 62 63; do
       ssh -o ConnectTimeout=3 root@10.0.0.$i 'hostname && uname -m'
     done
-    # Expected: cube01..cube04 each printing aarch64
+    # Expected: ruby / emerald / topaz / amethyst each printing aarch64
     ```
 
 - [ ] cgroups enabled on each node (required for k3s):
@@ -170,7 +170,7 @@ This is a maturity layer — skip it for the first cluster build, add it once ev
     ssh root@10.0.0.60 grep -o 'cgroup_enable=[a-z]*\|cgroup_memory=1' /boot/cmdline.txt
     ```
 
-- [ ] On cube03 specifically, the SATA SSD is mounted at `/data`:
+- [ ] On topaz (Node 3) specifically, the SATA SSD is mounted at `/data`:
 
     ```bash
     ssh root@10.0.0.62 'df -h /data && mount | grep /data'

@@ -7,8 +7,8 @@ Read this before Runbook 1. It tells you what to buy, what accounts to create, a
 This guide is written against a specific build. You can substitute (an x86 mini-PC cluster, a single beefy node, an existing NAS, etc.), but the runbook commands assume this exact hardware:
 
 - Turing Pi 2 cluster board (mini-ITX)
-- 4× Raspberry Pi CM4 modules with 8 GB RAM and WiFi — 2× with 32 GB eMMC (cube01, cube02), 2× with 16 GB eMMC (cube03, cube04)
-- 1× SATA III SSD (any size 250 GB+) for cluster NFS storage — connected to cube03
+- 4× Raspberry Pi CM4 modules with 8 GB RAM and WiFi — 2× with 32 GB eMMC (ruby (Node 1), emerald (Node 2)), 2× with 16 GB eMMC (topaz (Node 3), amethyst (Node 4))
+- 1× SATA III SSD (any size 250 GB+) for cluster NFS storage — connected to topaz (Node 3)
 - ATX or PicoPSU power supply (24-pin), **minimum 200 W** — the cluster pulls 30–60 W under load, so any modern ATX PSU is overkill but cheapest
 - Ubiquiti UDM-Pro or UDM-SE for VLANs, firewall, DHCP
 - UGREEN DXP6800 Pro NAS (or any NAS that runs Docker) for bulk media + Immich + offsite-friendly bulk storage
@@ -60,7 +60,7 @@ R13 Immich runs on the NAS via Docker, not on the k3s cluster.
 - Read each runbook fully before starting it. Several runbooks reference "come back to this step after Runbook N" patterns — don't get stuck mid-step.
 - Treat the `Depends On` header as the prerequisite check. If a runbook says `Depends On: Runbook 5`, do not start it until R5's Verification section passes.
 - When a runbook gives you a `docker-compose.yml`, check the `Runs On` header carefully. NAS-hosted services use compose; cluster-hosted services use Helm charts or k8s manifests committed to `homelab-manifests` so ArgoCD manages them.
-- If you get stuck on the order, re-read the dependency map above. The most common confusion is Tailscale (R2 Step 3) requiring cube01 from R3 first, and ArgoCD (R5 Step 8) needing `kubectl port-forward` to access before R6 is up.
+- If you get stuck on the order, re-read the dependency map above. The most common confusion is Tailscale (R2 Step 3) requiring ruby (Node 1) from R3 first, and ArgoCD (R5 Step 8) needing `kubectl port-forward` to access before R6 is up.
 
 ## Namespace Strategy
 
@@ -118,4 +118,4 @@ Four CM4 modules give you roughly 32 GB total RAM (8 GB each). After k3s overhea
     Pi cluster memory pressure surprises people. Add resource requests + limits to every workload you deploy so the scheduler can refuse to pack a node into OOM territory. Without limits, one runaway pod can wedge a whole node.
 
 !!! warning
-    Paperless OCR and Woodpecker builds are the two workloads most likely to push a node over. Pin them to a 32 GB-eMMC worker that is **not** the control plane — `cube02` in this build. Their spikes should not coexist with control-plane pods on `cube01`.
+    Paperless OCR and Woodpecker builds are the two workloads most likely to push a node over. Pin them to a 32 GB-eMMC worker that is **not** the control plane — `emerald (Node 2)` in this build. Their spikes should not coexist with control-plane pods on `ruby (Node 1)`.

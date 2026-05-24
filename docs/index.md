@@ -52,7 +52,7 @@ R13 Immich runs on the NAS via Docker (not on k3s — see runbook for why).
 - Read each runbook fully before starting it. Several reference "come back to this after Runbook N" patterns — skim first so you don't get stuck mid-step.
 - Treat the `Depends On` header as the prerequisite check. If a runbook says "Depends On: Runbook 5", don't start until R5's Verification section passes.
 - When a runbook gives you a `docker-compose.yml`, check the `Runs On` header. NAS-hosted services use compose; cluster-hosted services use Helm + manifests committed to `homelab-manifests` so ArgoCD manages them.
-- The most common ordering confusion is Tailscale (R2 Step 3 needs cube01 from R3) and ArgoCD (R5 Step 8 needs port-forward to access before R6 is up). Both are flagged where they appear.
+- The most common ordering confusion is Tailscale (R2 Step 3 needs ruby from R3) and ArgoCD (R5 Step 8 needs port-forward to access before R6 is up). Both are flagged where they appear.
 
 !!! tip "Bookmark Runbook 0"
     When you hit a "wait, when am I supposed to do X" moment three weeks in, the dependency map in R0 answers it without scrolling the whole guide.
