@@ -149,7 +149,6 @@ Drop this in every repo as a starting point:
 *.tfstate
 *.tfstate.*
 .terraform/
-.terraform.lock.hcl
 
 # Ansible
 *.retry
