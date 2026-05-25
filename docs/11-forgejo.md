@@ -70,17 +70,20 @@ nodeSelector:
 Install (the chart is published as an OCI artifact — no `helm repo add` needed):
 
 ```bash
-helm install forgejo oci://code.forgejo.org/forgejo-helm/forgejo \
-  --namespace forgejo \
+helm upgrade --install forgejo oci://code.forgejo.org/forgejo-helm/forgejo \
+  --version <X.Y.Z> \
+  --namespace forgejo --create-namespace \
   --values values.yaml
 ```
+
+Pin `--version` to a current release listed on [code.forgejo.org/forgejo-helm](https://code.forgejo.org/forgejo-helm/forgejo-helm).
 
 !!! warning "Chart key naming"
     The Forgejo Helm chart inherits Gitea's chart-internal key naming (the `gitea.` prefix), since Forgejo forked it. This is not a bug — check the chart README at [code.forgejo.org/forgejo-helm](https://code.forgejo.org/forgejo-helm/forgejo-helm) for any value name changes if you upgrade the chart later.
 
 ## Step 3: GitOps-managed install (recommended)
 
-The `helm install` above is a bootstrap. Commit the equivalent ArgoCD `Application` manifest to `homelab-manifests/apps/forgejo/application.yaml` so ArgoCD reconciles future changes from Git:
+The CLI install above is a bootstrap. Commit the equivalent ArgoCD `Application` manifest to `homelab-manifests/apps/forgejo/application.yaml` so ArgoCD reconciles future changes from Git:
 
 ```yaml
 # homelab-manifests/apps/forgejo/application.yaml

@@ -88,10 +88,13 @@ Install:
 ```bash
 helm repo add woodpecker https://woodpecker-ci.org/
 helm repo update
-helm install woodpecker woodpecker/woodpecker \
-  --namespace woodpecker \
+helm upgrade --install woodpecker woodpecker/woodpecker \
+  --version <X.Y.Z> \
+  --namespace woodpecker --create-namespace \
   --values values.yaml
 ```
+
+Pin `--version` to a current release listed on [woodpecker-ci/helm](https://github.com/woodpecker-ci/helm).
 
 !!! warning "FORGEJO vs GITEA env var names"
     Modern Woodpecker (>= 2.x) ships a dedicated Forgejo provider (`WOODPECKER_FORGEJO_*`). Older versions only had `WOODPECKER_GITEA_*` which still works against Forgejo (same API surface). If your chart version is older, swap `FORGEJO` → `GITEA` in the env-var names.
@@ -213,7 +216,8 @@ Forgejo's container registry is sufficient for a homelab — basic OCI storage a
 
 ```bash
 helm repo add harbor https://helm.goharbor.io
-helm install harbor harbor/harbor \
+helm upgrade --install harbor harbor/harbor \
+  --version <X.Y.Z> \
   --namespace harbor --create-namespace \
   --set expose.type=clusterIP \
   --set externalURL=https://harbor.yourdomain.com \
@@ -223,6 +227,8 @@ helm install harbor harbor/harbor \
 
 # Then add a Traefik IngressRoute for harbor.yourdomain.com.
 ```
+
+Pin `--version` to a current release listed on [goharbor/harbor-helm](https://github.com/goharbor/harbor-helm).
 
 !!! tip
     For a 4-node CM4 cluster, Harbor is overkill. The recommendation: ship with Forgejo's registry. If your cluster grows or you start hosting images for other people, migrate to Harbor. "I deployed Harbor with Trivy scanning" is also a stronger resume line than "I used the built-in Forgejo registry."

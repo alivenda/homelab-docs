@@ -57,10 +57,13 @@ Install:
 
 ```bash
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm install monitoring prometheus-community/kube-prometheus-stack \
-  --namespace monitoring \
+helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+  --version <X.Y.Z> \
+  --namespace monitoring --create-namespace \
   --values values.yaml
 ```
+
+Pin `--version` to a current release listed on [prometheus-community/helm-charts](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack). Once GitOps-managed in `homelab-manifests/bootstrap/`, Renovate keeps the pin fresh.
 
 !!! warning "ARM RAM pressure"
     With 8 GB RAM per node, this stack can be memory-hungry. Reduce retention or disable AlertManager if you hit OOM issues. Reference the [Resource Budget table in R0](00-prerequisites.md#resource-budget-expectations) for steady-state numbers.
@@ -112,7 +115,8 @@ resultsCache:
 ```
 
 ```bash
-helm install loki grafana/loki \
+helm upgrade --install loki grafana/loki \
+  --version <X.Y.Z> \
   --namespace monitoring \
   --values loki-values.yaml
 ```
@@ -120,10 +124,13 @@ helm install loki grafana/loki \
 Promtail (separate chart now):
 
 ```bash
-helm install promtail grafana/promtail \
+helm upgrade --install promtail grafana/promtail \
+  --version <X.Y.Z> \
   --namespace monitoring \
   --set config.clients[0].url=http://loki:3100/loki/api/v1/push
 ```
+
+Pin `--version` for both: see [grafana/helm-charts](https://github.com/grafana/helm-charts/tree/main/charts) for current `loki` and `promtail` releases.
 
 ## Grafana Dashboards
 

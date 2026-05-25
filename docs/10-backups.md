@@ -51,7 +51,7 @@ Visit `http://<nas-ip>:9001`, log in, create a bucket named `homelab`.
 ### Create the Velero credentials file
 
 ```bash
-# On your machine (wherever you'll run helm install)
+# On your machine (wherever you'll run the helm commands)
 cat > minio-creds <<EOF
 [default]
 aws_access_key_id = <USER>
@@ -87,7 +87,8 @@ credentials:
 ```bash
 helm repo add vmware-tanzu https://vmware-tanzu.github.io/helm-charts
 
-helm install velero vmware-tanzu/velero \
+helm upgrade --install velero vmware-tanzu/velero \
+  --version <X.Y.Z> \
   --namespace velero --create-namespace \
   --values velero-values.yaml \
   --set-file credentials.secretContents.cloud=./minio-creds
@@ -98,6 +99,8 @@ velero backup-location get
 # Take a full cluster backup
 velero backup create homelab-$(date +%Y%m%d)
 ```
+
+Pin `--version` to a current release listed on [vmware-tanzu/helm-charts](https://github.com/vmware-tanzu/helm-charts/tree/main/charts/velero).
 
 !!! tip "Off-site backup target"
     If you don't want to run MinIO on the NAS, Velero supports any S3-compatible target (Backblaze B2, Wasabi, Cloudflare R2) for off-site storage. R2's free tier is generous for homelab volumes — point the same Velero config at R2 and you get cloud-hosted backups for free.
