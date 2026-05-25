@@ -35,7 +35,7 @@ kubectl create secret generic forgejo-admin \
              --format yaml \
   > forgejo-admin-sealed.yaml
 
-# Commit to homelab-manifests/apps/forgejo/forgejo-admin-sealed.yaml
+# Commit to homelab-manifests/infrastructure/forgejo/manifests/forgejo-admin-sealed.yaml
 ```
 
 !!! note "No separate DB secret"
@@ -43,7 +43,7 @@ kubectl create secret generic forgejo-admin \
 
 ## Step 2: Install via Helm
 
-`values.yaml` (commit to `homelab-manifests/apps/forgejo/values.yaml`):
+`values.yaml` (commit to `homelab-manifests/infrastructure/forgejo/values.yaml`):
 
 ```yaml
 persistence:
@@ -83,10 +83,10 @@ Pin `--version` to a current release listed on [code.forgejo.org/forgejo-helm](h
 
 ## Step 3: GitOps-managed install (recommended)
 
-The CLI install above is a bootstrap. Commit the equivalent ArgoCD `Application` manifest to `homelab-manifests/apps/forgejo/application.yaml` so ArgoCD reconciles future changes from Git:
+The CLI install above is a bootstrap. Commit the equivalent ArgoCD `Application` manifest to `homelab-manifests/bootstrap/forgejo.yaml` so ArgoCD reconciles future changes from Git:
 
 ```yaml
-# homelab-manifests/apps/forgejo/application.yaml
+# homelab-manifests/bootstrap/forgejo.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -100,7 +100,7 @@ spec:
       targetRevision: 17.0.0   # pin a version, don't track latest
       helm:
         valueFiles:
-          - $values/apps/forgejo/values.yaml
+          - $values/infrastructure/forgejo/values.yaml
     - repoURL: https://github.com/yourusername/homelab-manifests.git
       targetRevision: main
       ref: values
@@ -120,7 +120,7 @@ This pattern uses ArgoCD's [multi-source Application](https://argo-cd.readthedoc
 ## Step 4: IngressRoute
 
 ```yaml
-# homelab-manifests/apps/forgejo/ingressroute.yaml
+# homelab-manifests/infrastructure/forgejo/manifests/ingressroute.yaml
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:

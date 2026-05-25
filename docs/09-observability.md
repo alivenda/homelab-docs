@@ -11,7 +11,7 @@ Full observability for your homelab.
 
 ## Install kube-prometheus-stack
 
-Use a `values.yaml` for chart configuration so you can commit it to `homelab-manifests/apps/monitoring/`:
+Use a `values.yaml` for chart configuration so you can commit it to `homelab-manifests/infrastructure/kube-prometheus-stack/`:
 
 ```yaml
 # values.yaml
@@ -48,9 +48,9 @@ kubectl create secret generic grafana-admin \
   | kubeseal --controller-name=sealed-secrets-controller \
              --controller-namespace=sealed-secrets \
              --format yaml \
-  > monitoring/grafana-admin-sealed.yaml
+  > infrastructure/kube-prometheus-stack/manifests/grafana-admin-sealed.yaml
 
-# Commit grafana-admin-sealed.yaml to homelab-manifests/apps/monitoring/
+# Commit grafana-admin-sealed.yaml to homelab-manifests/infrastructure/kube-prometheus-stack/manifests/
 ```
 
 Install:
