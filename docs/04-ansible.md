@@ -34,6 +34,9 @@ Quick reference for tasks in this guide:
 
 The two k3s install tasks in Step 8 of this runbook intentionally use `ansible.builtin.shell`. The k3s upstream install is a curl-piped script — wrapping it in a more idiomatic module would not improve correctness and would obscure the canonical install path. Use `creates: /usr/local/bin/k3s` on the task to keep it idempotent.
 
+!!! tip "If you run ansible-lint"
+    The k3s install tasks above will trip `command-instead-of-module` on ansible-lint's `basic` profile or higher. The curl-pipe is the canonical upstream install path, not an oversight — scope the exception narrowly with `# noqa: command-instead-of-module` on each install task rather than disabling the rule globally.
+
 !!! tip
     Add the `kubernetes.core` collection to your `requirements.yml` before R5: `ansible-galaxy collection install kubernetes.core`. The `kubeconfig:` parameter on `kubernetes.core.k8s` lets you run cluster ops from your machine against the remote API.
 
@@ -73,20 +76,13 @@ homelab-ansible/
 ├── inventory.yml
 ├── ansible.cfg
 ├── requirements.yml
-├── group_vars/
-│   └── all/
-│       └── vault.yml
-├── playbooks/
-│   ├── site.yml
-│   ├── bootstrap.yml
-│   ├── k3s-server.yml
-│   ├── k3s-agents.yml
-│   └── nfs-server.yml
-└── roles/
-    └── common/
-        └── tasks/
-            └── main.yml
+├── site.yml          # all plays in one file
+└── group_vars/
+    └── all/
+        └── vault.yml
 ```
+
+For a 4-node cluster, a single `site.yml` containing all plays keeps things readable in one screen. If the file grows past ~200 lines or you frequently need to re-run just one phase (and `--tags` / `--start-at-task` aren't enough), split into `playbooks/bootstrap.yml`, `playbooks/k3s-server.yml`, etc., and add a top-level `site.yml` of `import_playbook:` lines.
 
 ### Collections (`requirements.yml`)
 
@@ -168,6 +164,8 @@ vault_password_file = ~/.ansible-vault-pass
 ```
 
 ## Step 6: Bootstrap Playbook
+
+Steps 6–8 each show one play. Append them in order into `site.yml` at the repo root — that one file is the whole playbook for the cluster.
 
 ```yaml
 - hosts: all
@@ -307,14 +305,36 @@ The mount task below references the filesystem by label, so future reboots resol
         creates: /usr/local/bin/k3s
 ```
 
-## Step 9: Site Playbook (Top-Level)
+## Step 9: Assembled `site.yml`
+
+The four plays from Steps 6–8 concatenate into one file. Skeleton:
 
 ```yaml
-- import_playbook: bootstrap.yml
-- import_playbook: nfs-server.yml
-- import_playbook: k3s-server.yml
-- import_playbook: k3s-agents.yml
+---
+- name: Bootstrap all nodes (hostname, packages, cgroups, netplan, /etc/hosts)
+  hosts: all
+  become: true
+  tasks: [...]      # from Step 6
+  handlers: [...]
+
+- name: NFS server on topaz
+  hosts: topaz
+  become: true
+  tasks: [...]      # from Step 7
+  handlers: [...]
+
+- name: K3s control plane on ruby
+  hosts: k3s_server
+  become: true
+  tasks: [...]      # from Step 8 (server)
+
+- name: K3s agents on emerald, topaz, amethyst
+  hosts: k3s_agents
+  become: true
+  tasks: [...]      # from Step 8 (agents)
 ```
+
+Adding a `name:` to each play (which the verbatim Step 6–8 blocks omit for brevity) makes the `ansible-playbook` output much easier to scan.
 
 ## Step 10: Secrets via Ansible Vault
 
@@ -323,7 +343,7 @@ ansible-vault create group_vars/all/vault.yml
 # Add line: vault_k3s_token: <STRONG_RANDOM_TOKEN>
 ```
 
-Generate a strong token with `openssl rand -hex 32` and save to Vaultwarden. Save the vault password to `~/.ansible-vault-pass` and lock it down — Ansible will warn but not refuse on world-readable permissions:
+Generate a strong token with `openssl rand -hex 32` and save it to your password manager (Bitwarden, 1Password, etc.). When Vaultwarden comes up in Runbook 11 you can migrate by exporting → importing — Vaultwarden uses the Bitwarden JSON format. Save the vault password to `~/.ansible-vault-pass` and lock it down — Ansible will warn but not refuse on world-readable permissions:
 
 ```bash
 chmod 600 ~/.ansible-vault-pass
@@ -332,13 +352,13 @@ chmod 600 ~/.ansible-vault-pass
 ## Step 11: Run It
 
 ```bash
-ansible-playbook playbooks/site.yml --check    # dry run
-ansible-playbook playbooks/site.yml            # apply
-ansible-playbook playbooks/bootstrap.yml --limit emerald
+ansible-playbook site.yml --check          # dry run
+ansible-playbook site.yml                  # apply
+ansible-playbook site.yml --limit emerald  # one node
 ```
 
 !!! tip
-    Commit this entire `ansible/` directory to your `homelab-ansible` repo. Combined with ArgoCD watching `homelab-manifests`, you have full infrastructure-as-code: bare-metal provisioning AND application deployment, both from Git.
+    Commit everything to your `homelab-ansible` repo — including the *encrypted* `group_vars/all/vault.yml`. The plaintext vault password lives at `~/.ansible-vault-pass` (outside the repo) and never gets committed. Combined with ArgoCD watching `homelab-manifests`, you have full infrastructure-as-code: bare-metal provisioning AND application deployment, both from Git.
 
 ## Verification
 
@@ -352,7 +372,7 @@ ansible-playbook playbooks/bootstrap.yml --limit emerald
 - [ ] Bootstrap idempotent (re-running site.yml shows zero changes):
 
     ```bash
-    ansible-playbook playbooks/site.yml --check
+    ansible-playbook site.yml --check
     # Expected: ok=N changed=0 in summary
     ```
 
