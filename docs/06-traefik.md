@@ -20,7 +20,7 @@ Buy/host domain on Cloudflare, then create an API token under **My Profile → A
 - **Permissions:** Zone → DNS → Edit
 - **Zone Resources:** Include → Specific zone → `yourdomain.com`
 
-Save the token to Vaultwarden. You'll also seal it as a Kubernetes secret in Step 3.
+Save the token to your password manager. You'll also seal it as a Kubernetes secret in Step 3. (Vaultwarden comes up next in R7 — this is one of the credentials that motivates standing it up first.)
 
 ## Step 2: Install Traefik via Helm
 
@@ -48,7 +48,7 @@ service:
   # Kubernetes deprecated spec.loadBalancerIP in 1.24+.
   # Pin the MetalLB IP via an annotation instead.
   annotations:
-    metallb.universe.tf/loadBalancerIPs: 10.0.0.70
+    metallb.universe.tf/loadBalancerIPs: 10.0.20.200
 additionalArguments:
   - "--certificatesresolvers.cloudflare.acme.dnschallenge=true"
   - "--certificatesresolvers.cloudflare.acme.dnschallenge.provider=cloudflare"
@@ -66,6 +66,9 @@ env:
         key: token
 ```
 
+!!! tip "Iterate against Let's Encrypt staging first"
+    Prod LE caps you at 5 duplicate certs per week per registered domain. While you're tweaking IngressRoutes, add `--certificatesresolvers.cloudflare.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory` as a fifth `additionalArguments` entry. Staging certs aren't browser-trusted but don't count against the prod quota. When everything works, remove the line and `kubectl exec -n traefik deploy/traefik -- rm /data/acme.json` to force re-issuance against prod.
+
 ## Step 3: Create the Cloudflare Token Secret and Install Traefik
 
 You have two paths for the token Secret. Prefer the SealedSecret path so future cluster rebuilds reconcile from Git.
@@ -74,7 +77,7 @@ You have two paths for the token Secret. Prefer the SealedSecret path so future 
     If you sealed the token in [R5 Step 13](05-kubernetes.md#step-13-encrypt-your-first-secret), commit `cf-token-sealed.yaml` to `homelab-manifests/apps/traefik/`. ArgoCD applies it, the Sealed Secrets controller materializes the Secret, Traefik reads it.
 
     ```bash
-    helm install traefik traefik/traefik \
+    helm upgrade --install traefik traefik/traefik \
       --namespace traefik --values values.yaml
     ```
 
@@ -86,13 +89,13 @@ You have two paths for the token Secret. Prefer the SealedSecret path so future 
       --from-literal=token=<YOUR_CF_TOKEN> \
       --namespace traefik
 
-    helm install traefik traefik/traefik \
+    helm upgrade --install traefik traefik/traefik \
       --namespace traefik --values values.yaml
     ```
 
 ## Step 4: Internal DNS
 
-On your UDM, add a host record for `*.yourdomain.com → 10.0.0.70` to avoid hairpin NAT.
+On your UDM, add a host record for `*.yourdomain.com → 10.0.20.200` to avoid hairpin NAT.
 
 ## Step 5: Sample IngressRoute
 
@@ -127,9 +130,12 @@ spec:
 
     ```bash
     helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+      --version vX.Y.Z \
       --namespace cert-manager --create-namespace \
       --set crds.enabled=true
     ```
+
+    Pin `--version` to a current release listed on [cert-manager.io](https://cert-manager.io/docs/installation/helm/) — OCI is the canonical install path; the legacy `https://charts.jetstack.io` repo still works but lags behind.
 
 ## Verification
 
@@ -137,7 +143,7 @@ spec:
 
     ```bash
     kubectl get svc -n traefik
-    # Expected: traefik LoadBalancer ... 10.0.0.70 ...
+    # Expected: traefik LoadBalancer ... 10.0.20.200 ...
     ```
 
 - [ ] `acme.json` is being populated:
