@@ -26,8 +26,8 @@ sudo snap install kubectl --classic
 
 # Pull the kubeconfig from ruby and rewrite the server URL
 mkdir -p ~/.kube
-scp root@10.0.0.60:/etc/rancher/k3s/k3s.yaml ~/.kube/config
-sed -i 's/127.0.0.1/10.0.0.60/' ~/.kube/config
+scp root@10.0.20.10:/etc/rancher/k3s/k3s.yaml ~/.kube/config
+sed -i 's/127.0.0.1/10.0.20.10/' ~/.kube/config
 chmod 600 ~/.kube/config
 
 kubectl get nodes
@@ -38,13 +38,13 @@ kubectl get nodes
 
 ```bash
 apt install -y nfs-kernel-server
-echo "/data 10.0.0.0/24(rw,sync,no_subtree_check,no_root_squash)" | tee -a /etc/exports
+echo "/data 10.0.20.0/24(rw,sync,no_subtree_check,no_root_squash)" | tee -a /etc/exports
 systemctl enable --now nfs-kernel-server
 exportfs -ar
 ```
 
 !!! tip
-    `no_root_squash` with subnet restriction is a homelab tradeoff, not a production-grade NFS security posture. It works because every node on `10.0.0.0/24` is yours and the data is yours. Do not copy this config into a multi-tenant environment.
+    `no_root_squash` with subnet restriction is a homelab tradeoff, not a production-grade NFS security posture. It works because every node on `10.0.20.0/24` is yours and the data is yours. Do not copy this config into a multi-tenant environment.
 
 On ruby, emerald, and amethyst:
 
@@ -55,22 +55,22 @@ apt install -y nfs-common
 ## Step 2: Install k3s Server (ruby)
 
 ```bash
-# Generate the cluster token ONCE and save to Vaultwarden — use the SAME value in Step 3
+# Generate the cluster token ONCE and save to your password manager — use the SAME value in Step 3
 K3S_TOKEN=$(openssl rand -hex 32)
-echo "k3s token: $K3S_TOKEN"   # save this to Vaultwarden NOW
+echo "k3s token: $K3S_TOKEN"   # save this to your password manager NOW
 
 curl -sfL https://get.k3s.io | sh -s - \
   --write-kubeconfig-mode 644 \
   --disable servicelb \
   --disable traefik \
   --token "$K3S_TOKEN" \
-  --node-ip 10.0.0.60 \
+  --node-ip 10.0.20.10 \
   --disable-cloud-controller \
   --disable local-storage
 ```
 
 !!! warning "Token reuse"
-    The token you generate above is the join secret for the entire cluster. Step 3 uses the **same value** on every agent node. Generate once, store in Vaultwarden, paste in both places.
+    The token you generate above is the join secret for the entire cluster. Step 3 uses the **same value** on every agent node. Generate once, store in your password manager, paste in both places.
 
 ## Step 3: Join Worker Nodes
 
@@ -78,7 +78,7 @@ Run on each of emerald, topaz, amethyst (use the same `K3S_TOKEN` value from Ste
 
 ```bash
 curl -sfL https://get.k3s.io | \
-  K3S_URL=https://10.0.0.60:6443 \
+  K3S_URL=https://10.0.20.10:6443 \
   K3S_TOKEN=<paste_token_from_Step_2> sh -
 ```
 
@@ -123,7 +123,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-  - 10.0.0.70-10.0.0.80
+  - 10.0.20.200-10.0.20.250
 ---
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
@@ -136,16 +136,16 @@ spec:
 ```
 
 !!! warning "MetalLB pool vs DHCP"
-    MetalLB's pool (`10.0.0.70–10.0.0.80`) **must be excluded from the UDM DHCP scope**. If your DHCP pool spans `10.0.0.50–10.0.0.200`, the UDM will eventually hand out an address in `10.0.0.70–80` to a random device and you'll get intermittent IP conflicts that are nightmare to debug. In UniFi Network: Settings → Networks → Default LAN → DHCP Range → set to e.g. `10.0.0.100–10.0.0.200` so `10.0.0.50–99` is your reserved-static / MetalLB range.
+    MetalLB's pool (`10.0.20.200–10.0.20.250`) **must be excluded from the Lab VLAN DHCP scope**. R2's Network Plan bounds Lab VLAN DHCP to `.100–.199` for exactly this reason — if you change either side, change both. Without the bound, UDM will eventually hand out an address in `.200–.250` to a random device and you'll get intermittent IP conflicts that are nightmare to debug. In UniFi Network: Settings → Networks → Lab → DHCP Range should stay `10.0.20.100–10.0.20.199`.
 
 ## Step 7: Install NFS Storage Provisioner
 
 ```bash
 helm repo add nfs-subdir-external-provisioner \
   https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner
-helm install nfs-provisioner \
+helm upgrade --install nfs-provisioner \
   nfs-subdir-external-provisioner/nfs-subdir-external-provisioner \
-  --set nfs.server=10.0.0.62 \
+  --set nfs.server=10.0.20.12 \
   --set nfs.path=/data \
   --set storageClass.name=nfs-storage \
   --set storageClass.defaultClass=true
@@ -163,7 +163,7 @@ kubectl -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath="{.data.password}" | base64 -d
 ```
 
-Save the printed password to Vaultwarden.
+Save the printed password to your password manager. (Once R7 is up, Vaultwarden becomes the home for everything cluster-generated.)
 
 !!! note "Why `--server-side`"
     The upstream `install.yaml` is large enough that a client-side `kubectl apply` can hit the 256 KB annotation limit on the embedded CRDs. The current ArgoCD docs recommend server-side apply with `--force-conflicts` for the initial install.
@@ -228,7 +228,7 @@ curl -sfL https://get.k3s.io | sh -s - server \
 ```
 
 !!! tip
-    Document your K3S_TOKEN in Vaultwarden the day you stand the cluster up. Losing it on top of losing ruby turns a 2-hour rebuild into a full cluster rebuild.
+    Document your K3S_TOKEN in your password manager the day you stand the cluster up. Losing it on top of losing ruby turns a 2-hour rebuild into a full cluster rebuild.
 
 ## Step 12: Sealed Secrets (cluster-side secret management)
 
@@ -236,7 +236,7 @@ You now have two flavors of secrets: those that live in `homelab-secrets` as sop
 
 ```bash
 helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
-helm install sealed-secrets sealed-secrets/sealed-secrets \
+helm upgrade --install sealed-secrets sealed-secrets/sealed-secrets \
   --namespace sealed-secrets --create-namespace \
   --set fullnameOverride=sealed-secrets-controller
 
