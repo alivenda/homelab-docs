@@ -97,7 +97,7 @@ spec:
   sources:
     - repoURL: code.forgejo.org/forgejo-helm   # OCI registry, no scheme prefix
       chart: forgejo
-      targetRevision: 17.0.0   # pin a version, don't track latest
+      targetRevision: 17.1.0   # pin a version, don't track latest
       helm:
         valueFiles:
           - $values/infrastructure/forgejo/values.yaml
@@ -109,7 +109,7 @@ spec:
     namespace: forgejo
   syncPolicy:
     automated:
-      prune: true
+      prune: false   # don't orphan the SQLite StatefulSet/PVC if the Application is deleted
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
