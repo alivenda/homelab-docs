@@ -1,4 +1,4 @@
-# Runbook 8: Prometheus + Grafana + Loki
+# Runbook 9: Prometheus + Grafana + Loki
 
 Full observability for your homelab.
 

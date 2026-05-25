@@ -19,15 +19,15 @@ This guide is written against a specific build. You can substitute (an x86 mini-
 
 Create these before starting Runbook 1. All free tiers are sufficient.
 
-- **GitHub** — primary Git host (Runbooks 1, 5, 10, 16)
-- **Cloudflare** — DNS + free TLS via DNS-01 (Runbooks 6, 7)
+- **GitHub** — primary Git host (Runbooks 1, 5, 11, 16)
+- **Cloudflare** — DNS + free TLS via DNS-01 (Runbooks 6, 8)
 - **Tailscale** — free tier covers up to 100 devices (Runbook 2)
 - **Docker Hub** (optional) — for pulling public images without rate limits
-- **A bootstrap password manager** (1Password, Bitwarden Cloud, KeePassXC) — you will replace this with self-hosted Vaultwarden at Runbook 11, but you need somewhere to store PATs and API tokens during the bootstrap weeks
+- **A bootstrap password manager** (1Password, Bitwarden Cloud, KeePassXC) — you will replace this with self-hosted Vaultwarden at Runbook 7, but you need somewhere to store PATs and API tokens during the bootstrap weeks
 
 ## Dependency Map
 
-Solid arrows are hard dependencies; the branches at R5 can be done in any order, though the recommended sequence for an early visible win is **R5 → R6 → R11 → back to R7 / R8 / R9**.
+Solid arrows are hard dependencies; the branches at R5 can be done in any order, though the recommended linear path is **R5 → R6 → R7 (Vaultwarden) → R8 / R9 / R10 / R11**.
 
 ```
 R0 Prerequisites + Mental Model
@@ -42,14 +42,14 @@ R4 Ansible: nodes, NFS, k3s install (replaces R3 step 5)
  ↓
 R5 k3s bring-up: MetalLB, NFS storage class, ArgoCD, Sealed Secrets
  ├─→ R6 Traefik HTTPS (DNS-01 via Cloudflare)
- │    ├─→ R11 Vaultwarden   ← RECOMMENDED: deploy here, not at R11 numerical order
+ │    ├─→ R7 Vaultwarden    ← first service; becomes your password manager for the rest
  │    ├─→ R12 Nextcloud
  │    ├─→ R14 Paperless-ngx
  │    └─→ R15 Home Assistant
- ├─→ R7 Terraform (Cloudflare DNS + UniFi IaC; retroactive)
- ├─→ R8 Prometheus + Grafana + Loki
- ├─→ R9 Restic + Velero backups
- └─→ R10 Forgejo
+ ├─→ R8 Terraform (Cloudflare DNS + UniFi IaC; retroactive)
+ ├─→ R9 Prometheus + Grafana + Loki
+ ├─→ R10 Restic + Velero backups
+ └─→ R11 Forgejo
       └─→ R16 Woodpecker CI/CD (build → push → bump manifest)
 
 R13 Immich runs on the NAS via Docker, not on the k3s cluster.

@@ -1,9 +1,6 @@
-# Runbook 11: Vaultwarden
+# Runbook 7: Vaultwarden
 
-Lightweight self-hosted Bitwarden-compatible server.
-
-!!! tip "Deploy this right after Runbook 6"
-    Vaultwarden has the smallest dependency footprint of any service in this guide — it only needs Traefik (Runbook 6). Many readers deploy it immediately after R6 so they have a real working service to test the cluster end-to-end AND a self-hosted password manager to use for the rest of the runbooks (instead of pasting tokens into 1Password / Bitwarden Cloud). Skip ahead and come back for the alphabetical order later.
+Lightweight self-hosted Bitwarden-compatible server. First service runbook after Traefik — smallest dependency footprint of anything in this guide (only Traefik), and gives you a self-hosted password manager to use for every later runbook's credentials instead of pasting them into 1Password / Bitwarden Cloud.
 
 | | |
 |---|---|
@@ -12,7 +9,7 @@ Lightweight self-hosted Bitwarden-compatible server.
 | **Runs On** | Any node (fine on amethyst) |
 | **Depends On** | Runbook 6 (HTTPS required) |
 
-Deploy Vaultwarden via the well-maintained community Helm chart instead of docker-compose. Same operational benefits as Forgejo: NFS-backed persistence, ArgoCD visibility, single Traefik IngressRoute.
+Deploy Vaultwarden via the well-maintained community Helm chart instead of docker-compose. NFS-backed persistence, ArgoCD visibility, single Traefik IngressRoute.
 
 ## Step 1: Seal the admin token
 

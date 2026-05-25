@@ -1,9 +1,9 @@
-# Runbook 7: Terraform for the Homelab
+# Runbook 8: Terraform for the Homelab
 
 Three things in your homelab are good Terraform fits: Cloudflare DNS records, UniFi network config, and a small cloud account used for learning.
 
 !!! note "Why this runbook is retroactive"
-    At this point in the guide you've already manually clicked through Cloudflare and UDM (Runbooks 2 and 6). Runbook 7 is therefore retroactive — you're IaC-ifying configuration you already created. That's still valuable: the next time you add a service, you'll add a Cloudflare record via `terraform apply` instead of clicking through the UI. If you want a stricter IaC-first workflow, you can move Runbook 7 to before Runbook 6 on a future rebuild.
+    At this point in the guide you've already manually clicked through Cloudflare and UDM (Runbooks 2 and 6). Runbook 8 is therefore retroactive — you're IaC-ifying configuration you already created. That's still valuable: the next time you add a service, you'll add a Cloudflare record via `terraform apply` instead of clicking through the UI. If you want a stricter IaC-first workflow, you can move Runbook 8 to before Runbook 6 on a future rebuild.
 
 | | |
 |---|---|
@@ -58,7 +58,7 @@ By default, Terraform writes state to `terraform.tfstate` in the working directo
 Two reasonable options:
 
 === "S3 backend → MinIO on NAS"
-    Stand up MinIO on the NAS (Runbook 9 references this for Velero too):
+    Stand up MinIO on the NAS (Runbook 10 references this for Velero too):
 
     ```yaml
     # NAS docker-compose snippet

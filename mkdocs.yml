@@ -73,11 +73,11 @@ nav:
   - Runbook 4 — Ansible: 04-ansible.md
   - Runbook 5 — Kubernetes: 05-kubernetes.md
   - Runbook 6 — Traefik: 06-traefik.md
-  - Runbook 7 — Terraform: 07-terraform.md
-  - Runbook 8 — Observability: 08-observability.md
-  - Runbook 9 — Backups: 09-backups.md
-  - Runbook 10 — Forgejo: 10-forgejo.md
-  - Runbook 11 — Vaultwarden: 11-vaultwarden.md
+  - Runbook 7 — Vaultwarden: 07-vaultwarden.md
+  - Runbook 8 — Terraform: 08-terraform.md
+  - Runbook 9 — Observability: 09-observability.md
+  - Runbook 10 — Backups: 10-backups.md
+  - Runbook 11 — Forgejo: 11-forgejo.md
   - Runbook 12 — Nextcloud: 12-nextcloud.md
   - Runbook 13 — Immich: 13-immich.md
   - Runbook 14 — Paperless-ngx: 14-paperless.md

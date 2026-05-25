@@ -34,14 +34,14 @@ R4 Ansible (replaces R3 step 5, installs k3s)
   ↓
 R5 k3s bring-up (MetalLB, NFS storage, ArgoCD, Sealed Secrets)
   ├─→ R6 Traefik HTTPS (DNS-01 via Cloudflare)
-  │    ├─→ R11 Vaultwarden  ← recommended: deploy here, not at R11 numerical order
+  │    ├─→ R7 Vaultwarden  ← first service; becomes your password manager for the rest
   │    ├─→ R12 Nextcloud
   │    ├─→ R14 Paperless-ngx
   │    └─→ R15 Home Assistant
-  ├─→ R7 Terraform (Cloudflare DNS + UniFi IaC; retroactive)
-  ├─→ R8 Prometheus + Grafana + Loki
-  ├─→ R9 Restic + Velero backups
-  └─→ R10 Forgejo
+  ├─→ R8 Terraform (Cloudflare DNS + UniFi IaC; retroactive)
+  ├─→ R9 Prometheus + Grafana + Loki
+  ├─→ R10 Restic + Velero backups
+  └─→ R11 Forgejo
        └─→ R16 Woodpecker CI/CD
 
 R13 Immich runs on the NAS via Docker (not on k3s — see runbook for why).
