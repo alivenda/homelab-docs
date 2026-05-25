@@ -81,7 +81,7 @@ Two reasonable options:
       backend "s3" {
         bucket                      = "tfstate"
         key                         = "homelab/cloudflare.tfstate"
-        endpoint                    = "http://10.0.0.50:9000"   # NAS IP
+        endpoint                    = "http://10.0.20.50:9000"  # NAS (R2 static-IP table)
         region                      = "us-east-1"
         skip_credentials_validation = true
         skip_metadata_api_check     = true
