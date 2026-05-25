@@ -74,7 +74,7 @@ configuration:
       default: true
       config:
         region: minio
-        s3Url: http://10.0.0.50:9000   # NAS IP
+        s3Url: http://10.0.20.50:9000  # NAS (R2 static-IP table)
         s3ForcePathStyle: "true"
 
 deployNodeAgent: true       # replaces deployRestic; needed for PVC-content backups

@@ -46,6 +46,7 @@ Within the static range of each VLAN. Cluster nodes are assigned via netplan on 
 | emerald (Tailscale subnet router failover) | lab | `10.0.20.11` | netplan on node |
 | topaz | lab | `10.0.20.12` | netplan on node |
 | amethyst | lab | `10.0.20.13` | netplan on node |
+| UGREEN DXP6800 Pro NAS | lab | `10.0.20.50` | UDM DHCP reservation |
 | Apple TV | iot | `10.0.30.10` | UDM DHCP reservation |
 
 ### WiFi SSID mapping
@@ -89,6 +90,7 @@ Internet
      ├─ emerald   .11   k3s worker + Tailscale subnet router (failover)
      ├─ topaz     .12   k3s worker
      ├─ amethyst  .13   k3s worker
+     ├─ NAS       .50   UGREEN DXP6800 Pro (NFS PVs, MinIO S3, Plex, Immich)
      └─ MetalLB pool  .200–.250  (Traefik VIP and other LoadBalancer services)
 
    VLAN 30  IoT  10.0.30.0/24                [mDNS on]
