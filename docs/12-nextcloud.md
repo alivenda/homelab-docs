@@ -14,10 +14,9 @@ Self-hosted file sync, calendar, contacts.
 ```bash
 helm repo add nextcloud https://nextcloud.github.io/helm/
 
-kubectl create namespace nextcloud
-
-helm install nextcloud nextcloud/nextcloud \
-  --namespace nextcloud \
+helm upgrade --install nextcloud nextcloud/nextcloud \
+  --version <X.Y.Z> \
+  --namespace nextcloud --create-namespace \
   --set nextcloud.host=nextcloud.yourdomain.com \
   --set persistence.enabled=true \
   --set persistence.storageClass=nfs-storage \
@@ -28,6 +27,8 @@ helm install nextcloud nextcloud/nextcloud \
   --set service.type=ClusterIP \
   --set nodeSelector.storage=large
 ```
+
+Pin `--version` to a current release listed on [nextcloud/helm](https://github.com/nextcloud/helm/tree/main/charts/nextcloud).
 
 !!! tip
     Cron-based background jobs are dramatically more reliable than AJAX. Configure under **Settings → Basic Settings**.

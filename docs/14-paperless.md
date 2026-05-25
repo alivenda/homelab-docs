@@ -76,10 +76,13 @@ Install:
 ```bash
 helm repo add paperless-ngx https://charts.paperless-ngx.com
 helm repo update
-helm install paperless paperless-ngx/paperless-ngx \
-  --namespace paperless \
+helm upgrade --install paperless paperless-ngx/paperless-ngx \
+  --version <X.Y.Z> \
+  --namespace paperless --create-namespace \
   --values values.yaml
 ```
+
+Pin `--version` to a current release listed on [charts.paperless-ngx.com](https://charts.paperless-ngx.com/).
 
 ## Step 3: IngressRoute and scan source
 

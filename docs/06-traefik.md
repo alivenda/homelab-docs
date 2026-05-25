@@ -132,7 +132,7 @@ spec:
     Traefik's built-in ACME client (used above) is sufficient for this guide. If you later swap to a different ingress (`nginx-ingress`, Istio, etc.) or want a single cert lifecycle across multiple controllers, install [cert-manager](https://cert-manager.io) — the k8s-native standard for certificate management, works with the same Cloudflare DNS-01 you set up here:
 
     ```bash
-    helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+    helm upgrade --install cert-manager oci://quay.io/jetstack/charts/cert-manager \
       --version vX.Y.Z \
       --namespace cert-manager --create-namespace \
       --set crds.enabled=true
