@@ -2,7 +2,11 @@
 
 The doc lineage. Body content always reflects the current state; this appendix captures the shape of each release.
 
-## v13 (current)
+## v14 (current)
+
+Structural reorder: Vaultwarden moves to R7 (right after Traefik), shifting Terraform, Observability, Backups, and Forgejo down by one (now R8, R9, R10, R11). Rationale: Vaultwarden's only dependency is Traefik, so it can come up immediately after R6 — once it's running it serves as the password manager for every later runbook's credentials, removing the "save to Bitwarden, migrate later" workaround that v13 documented. R12-R16 are unaffected. Older `R7`/`R8`/`R9`/`R10`/`R11` references in the v13 entry below reflect the **old** numbering for context.
+
+## v13
 
 Format migration to Markdown + MkDocs Material. The runbooks are now authored as one `.md` file per runbook under `docs/`, rendered as a static site via MkDocs Material, and render natively in GitHub as a fallback view. Folded in the 27 read-through findings from the v12 dry run:
 

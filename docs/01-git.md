@@ -38,7 +38,7 @@ Three viable patterns:
 | **B: GitHub primary + Forgejo mirror** | Start on GitHub, mirror to Forgejo later for learning | Most people, **recommended** |
 | **C: Forgejo primary + GitHub mirror** | Self-host primary, mirror to GitHub for offsite backup | Maximum self-hosting |
 
-**Recommendation: Pattern B.** Start on GitHub now so nothing blocks on infrastructure not yet built. Migrate later if you want the Forgejo experience, with GitHub as your offsite-IaC-backup (which Runbook 9 calls for anyway).
+**Recommendation: Pattern B.** Start on GitHub now so nothing blocks on infrastructure not yet built. Migrate later if you want the Forgejo experience, with GitHub as your offsite-IaC-backup (which Runbook 10 calls for anyway).
 
 !!! tip
     Whatever pattern you choose, the GitHub copy serves as offsite backup of your infrastructure-as-code. If your homelab burns down, you can rebuild it from these repos. That alone justifies the pattern.
@@ -293,7 +293,7 @@ The `.enc.tfvars` file IS safe to commit — it's encrypted with your age key. T
 
 ## Step 6: Migrating to Forgejo (When You Get There)
 
-Once Runbook 10 (Forgejo) is running, you have three migration paths:
+Once Runbook 11 (Forgejo) is running, you have three migration paths:
 
 1. **Mirror from GitHub** (read-only Forgejo copy): Forgejo → New Migration → "This repository will be a mirror" → paste GitHub URL.
 2. **Push mirror to GitHub** (Forgejo is primary): In each Forgejo repo, Settings → Mirror Settings → Add Push Mirror. Every push to Forgejo auto-syncs to GitHub.
@@ -379,4 +379,4 @@ Workflow even for solo work:
 - [ ] `.sops.yaml` committed in `homelab-secrets` and `homelab-terraform`
 - [ ] Test commit with a fake secret — verify gitleaks blocks it
 - [ ] (After Runbook 5) ArgoCD ApplicationSet syncing from `homelab-manifests`
-- [ ] (After Runbook 10) Push mirror configured Forgejo → GitHub
+- [ ] (After Runbook 11) Push mirror configured Forgejo → GitHub

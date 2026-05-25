@@ -40,7 +40,7 @@ docker exec -t immich_postgres pg_dumpall -c -U postgres \
   > immich_backup_$(date +%Y%m%d).sql
 ```
 
-The [R9 backup script](09-backups.md#backup-script) already includes this for routine snapshots.
+The [R10 backup script](10-backups.md#backup-script) already includes this for routine snapshots.
 
 ## Traefik IngressRoute (optional, for HTTPS on the cluster domain)
 

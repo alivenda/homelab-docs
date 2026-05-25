@@ -98,7 +98,7 @@ helm install woodpecker woodpecker/woodpecker \
 
 ## Step 5: IngressRoute
 
-Standard IngressRoute for `ci.yourdomain.com`. Same shape as [Vaultwarden Step 3](11-vaultwarden.md#step-3-ingressroute) — change the service name to `woodpecker-server` and port to `8000`.
+Standard IngressRoute for `ci.yourdomain.com`. Same shape as [Vaultwarden Step 3](07-vaultwarden.md#step-3-ingressroute) — change the service name to `woodpecker-server` and port to `8000`.
 
 ## Step 6: Why kubernetes backend (not docker)
 

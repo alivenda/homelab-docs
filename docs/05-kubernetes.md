@@ -208,7 +208,7 @@ etcd-snapshot-dir: /var/lib/rancher/k3s/server/db/snapshots
 sudo systemctl restart k3s
 ```
 
-Back up the snapshots directory to your NAS (Runbook 9 picks this up if you add it to the restic include list).
+Back up the snapshots directory to your NAS (Runbook 10 picks this up if you add it to the restic include list).
 
 ## Step 11: Restore procedure (when ruby dies)
 

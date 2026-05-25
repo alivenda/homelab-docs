@@ -343,7 +343,7 @@ ansible-vault create group_vars/all/vault.yml
 # Add line: vault_k3s_token: <STRONG_RANDOM_TOKEN>
 ```
 
-Generate a strong token with `openssl rand -hex 32` and save it to your password manager (Bitwarden, 1Password, etc.). When Vaultwarden comes up in Runbook 11 you can migrate by exporting → importing — Vaultwarden uses the Bitwarden JSON format. Save the vault password to `~/.ansible-vault-pass` and lock it down — Ansible will warn but not refuse on world-readable permissions:
+Generate a strong token with `openssl rand -hex 32` and save it to your password manager (Bitwarden, 1Password, etc.). When Vaultwarden comes up in Runbook 7 you can migrate by exporting → importing — Vaultwarden uses the Bitwarden JSON format. Save the vault password to `~/.ansible-vault-pass` and lock it down — Ansible will warn but not refuse on world-readable permissions:
 
 ```bash
 chmod 600 ~/.ansible-vault-pass
