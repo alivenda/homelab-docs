@@ -54,7 +54,8 @@ Install:
 ```bash
 helm repo add vaultwarden https://guerzon.github.io/vaultwarden
 helm repo update
-helm install vaultwarden vaultwarden/vaultwarden \
+helm upgrade --install vaultwarden vaultwarden/vaultwarden \
+  --version 0.36.4 \
   --namespace vaultwarden \
   --values values.yaml
 ```
