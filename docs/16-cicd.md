@@ -159,35 +159,78 @@ steps:
 !!! tip "Forgejo's built-in container registry"
     Enable Forgejo's container registry under `[packages]` in `app.ini` so pipelines push/pull images without Docker Hub.
 
-## Renovate: keep third-party images current
+## Renovate: keep dependencies and image tags current
 
-Your CI pipeline above builds your own images. Third-party images (postgres, redis, paperless-ngx, immich, etc.) need a different update strategy. [Renovate](https://docs.renovatebot.com/) watches your manifests for outdated image tags and opens PRs to bump them. Self-host it as a Woodpecker pipeline, or pull from the official runner.
+Your CI pipeline above builds your own images. Third-party versions (helm charts, terraform providers, GitHub Actions, pip and ansible deps, image tags) need a different update strategy. [Renovate](https://docs.renovatebot.com/) watches your repos for outdated versions and opens PRs to bump them.
+
+### Hosted vs self-hosted
+
+- **Mend Renovate hosted (recommended):** install the [Mend Renovate GitHub App](https://github.com/marketplace/renovate), grant it access to the repos you want scanned, drop a `renovate.json` in each. No infra to run.
+- **Self-hosted via Woodpecker:** a scheduled cron pipeline (shown at the end of this section). Use this if you want Renovate inside your cluster.
+
+### Base config (every repo)
+
+Every homelab repo ships a `renovate.json` that extends `config:recommended` and enables the pre-commit-hooks manager:
 
 ```json
-// homelab-manifests/renovate.json
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
-  "kubernetes": {
-    "fileMatch": ["apps/.*/.*\\.ya?ml$"]
-  },
-  "helm-values": {
-    "fileMatch": ["apps/.*/values\\.ya?ml$"]
-  },
+  "extends": ["config:recommended", ":enablePreCommit"],
+  "dependencyDashboard": true,
+  "labels": ["dependencies"],
   "packageRules": [
-    {
-      "matchUpdateTypes": ["minor", "patch"],
-      "automerge": false,
-      "labels": ["renovate"]
-    }
+    { "matchManagers": ["pre-commit"], "groupName": "pre-commit hooks" }
   ]
 }
 ```
 
-Run Renovate as a scheduled Woodpecker pipeline in the `homelab-manifests` repo:
+`config:recommended` auto-discovers k8s manifests, helm values, terraform, GitHub Actions, pip requirements, ansible-galaxy, Dockerfile, and more — no explicit `fileMatch` overrides needed for the standard cases.
+
+### Per-repo grouping rules
+
+Each repo adds a single grouping rule for its primary manager so related bumps land in one PR:
+
+| Repo | Extra `packageRules` entry |
+|---|---|
+| `homelab-ansible` | `matchManagers: ["ansible-galaxy"]` → `groupName: "ansible collections"` |
+| `homelab-docs` | `matchManagers: ["pip_requirements"]` → `groupName: "mkdocs python deps"` |
+| `homelab-terraform` | `matchManagers: ["terraform"]` → `groupName: "terraform providers"` |
+| `homelab-manifests` | (none — see custom regex below) |
+
+### Custom regex for pinned chart versions
+
+`homelab-manifests` pins helm chart versions in two non-standard places — a `--version` flag in a README install snippet, and a `targetRevision:` line in an ArgoCD `bootstrap/*.yaml` Application. Neither is a path the built-in managers scan. A `customManagers` regex keyed off a `# renovate:` annotation makes those pins trackable:
+
+```json
+"customManagers": [
+  {
+    "customType": "regex",
+    "managerFilePatterns": [
+      "(^|/)README\\.md$",
+      "(^|/)bootstrap/.+\\.yaml$"
+    ],
+    "matchStrings": [
+      "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) registryUrl=(?<registryUrl>\\S+)[\\s\\S]{0,200}?--version (?<currentValue>\\S+)",
+      "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) registryUrl=(?<registryUrl>\\S+)[\\s\\S]{0,200}?targetRevision: (?<currentValue>\\S+)"
+    ],
+    "versioningTemplate": "semver"
+  }
+]
+```
+
+To use it, drop a comment directly above the pin:
 
 ```yaml
-# homelab-manifests/.woodpecker/renovate.yml
+# renovate: datasource=helm depName=traefik registryUrl=https://traefik.github.io/charts
+targetRevision: 40.2.0
+```
+
+### Self-hosted: schedule via Woodpecker
+
+If you'd rather not depend on Mend, run Renovate as a scheduled Woodpecker pipeline in each repo:
+
+```yaml
+# .woodpecker/renovate.yml
 when:
   - event: cron
     cron: renovate
@@ -205,10 +248,7 @@ steps:
     secrets: [ renovate_token ]
 ```
 
-In Woodpecker, schedule the cron `renovate` to run nightly. Renovate scans `homelab-manifests`, opens PRs for outdated image tags, and you review/merge them. ArgoCD reconciles after the merge.
-
-!!! tip
-    Renovate also handles helm chart versions, terraform provider versions, GitHub Actions, and dozens of other ecosystems. If you set `RENOVATE_AUTODISCOVER=true`, it walks every repo the token has access to. Scope the token to `homelab-manifests` and `homelab-terraform` if you want it limited.
+In Woodpecker, schedule the cron `renovate` to run nightly. With `RENOVATE_AUTODISCOVER=true`, Renovate walks every repo the token has access to — scope the token to the repos you actually want scanned.
 
 ## Container registry: Forgejo built-in vs Harbor
 
