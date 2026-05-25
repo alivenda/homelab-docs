@@ -21,16 +21,22 @@ This table is the authoritative source for every later runbook (Terraform `unifi
 |---|---|---|---|---|---|---|---|
 | (untagged) | default | — | `10.0.0.0/24` | `10.0.0.1` | `.2–.99` | `.100–.250` | off |
 | 10 | trusted | 10 | `10.0.10.0/24` | `10.0.10.1` | `.10–.99` | `.100–.250` | **on** |
-| 20 | lab | 20 | `10.0.20.0/24` | `10.0.20.1` | `.10–.99` | `.100–.199` | off |
+| 20 | lab | 20 | `10.0.20.0/24` | `10.0.20.1` | `.10–.99` | `.100–.199` | **on** |
 | 30 | iot | 30 | `10.0.30.0/24` | `10.0.30.1` | `.10–.99` | `.100–.250` | **on** |
 
 **Globals**
 
 - DHCP lease: 86400s (1 day)
 - IPv6: disabled on both WAN and LAN (see Step 1 note)
-- IGMP snooping: off
-- UDM upstream DNS: `1.1.1.1` (Cloudflare) — migrate to in-cluster AdGuard later
+- IGMP snooping: **on** (switch-level, see Step 1d) — required for mDNS reflector to forward multicast cleanly across VLANs
+- UDM upstream DNS: `1.1.1.1` (Cloudflare) — migrate to dedicated Pi-hole appliance later (see Step 3d)
 - MetalLB pool: `10.0.20.200–.250` (reserved within Lab VLAN, outside DHCP)
+
+!!! note "Why NAS sits on Lab, not Trusted"
+    NAS (`10.0.20.50`) provides NFS persistent volumes to the cluster (Velero → MinIO, Immich uploads, Plex media). Cluster ↔ NAS traffic stays intra-VLAN with no firewall hop, keeping the storage path low-latency. Trusted devices reach SMB/HTTPS via the per-service `trusted-to-nas-smb` policy (Step 3c). Dual-NICing the UGREEN DXP6800 Pro across Lab+Trusted is an alternative if SMB performance from desktops ever bottlenecks; not chosen for v1.
+
+!!! note "Guest VLAN — deferred"
+    2026 homelab best-practice typically adds a Guest VLAN (visitors get internet only, isolated from everything else). Skipped here to keep the initial scope tight. Easy 10-minute future addition: VLAN 40 `guest`, separate SSID with client isolation, zone-matrix Block to all other zones.
 
 ### Static IP allocations
 
@@ -85,7 +91,7 @@ Internet
      ├─ SSID "home"
      └─ phones · laptops · home desktop
 
-   VLAN 20  Lab  10.0.20.0/24                [mDNS off]
+   VLAN 20  Lab  10.0.20.0/24                [mDNS on]
      ├─ ruby      .10   k3s control plane + Tailscale subnet router
      ├─ emerald   .11   k3s worker + Tailscale subnet router (failover)
      ├─ topaz     .12   k3s worker
@@ -97,7 +103,9 @@ Internet
      ├─ SSID "home-iot"
      └─ Apple TV .10 · smart home devices
 
-   mDNS reflector:  Trusted ↔ IoT only  (for AirPlay/Bonjour discovery)
+   mDNS reflector:  Trusted ↔ IoT ↔ Lab  (AirPlay phone→AppleTV,
+                                          phone→Plex on NAS,
+                                          AppleTV→Plex on NAS)
 
    Tailscale subnet routes advertised by ruby:
      10.0.0.0/24    (Default — UDM admin from afar)
@@ -112,11 +120,11 @@ Each VLAN has a distinct trust level and a deliberate reason for existing:
 
 - **Default LAN — `10.0.0.0/24`:** infrastructure management plane. UDM, switch, AP all live here. Treat as semi-trusted; you do not want random devices landing on it.
 - **VLAN 10 — Trusted (`10.0.10.0/24`):** your personal devices. Phones, laptops, home desktop. mDNS is on so casting/AirPlay/Bonjour to the IoT VLAN works without you switching networks.
-- **VLAN 20 — Lab (`10.0.20.0/24`):** the k3s cluster. Wired only, no SSID, mDNS off. Everything here is yours but the blast radius if a workload escapes the cluster is contained to this VLAN.
-- **VLAN 30 — IoT (`10.0.30.0/24`):** smart home gear including the Apple TV. mDNS is on so phones on Trusted can discover the Apple TV for AirPlay. Internet egress allowed (most IoT needs cloud services) but no inbound from anywhere except specific Home Assistant flows.
+- **VLAN 20 — Lab (`10.0.20.0/24`):** the k3s cluster and NAS. Wired only, no SSID. mDNS is **on** because NAS hosts user-facing services (Plex, Immich, AirPlay receivers) that need to be discoverable from phones on Trusted and the Apple TV on IoT. Blast radius if a workload escapes the cluster is bounded by the zone matrix (Lab cannot initiate to any other VLAN).
+- **VLAN 30 — IoT (`10.0.30.0/24`):** smart home gear including the Apple TV. mDNS is on so phones on Trusted can discover the Apple TV for AirPlay, and the Apple TV can discover Plex on the NAS. Internet egress allowed (most IoT needs cloud services) but no inbound from anywhere except specific Home Assistant / Plex flows.
 
 !!! note "Why Apple TV is on IoT and not Trusted"
-    Apple TV is a closed-firmware appliance that talks to Apple's cloud services. Putting it on Trusted would let it reach your personal devices unnecessarily. Putting it on IoT with mDNS reflector enabled is the Ubiquiti-recommended pattern: segmentation preserved, AirPlay still works because mDNS announcements flow between Trusted and IoT.
+    Apple TV is a closed-firmware appliance that talks to Apple's cloud services. Putting it on Trusted would let it reach your personal devices unnecessarily. Putting it on IoT with mDNS reflector enabled is the Ubiquiti-recommended pattern: segmentation preserved, AirPlay still works because mDNS announcements flow between Trusted, IoT, and Lab.
 
 ## Step 1: Create VLANs on UDM
 
@@ -126,8 +134,8 @@ In UniFi Network → **Settings → Networks**, create one network per VLAN row 
 2. **Gateway/Subnet:** matches the table.
 3. **DHCP Mode:** DHCP Server. Set **DHCP Range** to the values from the table (Lab uses `.100–.199`, others use `.100–.250`).
 4. **DHCP DNS Server:** Auto (UDM). UDM forwards to upstream — set the upstream in Step 1a below.
-5. **Multicast DNS:** **on** for Trusted and IoT, **off** for Lab and Default.
-6. **IGMP Snooping:** off.
+5. **Multicast DNS:** **on** for Trusted, IoT, and Lab; **off** for Default. If your UniFi Network application is 8.x or later, the **Custom** mode is preferred over Auto — Custom lets you whitelist specific service types (AirPlay, HomeKit, Matter) rather than retransmitting every announcement, which is quieter on the wire and easier to debug. Auto is fine if Custom isn't available.
+6. **IGMP Snooping:** configured at the switch in Step 1d (not per-VLAN here).
 7. **IPv6 Interface Type:** None (disable).
 
 ### Step 1a: UDM upstream DNS
@@ -144,6 +152,15 @@ UDM Settings → **Internet → Primary Connection → IPv6**: set to **Disabled
 
 !!! warning "IPv6 has two settings — both matter"
     The per-VLAN IPv6 toggle (Step 1, item 7) only stops UDM from handing IPv6 to LAN clients. It does **not** stop UDM from accepting an IPv6 prefix from your ISP. Without disabling at WAN, clients could still be reachable over IPv6 via SLAAC even though you "disabled IPv6 on the LAN."
+
+### Step 1d: Enable IGMP snooping on the switch
+
+UniFi → **UniFi Devices → [your switch] → Settings → Services → IGMP Snooping** → toggle on.
+
+This is a switch-level setting, not per-VLAN. Without IGMP snooping, the switch floods all multicast traffic (including mDNS announcements and the actual AirPlay/Chromecast streams) to every port in the VLAN — wasted bandwidth and an easy way to confuse other multicast-using devices. With snooping on, the switch tracks which ports have devices that joined a multicast group and only forwards to those ports.
+
+!!! note "Why this matters with mDNS reflector enabled"
+    The mDNS reflector multiplies multicast traffic across the three VLANs you've enabled it on. IGMP snooping is what keeps that traffic targeted instead of broadcast-flooding the whole switch. Enable mDNS reflector without IGMP snooping and you'll see strange symptoms — slow IoT discovery, dropped AirPlay sessions, sometimes whole switch-CPU spikes.
 
 ## Step 2: Connect devices to VLANs
 
@@ -224,15 +241,52 @@ UniFi → **Policy Engine → Policies → Create Policy**. Each policy override
 | Name | From | To | Action | Protocol | Ports |
 |---|---|---|---|---|---|
 | trusted-to-lab-services | Trusted | Lab | Allow | TCP | `80, 443, 22, 6443` |
+| trusted-to-nas-smb | Trusted | `10.0.20.50` | Allow | TCP | `445, 2049, 443` |
 | iot-to-home-assistant | IoT | Lab | Allow | TCP | `8123` |
+| iot-to-plex | IoT | `10.0.20.50` | Allow | TCP, UDP | `32400/tcp`, `32410-32414/udp` |
 
-That's it. Two policies plus the zone matrix replace what used to be 6–8 rules in the legacy UI. Anything not in a policy falls through to the matrix default (Block for the inter-zone pairs above).
+Four policies plus the zone matrix replace what used to be 10+ rules in the legacy UI. Anything not in a policy falls through to the matrix default (Block for the inter-zone pairs above).
+
+The two NAS-targeted policies (`trusted-to-nas-smb`, `iot-to-plex`) scope the destination to a single IP (`10.0.20.50`) rather than the whole Lab zone — narrowest blast radius. SMB/NFS/HTTPS for desktop access, the Plex port range for AirPlay handoff from the Apple TV to Plex on the NAS.
+
+!!! note "Established/related is automatic"
+    UniFi's Policy Engine is stateful — once a connection is allowed in one direction, return traffic is allowed automatically. You don't need a separate "allow established/related" rule (the legacy `LAN IN` firewall did require this). This is why "Trusted → Lab Allow + Lab → Trusted Block" works as expected: your desktop can reach the cluster API, the response gets back, but the cluster cannot initiate a connection to your desktop.
+
+!!! note "Why per-service instead of 'Trusted → Lab Allow all'"
+    A common shortcut is to make Trusted → Lab a blanket Allow and skip the per-service policies. It's less typing and easier to maintain. The argument against: if a daily-driver device on Trusted is ever compromised (browser zero-day, bad npm install, supply-chain attack on a desktop dependency), blanket Allow gives the attacker lateral access to kubelet, etcd, every internal admin UI on Lab. Per-service caps blast radius to the exact ports listed above. For a learning-focused homelab the extra friction is small and mirrors how production environments handle east-west traffic.
 
 !!! note "Why the matrix-then-policies model is better"
     With legacy `LAN IN` rules, the implicit "allow everything else" meant you had to remember to add catch-all drops for every flow you wanted restricted. Forget one and you had a silent hole. The zone matrix makes the default explicit: Block is the baseline, Allow requires a policy. Audit becomes "list the policies" instead of "spot the missing drop."
 
 !!! note "UDM is in the data path for inter-VLAN traffic"
     Because UDM is the L3 router between VLANs, every Trusted → Lab service request flows through UDM. Performance is fine for homelab scale (gigabit class), but it means firewall policies apply on every request and UDM CPU sees the load. The alternative (MetalLB in BGP mode with UDM peering) eliminates this but requires UDM Pro/SE with BGP enabled.
+
+### Step 3d: DNS enforcement (forward-looking)
+
+This section defines the firewall side of forcing all client DNS through Pi-hole. The actual Pi-hole deployment is deferred until you have hardware for it — see the note below. You can skip this step entirely until then; nothing else in the runbooks depends on it.
+
+The pattern: drop public-DNS egress from everything except your Pi-hole instances. Without this, a malicious app (or smart device with hard-coded `8.8.8.8`) bypasses Pi-hole's filtering entirely. With it, the only way out for DNS is through your filter.
+
+Create two IP groups (UniFi → **Profiles → IP Groups**):
+
+| Group | Type | Contents |
+|---|---|---|
+| `Pi-Hole DNS Servers` | Address | The IPs of your future Pi-hole instances (e.g., `10.0.0.20`, `10.0.0.21` if Pis live on Default; pick before deploying) |
+| `Public DNS` | Address | Common public resolvers: `1.1.1.1`, `1.0.0.1`, `8.8.8.8`, `8.8.4.4`, `9.9.9.9`, `149.112.112.112`, `208.67.222.222`, `208.67.220.220` |
+
+Then two Internet-Out policies. **Order matters** — Accept must come before Block:
+
+| # | Name | From | To | Action | Protocol | Ports |
+|---|---|---|---|---|---|---|
+| 1 | dns-pihole-egress-allow | `Pi-Hole DNS Servers` | `Public DNS` + `Any` | Allow | TCP, UDP | `53`, `443` (DoH) |
+| 2 | dns-public-block | Any | `Public DNS` | Block | TCP, UDP | `53` |
+
+Then update each VLAN's DHCP DNS server (UniFi → Networks → [each VLAN] → DHCP) to hand out the Pi-hole IPs instead of Auto. Clients pick up the new DNS at next DHCP renewal (or reboot).
+
+!!! note "Deploy Pi-hole on dedicated hardware, not in-cluster"
+    DNS is the most foundational service on the network — when it dies, every browser hangs and every container fails to pull images. Running Pi-hole as a k3s Helm chart means a routine cluster upgrade (or any cluster wedge) takes DNS down with it. The 2026 homelab best-practice consensus is a dedicated Raspberry Pi 4/5 running Pi-hole natively: $50, boots in 20 seconds, survives anything that happens to the cluster.
+
+    For HA, run **two** instances (DHCP hands out both; clients fail over automatically). Sync config between them with [nebula-sync](https://github.com/lovelaze/nebula-sync) for Pi-hole 6.x. This is the path to take when you're ready to add the hardware.
 
 ## Step 4: Reaching UDM
 
@@ -351,17 +405,21 @@ Tailscale is easier (NAT traversal handled, no port forward needed). WireGuard o
 
 - [ ] Four networks visible in UniFi: Default, Trusted, Lab, IoT — each with the correct subnet and DHCP range from the Network Plan
 - [ ] DHCP exclude range `10.0.20.200–.250` configured on Lab
-- [ ] mDNS enabled on Trusted and IoT, disabled on Lab and Default
+- [ ] mDNS enabled on Trusted, IoT, and Lab; disabled on Default
+- [ ] IGMP snooping enabled at the switch (Step 1d)
 - [ ] IPv6 disabled on both WAN and every VLAN
 - [ ] SSIDs `home` (Trusted) and `home-iot` (IoT) created and assigned
 - [ ] Wired ports for home desktop and all four cluster nodes set to the right Native VLAN
-- [ ] Policy Engine: three custom zones (Trusted, Lab, IoT), zone matrix Block-by-default between custom pairs, two allow policies (trusted→lab services, iot→HA)
+- [ ] Policy Engine: three custom zones (Trusted, Lab, IoT), zone matrix Block-by-default between custom pairs, four allow policies (trusted→lab services, trusted→nas SMB, iot→HA, iot→Plex)
 - [ ] From a Trusted device: `https://10.0.10.1` loads UDM UI
 - [ ] From a Trusted device: `curl https://10.0.20.10:6443` reaches ruby k3s API
 - [ ] From a Trusted device: arbitrary high-port connection to ruby (e.g. `nc -zv 10.0.20.10 9999`) is **refused** — proves the policy restricts to listed ports, not any
+- [ ] From a Trusted device: SMB mount of `\\10.0.20.50\<share>` succeeds (proves `trusted-to-nas-smb`)
 - [ ] From an IoT device: `ping 10.0.20.10` fails (no policy allows it)
 - [ ] From an IoT device: `curl http://<HA-IP>:8123` succeeds (iot-to-HA policy)
+- [ ] From the Apple TV: AirPlay handoff to Plex on the NAS works (proves mDNS reflector + `iot-to-plex` + IGMP snooping all wired up correctly)
 - [ ] From a phone on `home` SSID: AirPlay from Photos / Music finds Apple TV in the picker and casts successfully — proves mDNS reflector is working
+- [ ] *(after Pi-hole deploy)* From any client: `dig @8.8.8.8 example.com` times out (proves `dns-public-block` policy); `dig @<pi-hole-ip> example.com` succeeds
 - [ ] From a Trusted device with Tailscale connected via cellular: `ping 10.0.20.10` over Tailscale works
 - [ ] `tailscale status` on ruby AND emerald shows advertised routes accepted
 - [ ] Tailscale admin console: ACL file in place, only `autogroup:owner` has access to advertised subnets
