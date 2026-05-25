@@ -54,10 +54,15 @@ ansible --version
 
 ## Step 2: SSH Key Distribution
 
+After Runbook 3 flashes the CM4s and the switch ports are set to Lab VLAN access (Runbook 2 Step 2b), the nodes boot with DHCP leases from the Lab pool (`10.0.20.100–.199`). Two ways to get them onto their planned static IPs (`10.0.20.10–.13`) before running bootstrap:
+
+- **Recommended:** in UDM → Clients, pin each node's MAC to its planned static IP via DHCP reservation. The bootstrap netplan task (Step 6) then converts to a node-local static config so nodes boot deterministically even if UDM is down — the reservations become belt-and-suspenders.
+- **Alternative:** find the initial DHCP IPs in UDM → Clients, temporarily point inventory at those, run bootstrap once. Netplan moves them to the planned static IPs; update inventory after.
+
 ```bash
 ssh-keygen -t ed25519 -C "ansible@homelab"   # If you don't have one
-for i in 60 61 62 63; do
-  ssh-copy-id root@10.0.0.$i
+for ip in 10 11 12 13; do
+  ssh-copy-id root@10.0.20.$ip
 done
 ```
 
@@ -67,6 +72,10 @@ done
 homelab-ansible/
 ├── inventory.yml
 ├── ansible.cfg
+├── requirements.yml
+├── group_vars/
+│   └── all/
+│       └── vault.yml
 ├── playbooks/
 │   ├── site.yml
 │   ├── bootstrap.yml
@@ -79,33 +88,56 @@ homelab-ansible/
             └── main.yml
 ```
 
+### Collections (`requirements.yml`)
+
+The bootstrap and NFS playbooks pull from outside `ansible.builtin`. Pin them in `requirements.yml`:
+
+```yaml
+---
+collections:
+  - name: ansible.posix
+    version: ">=2.0.0,<3.0.0"
+  - name: community.general
+    version: ">=13.0.0,<14.0.0"
+  - name: kubernetes.core
+    version: ">=6.0.0,<7.0.0"
+```
+
+Install:
+
+```bash
+ansible-galaxy collection install -r requirements.yml
+```
+
 ## Step 4: Inventory (`inventory.yml`)
 
 ```yaml
 all:
   hosts:
     ruby:
-      ansible_host: 10.0.0.60
+      ansible_host: 10.0.20.10
       node_role: server
       emmc_size: 32
     emerald:
-      ansible_host: 10.0.0.61
+      ansible_host: 10.0.20.11
       node_role: agent
       emmc_size: 32
     topaz:
-      ansible_host: 10.0.0.62
+      ansible_host: 10.0.20.12
       node_role: agent
       emmc_size: 16
       nfs_server: true
     amethyst:
-      ansible_host: 10.0.0.63
+      ansible_host: 10.0.20.13
       node_role: agent
       emmc_size: 16
   vars:
     ansible_user: root
     ansible_python_interpreter: /usr/bin/python3
     k3s_token: "{{ vault_k3s_token }}"
-    k3s_server_ip: 10.0.0.60
+    k3s_server_ip: 10.0.20.10
+    lab_gateway: 10.0.20.1
+    lab_interface: eth0
 
 k3s_server:
   hosts:
@@ -117,6 +149,9 @@ k3s_agents:
     topaz:
     amethyst:
 ```
+
+!!! tip "Verify the interface name before bootstrap"
+    `lab_interface: eth0` is the CM4 / DietPi default. Confirm with `ssh root@10.0.20.10 ip -br link` — if the interface is named `end0` (newer kernels) or a predictable `enxXXXX`, override the var. A wrong interface name in the netplan task (Step 6) will silently apply config to nothing and the next reboot will leave the node DHCP-only.
 
 !!! tip
     The inventory references `{{ vault_k3s_token }}`. We create that variable in Step 10 (Secrets via Ansible Vault). Ansible only resolves Jinja at task-execution time, so as long as you complete Step 10 before running `ansible-playbook` in Step 11, this works. Just don't run any playbook before Step 10 or Ansible will error with `vault_k3s_token is undefined`.
@@ -160,6 +195,24 @@ vault_password_file = ~/.ansible-vault-pass
         line: '\1 cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1'
       register: cmdline
 
+    - name: Configure netplan for Lab VLAN static IP
+      ansible.builtin.copy:
+        dest: /etc/netplan/01-lab.yaml
+        mode: '0600'
+        content: |
+          network:
+            version: 2
+            ethernets:
+              {{ lab_interface }}:
+                dhcp4: false
+                addresses: [{{ ansible_host }}/24]
+                routes:
+                  - to: default
+                    via: {{ lab_gateway }}
+                nameservers:
+                  addresses: [{{ lab_gateway }}]
+      notify: apply netplan
+
     - name: Reboot if cmdline changed
       ansible.builtin.reboot:
       when: cmdline.changed
@@ -168,13 +221,31 @@ vault_password_file = ~/.ansible-vault-pass
       ansible.builtin.blockinfile:
         path: /etc/hosts
         block: |
-          10.0.0.60 ruby
-          10.0.0.61 emerald
-          10.0.0.62 topaz
-          10.0.0.63 amethyst
+          10.0.20.10 ruby
+          10.0.20.11 emerald
+          10.0.20.12 topaz
+          10.0.20.13 amethyst
+
+  handlers:
+    - name: apply netplan
+      ansible.builtin.command: netplan apply
 ```
 
+!!! warning "First bootstrap run will move the node's IP"
+    If you used DHCP reservations in Step 2 to land each node at its planned static IP, the netplan task is a no-op transition. If you bootstrapped against a DHCP-assigned IP (the alternative path in Step 2), `netplan apply` will move the node off that IP onto its planned static IP — Ansible's SSH session will hang on that task. Update inventory to the new IP and re-run; the next run is idempotent.
+
+!!! tip "Conflicting netplan defaults"
+    DietPi minimal images may not ship a netplan file at all (it uses `/etc/network/interfaces`). DietPi non-minimal and some Ubuntu-based images do — typically `/etc/netplan/01-network-manager-all.yaml` or `50-cloud-init.yaml`. If both files set DHCP on the same interface, `netplan apply` merges them and DHCP can win. After the first bootstrap, SSH in and `ls /etc/netplan/` — if anything other than `01-lab.yaml` is present, remove it and re-run `netplan apply`.
+
 ## Step 7: NFS Playbook
+
+Before running this playbook, format and label the NFS disk on topaz **once**. Identify the disk with `lsblk` (do not assume `/dev/sda` — USB enumeration is not stable across reboots), then:
+
+```bash
+ssh root@10.0.20.12 'mkfs.ext4 -L homelab-data /dev/sdX'
+```
+
+The mount task below references the filesystem by label, so future reboots resolve it correctly even if the kernel renames the device.
 
 ```yaml
 - hosts: topaz
@@ -188,14 +259,14 @@ vault_password_file = ~/.ansible-vault-pass
     - name: Ensure /data mounted
       ansible.posix.mount:
         path: /data
-        src: /dev/sda
+        src: LABEL=homelab-data
         fstype: ext4
         state: mounted
 
     - name: Configure NFS export
       ansible.builtin.lineinfile:
         path: /etc/exports
-        line: "/data 10.0.0.0/24(rw,sync,no_subtree_check,no_root_squash)"
+        line: "/data 10.0.20.0/24(rw,sync,no_subtree_check,no_root_squash)"
       notify: reload exports
 
   handlers:
@@ -252,7 +323,11 @@ ansible-vault create group_vars/all/vault.yml
 # Add line: vault_k3s_token: <STRONG_RANDOM_TOKEN>
 ```
 
-Generate a strong token with `openssl rand -hex 32` and save to Vaultwarden. Save the vault password to `~/.ansible-vault-pass`.
+Generate a strong token with `openssl rand -hex 32` and save to Vaultwarden. Save the vault password to `~/.ansible-vault-pass` and lock it down — Ansible will warn but not refuse on world-readable permissions:
+
+```bash
+chmod 600 ~/.ansible-vault-pass
+```
 
 ## Step 11: Run It
 
@@ -284,7 +359,7 @@ ansible-playbook playbooks/bootstrap.yml --limit emerald
 - [ ] `/etc/hosts` populated on every node:
 
     ```bash
-    ansible all -a 'grep cube /etc/hosts'
+    ansible all -a 'grep -E "ruby|emerald|topaz|amethyst" /etc/hosts'
     ```
 
 - [ ] k3s installed on every node (idempotent):
