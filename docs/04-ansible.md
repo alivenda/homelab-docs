@@ -284,6 +284,7 @@ The mount task below references the filesystem by label, so future reboots resol
     - name: Install k3s server
       ansible.builtin.shell: |
         curl -sfL https://get.k3s.io | sh -s - \
+          --cluster-init \
           --write-kubeconfig-mode 644 \
           --disable servicelb \
           --disable traefik \
