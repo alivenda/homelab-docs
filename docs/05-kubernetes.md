@@ -60,6 +60,7 @@ K3S_TOKEN=$(openssl rand -hex 32)
 echo "k3s token: $K3S_TOKEN"   # save this to your password manager NOW
 
 curl -sfL https://get.k3s.io | sh -s - \
+  --cluster-init \
   --write-kubeconfig-mode 644 \
   --disable servicelb \
   --disable traefik \
@@ -68,6 +69,9 @@ curl -sfL https://get.k3s.io | sh -s - \
   --disable-cloud-controller \
   --disable local-storage
 ```
+
+!!! note "Why `--cluster-init`"
+    Without `--cluster-init`, k3s defaults to a sqlite datastore (via kine). `--cluster-init` initializes the embedded etcd datastore instead — required for the `k3s etcd-snapshot` flow in Step 10. The CPU/memory overhead is modest on a CM4 with 8 GB RAM, and you can join additional server nodes later for HA without rebuilding.
 
 !!! warning "Token reuse"
     The token you generate above is the join secret for the entire cluster. Step 3 uses the **same value** on every agent node. Generate once, store in your password manager, paste in both places.
