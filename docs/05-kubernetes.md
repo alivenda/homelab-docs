@@ -119,7 +119,7 @@ Then apply the address pool and L2 advertisement:
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
 metadata:
-  name: default-pool
+  name: lab-pool
   namespace: metallb-system
 spec:
   addresses:
@@ -128,12 +128,15 @@ spec:
 apiVersion: metallb.io/v1beta1
 kind: L2Advertisement
 metadata:
-  name: default
+  name: lab-pool-l2
   namespace: metallb-system
 spec:
   ipAddressPools:
-  - default-pool
+  - lab-pool
 ```
+
+!!! note "Source of truth"
+    These manifests live at `homelab-manifests/infrastructure/metallb/{ipaddresspool,l2advertisement}.yaml`. Apply via `kubectl apply -f` from a clone of that repo; the YAML above is shown inline for learning context. Edit the repo, not your local copy, so the changes survive a rebuild.
 
 !!! warning "MetalLB pool vs DHCP"
     MetalLB's pool (`10.0.20.200–10.0.20.250`) **must be excluded from the Lab VLAN DHCP scope**. R2's Network Plan bounds Lab VLAN DHCP to `.100–.199` for exactly this reason — if you change either side, change both. Without the bound, UDM will eventually hand out an address in `.200–.250` to a random device and you'll get intermittent IP conflicts that are nightmare to debug. In UniFi Network: Settings → Networks → Lab → DHCP Range should stay `10.0.20.100–10.0.20.199`.

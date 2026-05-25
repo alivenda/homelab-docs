@@ -66,6 +66,9 @@ env:
         key: token
 ```
 
+!!! note "Source of truth"
+    This `values.yaml` lives at `homelab-manifests/apps/traefik/values.yaml` and includes a pinned chart version. Apply via `helm upgrade --install` against a clone of that repo. The block above is shown inline for learning context — edit the repo, not your local copy.
+
 !!! tip "Iterate against Let's Encrypt staging first"
     Prod LE caps you at 5 duplicate certs per week per registered domain. While you're tweaking IngressRoutes, add `--certificatesresolvers.cloudflare.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory` as a fifth `additionalArguments` entry. Staging certs aren't browser-trusted but don't count against the prod quota. When everything works, remove the line and `kubectl exec -n traefik deploy/traefik -- rm /data/acme.json` to force re-issuance against prod.
 
@@ -74,7 +77,7 @@ env:
 You have two paths for the token Secret. Prefer the SealedSecret path so future cluster rebuilds reconcile from Git.
 
 === "SealedSecret (recommended)"
-    If you sealed the token in [R5 Step 13](05-kubernetes.md#step-13-encrypt-your-first-secret), commit `cf-token-sealed.yaml` to `homelab-manifests/apps/traefik/`. ArgoCD applies it, the Sealed Secrets controller materializes the Secret, Traefik reads it.
+    Seal the token following the flow in [R5 Step 13](05-kubernetes.md#step-13-encrypt-your-first-secret); the exact `kubeseal` invocation is documented in `homelab-manifests/apps/traefik/README.md`. Commit the resulting `cf-token-sealed.yaml` next to that README. ArgoCD applies it, the Sealed Secrets controller materializes the Secret, Traefik reads it.
 
     ```bash
     helm upgrade --install traefik traefik/traefik \
