@@ -22,10 +22,10 @@ Initial hardware assembly, firmware update, OS flashing, and network configurati
 
 | Node | Hardware | Role |
 |---|---|---|
-| `ruby (Node 1)` (10.0.0.60) | 32 GB eMMC | k3s control plane + worker; image cache |
-| `emerald (Node 2)` (10.0.0.61) | 32 GB eMMC | Worker for heavier apps (databases, Forgejo, Nextcloud) |
-| `topaz (Node 3)` (10.0.0.62) | 16 GB eMMC + SATA SSD | NFS server + light worker (data on SSD) |
-| `amethyst (Node 4)` (10.0.0.63) | 16 GB eMMC | Light worker (Vaultwarden, monitoring agents) |
+| `ruby (Node 1)` (10.0.20.10) | 32 GB eMMC | k3s control plane + worker; image cache |
+| `emerald (Node 2)` (10.0.20.11) | 32 GB eMMC | Worker for heavier apps (databases, Forgejo, Nextcloud) |
+| `topaz (Node 3)` (10.0.20.12) | 16 GB eMMC + SATA SSD | NFS server + light worker (data on SSD) |
+| `amethyst (Node 4)` (10.0.20.13) | 16 GB eMMC | Light worker (Vaultwarden, monitoring agents) |
 
 ## Step 1: Hardware Assembly
 
@@ -72,9 +72,9 @@ DietPi is a lightweight Debian-based OS optimized for single-board computers and
     AUTO_SETUP_NET_ETHERNET_ENABLED=1
     AUTO_SETUP_NET_WIFI_ENABLED=0
     AUTO_SETUP_NET_USESTATIC=1
-    AUTO_SETUP_NET_STATIC_IP=10.0.0.60     # Increment per node: .60, .61, .62, .63
+    AUTO_SETUP_NET_STATIC_IP=10.0.20.10    # Increment per node: .10, .11, .12, .13
     AUTO_SETUP_NET_STATIC_MASK=255.255.255.0
-    AUTO_SETUP_NET_STATIC_GATEWAY=10.0.0.1
+    AUTO_SETUP_NET_STATIC_GATEWAY=10.0.20.1
     AUTO_SETUP_NET_STATIC_DNS=1.1.1.1 8.8.8.8
     AUTO_SETUP_NET_HOSTNAME=ruby           # ruby (Node 1), emerald (Node 2), topaz (Node 3), amethyst (Node 4)
     AUTO_SETUP_HEADLESS=1
@@ -97,7 +97,7 @@ DietPi is a lightweight Debian-based OS optimized for single-board computers and
 3. SSH into each node and update:
 
     ```bash
-    ssh root@10.0.0.60
+    ssh root@10.0.20.10
     apt update && apt upgrade -y
     ```
 
@@ -120,7 +120,7 @@ Node 3 connects to the SATA ports. This SSD will serve as NFS storage for the en
     ```
 
 !!! tip
-    Reserve IPs 10.0.0.60–63 for your nodes and 10.0.0.70–80 for MetalLB in your UDM DHCP settings.
+    Reserve IPs 10.0.20.10–13 for your nodes and 10.0.20.200–250 for MetalLB in your UDM DHCP settings (see Runbook 2 for the full Lab VLAN plan).
 
 ## Power: UPS + NUT for Graceful Shutdown
 
@@ -158,8 +158,8 @@ This is a maturity layer — skip it for the first cluster build, add it once ev
 - [ ] All 4 nodes reachable via SSH:
 
     ```bash
-    for i in 60 61 62 63; do
-      ssh -o ConnectTimeout=3 root@10.0.0.$i 'hostname && uname -m'
+    for i in 10 11 12 13; do
+      ssh -o ConnectTimeout=3 root@10.0.20.$i 'hostname && uname -m'
     done
     # Expected: ruby / emerald / topaz / amethyst each printing aarch64
     ```
@@ -167,11 +167,11 @@ This is a maturity layer — skip it for the first cluster build, add it once ev
 - [ ] cgroups enabled on each node (required for k3s):
 
     ```bash
-    ssh root@10.0.0.60 grep -o 'cgroup_enable=[a-z]*\|cgroup_memory=1' /boot/cmdline.txt
+    ssh root@10.0.20.10 grep -o 'cgroup_enable=[a-z]*\|cgroup_memory=1' /boot/cmdline.txt
     ```
 
 - [ ] On topaz (Node 3) specifically, the SATA SSD is mounted at `/data`:
 
     ```bash
-    ssh root@10.0.0.62 'df -h /data && mount | grep /data'
+    ssh root@10.0.20.12 'df -h /data && mount | grep /data'
     ```
