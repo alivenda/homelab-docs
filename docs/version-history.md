@@ -2,7 +2,11 @@
 
 The doc lineage. Body content always reflects the current state; this appendix captures the shape of each release.
 
-## v14 (current)
+## v15 (current)
+
+R3/R4 alignment to the first real deployment on DietPi. Non-root throughout — Ansible and SSH use the `dietpi` user with `sudo`, not root, and R4 adds the post-key SSH hardening (disable root login + password auth). Secrets move from Ansible Vault to sops + age via the `community.sops` lookup, unifying with the `homelab-secrets` mechanism and R5's two-layer model. R4 bootstrap drops the `hostname` and netplan tasks: DietPi owns node identity (hostname + static IP from `dietpi.txt`), has no dbus for `ansible.builtin.hostname`, and ships no netplan. The cmdline path is corrected to `/boot/firmware/cmdline.txt`, `stdout_callback` becomes `default` + `callback_result_format: yaml` (the standalone `yaml` callback was removed in community.general 12), and the NFS play is tagged `nfs` so the cluster can come up before the SATA SSD is installed.
+
+## v14
 
 Structural reorder: Vaultwarden moves to R7 (right after Traefik), shifting Terraform, Observability, Backups, and Forgejo down by one (now R8, R9, R10, R11). Rationale: Vaultwarden's only dependency is Traefik, so it can come up immediately after R6 — once it's running it serves as the password manager for every later runbook's credentials, removing the "save to Bitwarden, migrate later" workaround that v13 documented. R12-R16 are unaffected. Older `R7`/`R8`/`R9`/`R10`/`R11` references in the v13 entry below reflect the **old** numbering for context.
 

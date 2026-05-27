@@ -97,9 +97,12 @@ DietPi is a lightweight Debian-based OS optimized for single-board computers and
 3. SSH into each node and update:
 
     ```bash
-    ssh root@10.0.20.10
-    apt update && apt upgrade -y
+    ssh dietpi@10.0.20.10
+    sudo apt update && sudo apt upgrade -y
     ```
+
+!!! note "Connect as the `dietpi` user"
+    DietPi's default admin account is `dietpi` — use it, not root (Ansible logs in as `dietpi` and escalates with `sudo`). R4 Step 2 installs your SSH key and covers disabling root login + password auth.
 
 ## Step 5: Prepare SATA SSD on Node 3 (topaz (Node 3))
 
@@ -108,14 +111,14 @@ DietPi is a lightweight Debian-based OS optimized for single-board computers and
 
 Node 3 connects to the SATA ports. This SSD will serve as NFS storage for the entire cluster.
 
-1. SSH into topaz (Node 3) and identify the disk: `fdisk -l`
+1. SSH into topaz (Node 3) as `dietpi` and identify the disk with `lsblk` (do not assume `/dev/sda`)
 2. Format and mount:
 
     ```bash
-    mkfs.ext4 /dev/sda
-    mkdir /data
-    echo "/dev/sda /data ext4 defaults 0 0" | tee -a /etc/fstab
-    mount -a
+    sudo mkfs.ext4 -L homelab-data /dev/sda   # confirm the device with lsblk first
+    sudo mkdir /data
+    echo "LABEL=homelab-data /data ext4 defaults 0 0" | sudo tee -a /etc/fstab
+    sudo mount -a
     df -h /data
     ```
 
@@ -159,7 +162,7 @@ This is a maturity layer — skip it for the first cluster build, add it once ev
 
     ```bash
     for i in 10 11 12 13; do
-      ssh -o ConnectTimeout=3 root@10.0.20.$i 'hostname && uname -m'
+      ssh -o ConnectTimeout=3 dietpi@10.0.20.$i 'hostname && uname -m'
     done
     # Expected: ruby / emerald / topaz / amethyst each printing aarch64
     ```
@@ -167,11 +170,11 @@ This is a maturity layer — skip it for the first cluster build, add it once ev
 - [ ] cgroups enabled on each node (required for k3s):
 
     ```bash
-    ssh root@10.0.20.10 grep -o 'cgroup_enable=[a-z]*\|cgroup_memory=1' /boot/cmdline.txt
+    ssh dietpi@10.0.20.10 grep -o 'cgroup_enable=[a-z]*\|cgroup_memory=1' /boot/firmware/cmdline.txt
     ```
 
 - [ ] On topaz (Node 3) specifically, the SATA SSD is mounted at `/data`:
 
     ```bash
-    ssh root@10.0.20.12 'df -h /data && mount | grep /data'
+    ssh dietpi@10.0.20.12 'df -h /data && mount | grep /data'
     ```
