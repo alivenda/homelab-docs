@@ -59,4 +59,4 @@ R13 Immich runs on the NAS via Docker (not on k3s — see runbook for why).
 
 ## Version
 
-The current source set is v13 (Markdown-native). See the [Version History](version-history.md) for the prior PDF lineage and what each release added.
+The current source set is v15. See the [Version History](version-history.md) for the prior PDF lineage and what each release added.

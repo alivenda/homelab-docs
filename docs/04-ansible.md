@@ -57,17 +57,19 @@ ansible --version
 
 ## Step 2: SSH Key Distribution
 
-After Runbook 3 flashes the CM4s and the switch ports are set to Lab VLAN access (Runbook 2 Step 2b), the nodes boot with DHCP leases from the Lab pool (`10.0.20.100–.199`). Two ways to get them onto their planned static IPs (`10.0.20.10–.13`) before running bootstrap:
+Runbook 3's `dietpi.txt` sets each node's static IP (`AUTO_SETUP_NET_USESTATIC=1`) and hostname at first boot, so the nodes come up directly on their planned addresses (`10.0.20.10–.13`) — there's no DHCP-to-static transition to manage. A matching DHCP reservation in UDM → Clients is optional belt-and-suspenders.
 
-- **Recommended:** in UDM → Clients, pin each node's MAC to its planned static IP via DHCP reservation. The bootstrap netplan task (Step 6) then converts to a node-local static config so nodes boot deterministically even if UDM is down — the reservations become belt-and-suspenders.
-- **Alternative:** find the initial DHCP IPs in UDM → Clients, temporarily point inventory at those, run bootstrap once. Netplan moves them to the planned static IPs; update inventory after.
+Copy your key to the **`dietpi`** user — DietPi's default admin account. Ansible logs in as `dietpi` and escalates with `sudo` rather than logging in as root:
 
 ```bash
 ssh-keygen -t ed25519 -C "ansible@homelab"   # If you don't have one
 for ip in 10 11 12 13; do
-  ssh-copy-id root@10.0.20.$ip
+  ssh-copy-id dietpi@10.0.20.$ip
 done
 ```
+
+!!! tip "Harden SSH once the key works"
+    After key auth works for `dietpi`, disable root login and password auth on each node — set `PermitRootLogin no` and `PasswordAuthentication no` in `/etc/ssh/sshd_config`, then `sudo systemctl restart ssh`. Key-only, non-root is the baseline before exposing anything.
 
 ## Step 3: Project Structure
 
@@ -77,16 +79,15 @@ homelab-ansible/
 ├── ansible.cfg
 ├── requirements.yml
 ├── site.yml          # all plays in one file
-└── group_vars/
-    └── all/
-        └── vault.yml
+└── secrets/
+    └── secrets.sops.yaml   # sops-encrypted; safe to commit
 ```
 
 For a 4-node cluster, a single `site.yml` containing all plays keeps things readable in one screen. If the file grows past ~200 lines or you frequently need to re-run just one phase (and `--tags` / `--start-at-task` aren't enough), split into `playbooks/bootstrap.yml`, `playbooks/k3s-server.yml`, etc., and add a top-level `site.yml` of `import_playbook:` lines.
 
 ### Collections (`requirements.yml`)
 
-The bootstrap and NFS playbooks pull from outside `ansible.builtin`. Pin them in `requirements.yml`:
+The bootstrap and NFS playbooks pull from outside `ansible.builtin`, and `community.sops` provides the `k3s_token` lookup (Step 10). Pin them in `requirements.yml`:
 
 ```yaml
 ---
@@ -97,6 +98,8 @@ collections:
     version: ">=13.0.0,<14.0.0"
   - name: kubernetes.core
     version: ">=6.0.0,<7.0.0"
+  - name: community.sops
+    version: ">=2.3.0,<3.0.0"
 ```
 
 Install:
@@ -128,12 +131,10 @@ all:
       node_role: agent
       emmc_size: 16
   vars:
-    ansible_user: root
+    ansible_user: dietpi
     ansible_python_interpreter: /usr/bin/python3
-    k3s_token: "{{ vault_k3s_token }}"
+    k3s_token: "{{ (lookup('community.sops.sops', inventory_dir + '/secrets/secrets.sops.yaml') | from_yaml).k3s_token }}"
     k3s_server_ip: 10.0.20.10
-    lab_gateway: 10.0.20.1
-    lab_interface: eth0
 
 k3s_server:
   hosts:
@@ -146,11 +147,8 @@ k3s_agents:
     amethyst:
 ```
 
-!!! tip "Verify the interface name before bootstrap"
-    `lab_interface: eth0` is the CM4 / DietPi default. Confirm with `ssh root@10.0.20.10 ip -br link` — if the interface is named `end0` (newer kernels) or a predictable `enxXXXX`, override the var. A wrong interface name in the netplan task (Step 6) will silently apply config to nothing and the next reboot will leave the node DHCP-only.
-
-!!! tip
-    The inventory references `{{ vault_k3s_token }}`. We create that variable in Step 10 (Secrets via Ansible Vault). Ansible only resolves Jinja at task-execution time, so as long as you complete Step 10 before running `ansible-playbook` in Step 11, this works. Just don't run any playbook before Step 10 or Ansible will error with `vault_k3s_token is undefined`.
+!!! tip "The secret resolves at runtime"
+    `k3s_token` is pulled from the sops-encrypted `secrets/secrets.sops.yaml` by the `community.sops` lookup and decrypted with your age key. Ansible only resolves Jinja at task-execution time, so create the secret (Step 10) before running `ansible-playbook` in Step 11 — otherwise the lookup fails with a missing-file or decrypt error.
 
 ## Step 5: `ansible.cfg`
 
@@ -159,9 +157,12 @@ k3s_agents:
 inventory = inventory.yml
 host_key_checking = True
 retry_files_enabled = False
-stdout_callback = yaml
-vault_password_file = ~/.ansible-vault-pass
+stdout_callback = default
+callback_result_format = yaml
 ```
+
+!!! note "Why not `stdout_callback = yaml`"
+    community.general 12.0 removed the standalone `yaml` callback. The built-in `default` callback with `callback_result_format: yaml` gives the same readable multi-line output. There's no `vault_password_file` — sops + age handles secrets (Step 10).
 
 ## Step 6: Bootstrap Playbook
 
@@ -171,10 +172,7 @@ Steps 6–8 each show one play. Append them in order into `site.yml` at the repo
 - hosts: all
   become: true
   tasks:
-    - name: Set hostname
-      ansible.builtin.hostname:
-        name: "{{ inventory_hostname }}"
-
+    # Hostname + static IP come from dietpi.txt at first boot; Ansible owns config only.
     - name: Update apt cache
       ansible.builtin.apt:
         update_cache: yes
@@ -187,29 +185,11 @@ Steps 6–8 each show one play. Append them in order into `site.yml` at the repo
 
     - name: Ensure cgroups enabled in cmdline.txt
       ansible.builtin.lineinfile:
-        path: /boot/cmdline.txt
+        path: /boot/firmware/cmdline.txt
         backrefs: yes
         regexp: '^(.*?)(\s*cgroup_enable=cpuset.*)?$'
         line: '\1 cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1'
       register: cmdline
-
-    - name: Configure netplan for Lab VLAN static IP
-      ansible.builtin.copy:
-        dest: /etc/netplan/01-lab.yaml
-        mode: '0600'
-        content: |
-          network:
-            version: 2
-            ethernets:
-              {{ lab_interface }}:
-                dhcp4: false
-                addresses: [{{ ansible_host }}/24]
-                routes:
-                  - to: default
-                    via: {{ lab_gateway }}
-                nameservers:
-                  addresses: [{{ lab_gateway }}]
-      notify: apply netplan
 
     - name: Reboot if cmdline changed
       ansible.builtin.reboot:
@@ -223,24 +203,24 @@ Steps 6–8 each show one play. Append them in order into `site.yml` at the repo
           10.0.20.11 emerald
           10.0.20.12 topaz
           10.0.20.13 amethyst
-
-  handlers:
-    - name: apply netplan
-      ansible.builtin.command: netplan apply
 ```
 
-!!! warning "First bootstrap run will move the node's IP"
-    If you used DHCP reservations in Step 2 to land each node at its planned static IP, the netplan task is a no-op transition. If you bootstrapped against a DHCP-assigned IP (the alternative path in Step 2), `netplan apply` will move the node off that IP onto its planned static IP — Ansible's SSH session will hang on that task. Update inventory to the new IP and re-run; the next run is idempotent.
+!!! note "DietPi owns node identity — Ansible sets neither hostname nor IP"
+    On DietPi the hostname (`AUTO_SETUP_NET_HOSTNAME`) and static IP (`AUTO_SETUP_NET_USESTATIC`) are set from `dietpi.txt` at first boot (R3 Step 3), and the network is managed by `ifupdown` (`/etc/network/interfaces`), not netplan. So this play deliberately has **no hostname task and no netplan task**:
 
-!!! tip "Conflicting netplan defaults"
-    DietPi minimal images may not ship a netplan file at all (it uses `/etc/network/interfaces`). DietPi non-minimal and some Ubuntu-based images do — typically `/etc/netplan/01-network-manager-all.yaml` or `50-cloud-init.yaml`. If both files set DHCP on the same interface, `netplan apply` merges them and DHCP can win. After the first bootstrap, SSH in and `ls /etc/netplan/` — if anything other than `01-lab.yaml` is present, remove it and re-run `netplan apply`.
+    - `ansible.builtin.hostname` needs systemd's dbus, which the DietPi minimal image doesn't run — the task fails with `Failed to connect to system scope bus`.
+    - A netplan file would be ignored (netplan isn't installed) and would only fight DietPi's own config.
+
+    Let DietPi own identity; Ansible owns configuration (packages, cgroups, `/etc/hosts`, k3s) — one source of truth per concern. Note the cmdline path is `/boot/firmware/cmdline.txt` on current DietPi / Raspberry Pi OS (Bookworm/Trixie), not the older `/boot/cmdline.txt`.
 
 ## Step 7: NFS Playbook
+
+The play is tagged `nfs` so you can bring the cluster up before the SSD is installed: run `ansible-playbook site.yml --skip-tags nfs` now, then `--tags nfs` once the disk is in.
 
 Before running this playbook, format and label the NFS disk on topaz **once**. Identify the disk with `lsblk` (do not assume `/dev/sda` — USB enumeration is not stable across reboots), then:
 
 ```bash
-ssh root@10.0.20.12 'mkfs.ext4 -L homelab-data /dev/sdX'
+ssh dietpi@10.0.20.12 'sudo mkfs.ext4 -L homelab-data /dev/sdX'
 ```
 
 The mount task below references the filesystem by label, so future reboots resolve it correctly even if the kernel renames the device.
@@ -248,6 +228,7 @@ The mount task below references the filesystem by label, so future reboots resol
 ```yaml
 - hosts: topaz
   become: true
+  tags: [nfs]
   tasks:
     - name: Install NFS server
       ansible.builtin.apt:
@@ -312,15 +293,15 @@ The four plays from Steps 6–8 concatenate into one file. Skeleton:
 
 ```yaml
 ---
-- name: Bootstrap all nodes (hostname, packages, cgroups, netplan, /etc/hosts)
+- name: Bootstrap all nodes (packages, cgroups, /etc/hosts)
   hosts: all
   become: true
   tasks: [...]      # from Step 6
-  handlers: [...]
 
 - name: NFS server on topaz
   hosts: topaz
   become: true
+  tags: [nfs]
   tasks: [...]      # from Step 7
   handlers: [...]
 
@@ -337,29 +318,30 @@ The four plays from Steps 6–8 concatenate into one file. Skeleton:
 
 Adding a `name:` to each play (which the verbatim Step 6–8 blocks omit for brevity) makes the `ansible-playbook` output much easier to scan.
 
-## Step 10: Secrets via Ansible Vault
+## Step 10: Secrets via sops + age
+
+The cluster token lives encrypted in `secrets/secrets.sops.yaml` and is decrypted at runtime by the `community.sops` lookup in the inventory — the **same sops + age mechanism** as the `homelab-secrets` repo (R1). That gives you one repo-side secrets tool, consistent with R5 Step 12's two-layer model (sops + age repo-side, Sealed Secrets cluster-side).
+
+Generate a strong token and write it into a sops-encrypted file (the repo-root `.sops.yaml` pins your age recipient):
 
 ```bash
-ansible-vault create group_vars/all/vault.yml
-# Add line: vault_k3s_token: <STRONG_RANDOM_TOKEN>
+sops secrets/secrets.sops.yaml
+# Add line:  k3s_token: <output of `openssl rand -hex 32`>
 ```
 
-Generate a strong token with `openssl rand -hex 32` and save it to your password manager (Bitwarden, 1Password, etc.). When Vaultwarden comes up in Runbook 7 you can migrate by exporting → importing — Vaultwarden uses the Bitwarden JSON format. Save the vault password to `~/.ansible-vault-pass` and lock it down — Ansible will warn but not refuse on world-readable permissions:
-
-```bash
-chmod 600 ~/.ansible-vault-pass
-```
+The age **private** key stays at `~/.config/sops/age/keys.txt` (never committed); the encrypted file is safe to commit. Save the token to your password manager too — losing it on top of losing ruby turns a 2-hour rebuild into a full cluster rebuild (R5 Step 11).
 
 ## Step 11: Run It
 
 ```bash
 ansible-playbook site.yml --check          # dry run
 ansible-playbook site.yml                  # apply
+ansible-playbook site.yml --skip-tags nfs  # apply without NFS (SSD not installed yet)
 ansible-playbook site.yml --limit emerald  # one node
 ```
 
 !!! tip
-    Commit everything to your `homelab-ansible` repo — including the *encrypted* `group_vars/all/vault.yml`. The plaintext vault password lives at `~/.ansible-vault-pass` (outside the repo) and never gets committed. Combined with ArgoCD watching `homelab-manifests`, you have full infrastructure-as-code: bare-metal provisioning AND application deployment, both from Git.
+    Commit everything to your `homelab-ansible` repo — including the *encrypted* `secrets/secrets.sops.yaml`. The age private key (`~/.config/sops/age/keys.txt`) lives outside the repo and never gets committed. Combined with ArgoCD watching `homelab-manifests`, you have full infrastructure-as-code: bare-metal provisioning AND application deployment, both from Git.
 
 ## Verification
 
