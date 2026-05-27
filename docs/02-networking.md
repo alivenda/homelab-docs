@@ -33,7 +33,7 @@ This table is the authoritative source for every later runbook (Terraform `unifi
 - MetalLB pool: `10.0.20.200–.250` (reserved within Lab VLAN, outside DHCP)
 
 !!! note "Why NAS sits on Lab, not Trusted"
-    NAS (`10.0.20.50`) provides NFS persistent volumes to the cluster (Velero → MinIO, Immich uploads, Plex media). Cluster ↔ NAS traffic stays intra-VLAN with no firewall hop, keeping the storage path low-latency. Trusted devices reach SMB/HTTPS via the per-service `trusted-to-nas-smb` policy (Step 3c). Dual-NICing the UGREEN DXP6800 Pro across Lab+Trusted is an alternative if SMB performance from desktops ever bottlenecks; not chosen for v1.
+    NAS (`10.0.20.50`) provides NFS persistent volumes to the cluster (Velero → MinIO, Immich uploads, Plex media). Cluster ↔ NAS traffic stays intra-VLAN with no firewall hop, keeping the storage path low-latency. Trusted devices reach SMB and the UGOS Pro web UI via the per-service `trusted-to-nas-smb` policy (Step 3c). Dual-NICing the UGREEN DXP6800 Pro across Lab+Trusted is an alternative if SMB performance from desktops ever bottlenecks; not chosen for v1.
 
 !!! note "Guest VLAN — deferred"
     2026 homelab best-practice typically adds a Guest VLAN (visitors get internet only, isolated from everything else). Skipped here to keep the initial scope tight. Easy 10-minute future addition: VLAN 40 `guest`, separate SSID with client isolation, zone-matrix Block to all other zones.
@@ -47,7 +47,7 @@ Within the static range of each VLAN. Cluster nodes are assigned via netplan on 
 | UDM | default | `10.0.0.1` | UDM default |
 | UniFi switch | default | `10.0.0.2` | UDM DHCP reservation |
 | UniFi AP | default | `10.0.0.3` | UDM DHCP reservation |
-| Turing Pi 2 BMC | default | `10.0.0.4` | UDM DHCP reservation |
+| Turing Pi 2 BMC | lab | `10.0.20.4` | UDM DHCP reservation |
 | ruby (k3s control plane, Tailscale subnet router) | lab | `10.0.20.10` | netplan on node |
 | emerald (Tailscale subnet router failover) | lab | `10.0.20.11` | netplan on node |
 | topaz | lab | `10.0.20.12` | netplan on node |
@@ -220,34 +220,60 @@ UniFi → **Settings → Policy Engine → Zone Matrix → Add Zone** (UI labels
 
 Leave the Default LAN in the built-in **Internal** zone — it's the management plane and should reach the custom zones by default.
 
-### Step 3b: Set the zone matrix defaults
+!!! note "Build zones empty first, attach networks last"
+    On a live network, **create each custom zone with the Networks field empty**, then complete Steps 3b and 3c (override and service policies) while the zones are still inert, and only attach the VLANs in a final pass. The moment a network enters a custom zone, that VLAN's traffic is subject to the new default-Block — without the override and service policies in place, you risk locking your management session out of the cluster, NAS, or BMC.
 
-In the Zone Matrix, set the default action for each zone pair as below. Intra-zone (a zone to itself) is implicitly Allow — devices on the same VLAN talk freely. Cells marked `Block*` are overridden by a specific allow policy in Step 3c.
+    If you must drive Policy Engine work from a device on Trusted (rather than directly on Default LAN), do it through the cloud UI at [unifi.ui.com](https://unifi.ui.com) so cross-VLAN matrix changes can't cut your session.
+
+### Step 3b: Override the matrix defaults that need to be Allow
+
+UniFi Network 9.x exposes the Zone Matrix as a read-out of the highest-precedence policy per cell — clicking a cell filters the policy list below it, but does **not** open an inline editor. Built-in default policies (e.g. `Block All Traffic` with policy ID `2147483647`) are immutable. The supported way to change a cell's behavior is to create an **override Allow policy**: an Any-source, Any-destination, Any-port Allow rule for the zone pair. User policies have lower IDs and take precedence over the built-in defaults.
+
+When you create the custom zones in Step 3a, UniFi defaults their outbound to **Block** to every other zone except External and Gateway. Most of these defaults already match the target matrix below; you only need overrides for the three cells that should default to Allow:
+
+| Override policy | Action | Source | Destination | Why |
+|---|---|---|---|---|
+| `internal-to-trusted-allow` | Allow | Internal (Any) | Trusted (Any) | UDM/AP/switch firmware push flows initiate from the management plane out to Trusted devices |
+| `trusted-to-internal-allow` | Allow | Trusted (Any) | Internal (Any) | Daily-driver desktop admins the switch, AP, and UDM management UI on Default LAN |
+| `trusted-to-iot-allow` | Allow | Trusted (Any) | IoT (Any) | AirPlay/Cast/HomeKit control from desktop and phones reach Apple TV; dynamic ports make whole-zone Allow simpler than enumeration |
+
+For each: UniFi → **Policy Engine → Create Policy**. Source Zone = source, Destination Zone = destination, both `Any`. Protocol = `All`. Action = `Allow`. Leave Source Port, Destination Port, and Connection State at their `Any`/`All` defaults. Save.
+
+Target end-state matrix (after Steps 3b and 3c are both applied):
 
 | From ↓ / To → | Internal | Trusted | Lab | IoT | External |
 |---|---|---|---|---|---|
-| **Internal** | (intra) | Allow | Block | Block | Allow |
-| **Trusted** | Allow | (intra) | Block* | Allow | Allow |
+| **Internal** | (intra) | Allow ← override | Block | Block | Allow |
+| **Trusted** | Allow ← override | (intra) | Block* | Allow ← override | Allow |
 | **Lab** | Block | Block | (intra) | Block | Allow |
 | **IoT** | Block | Block | Block* | (intra) | Allow |
 | **External** | Block | Block | Block | Block | (n/a) |
 
-The asymmetry around Internal is deliberate: Trusted reaches Internal (so you can admin the switch, AP, and Turing Pi BMC from your desktop), but Lab and IoT cannot (cluster workloads and smart bulbs have no business reaching the management plane). Internal → Trusted stays Allow so UDM/AP firmware update flows that initiate from the controller side still work.
+Intra-zone (a zone to itself) is L2-switched within the VLAN — it never traverses UDM's firewall, regardless of what the cell displays. Cells marked `Block*` stay Block at the matrix level; the narrow service-specific exceptions are added in Step 3c.
+
+The asymmetry around Internal is deliberate: Trusted reaches Internal (so you can admin the switch, AP, and Turing Pi BMC from your desktop), but Lab and IoT cannot (cluster workloads and smart bulbs have no business reaching the management plane).
+
+!!! note "Why these three and not others"
+    The other matrix cells (Internal→Lab, Internal→IoT, IoT→Trusted, etc.) all want Block in the target state. UniFi already defaults them to Block for new custom zones, so no override policy is needed — the built-in default does the job.
 
 ### Step 3c: Add allow policies (the explicit exceptions)
 
-UniFi → **Policy Engine → Policies → Create Policy**. Each policy overrides a zone-matrix Block for a specific flow:
+UniFi → **Policy Engine → Create Policy**. Each policy overrides a zone-matrix Block for a specific flow:
 
 | Name | From | To | Action | Protocol | Ports |
 |---|---|---|---|---|---|
-| trusted-to-lab-services | Trusted | Lab | Allow | TCP | `80, 443, 22, 6443` |
-| trusted-to-nas-smb | Trusted | `10.0.20.50` | Allow | TCP | `445, 2049, 443` |
+| trusted-to-lab-services | Trusted | Lab | Allow | TCP | `22, 80, 443, 6443` |
+| trusted-to-nas-smb | Trusted | `10.0.20.50` | Allow | TCP | `445, 9999` |
+| trusted-to-plex | Trusted | `10.0.20.50` | Allow | TCP | `32400` |
 | iot-to-home-assistant | IoT | Lab | Allow | TCP | `8123` |
-| iot-to-plex | IoT | `10.0.20.50` | Allow | TCP, UDP | `32400/tcp`, `32410-32414/udp` |
+| iot-to-plex-tcp | IoT | `10.0.20.50` | Allow | TCP | `32400` |
+| iot-to-plex-udp | IoT | `10.0.20.50` | Allow | UDP | `32410-32414` |
 
-Four policies plus the zone matrix replace what used to be 10+ rules in the legacy UI. Anything not in a policy falls through to the matrix default (Block for the inter-zone pairs above).
+Six policies plus the zone matrix replace what used to be 10+ rules in the legacy UI. Anything not in a policy falls through to the matrix default (Block for the inter-zone pairs above). UniFi's policy form shares the port field across protocols, so `iot-to-plex` is split into `-tcp` and `-udp` policies — the two protocols use different port ranges (TCP `32400` for the Plex API; UDP `32410-32414` for GDM discovery).
 
-The two NAS-targeted policies (`trusted-to-nas-smb`, `iot-to-plex`) scope the destination to a single IP (`10.0.20.50`) rather than the whole Lab zone — narrowest blast radius. SMB/NFS/HTTPS for desktop access, the Plex port range for AirPlay handoff from the Apple TV to Plex on the NAS.
+Three of these (`trusted-to-nas-smb`, `trusted-to-plex`, `iot-to-plex-*`) scope the destination to a single IP (`10.0.20.50`) rather than the whole Lab zone — narrowest blast radius. Ports: `445` (SMB) and `9999` (UGOS Pro web UI) for desktop NAS access, `32400` for Plex web UI from desktop, `32400/tcp` + `32410-32414/udp` for Apple TV streaming.
+
+UniFi auto-generates a matching `(Return)` policy for every Allow rule (it's stateful by default) — expect the policy count to roughly double after Step 3c.
 
 !!! note "Established/related is automatic"
     UniFi's Policy Engine is stateful — once a connection is allowed in one direction, return traffic is allowed automatically. You don't need a separate "allow established/related" rule (the legacy `LAN IN` firewall did require this). This is why "Trusted → Lab Allow + Lab → Trusted Block" works as expected: your desktop can reach the cluster API, the response gets back, but the cluster cannot initiate a connection to your desktop.
@@ -260,6 +286,16 @@ The two NAS-targeted policies (`trusted-to-nas-smb`, `iot-to-plex`) scope the de
 
 !!! note "UDM is in the data path for inter-VLAN traffic"
     Because UDM is the L3 router between VLANs, every Trusted → Lab service request flows through UDM. Performance is fine for homelab scale (gigabit class), but it means firewall policies apply on every request and UDM CPU sees the load. The alternative (MetalLB in BGP mode with UDM peering) eliminates this but requires UDM Pro/SE with BGP enabled.
+
+!!! note "Plex Server: tell it which client subnets count as LAN"
+    Placing Plex Server (on the NAS in Lab) and Plex clients (Apple TV on IoT, desktop on Trusted) on different VLANs means Plex Server doesn't automatically recognize cross-VLAN clients as "local." Clients fall back to plex.tv relay or fail outright — Infuse on Apple TV is a common casualty.
+
+    Fix is Plex-side, not firewall-side: in Plex Web UI → **Settings → Network → "List of IP addresses and networks that are allowed without auth"**, add the Plex client subnets — `10.0.10.0/24, 10.0.30.0/24` for this setup. Plex then advertises its local IP to clients on those subnets and treats their streams as LAN-quality. The firewall policies above are correct regardless; this is just Plex's own LAN-detection logic.
+
+!!! note "Forward-looking: Lab → IoT for Home Assistant local control"
+    When Home Assistant is deployed (R6+), the best-practice integration for Philips Hue, Shelly, and other local-control smart devices is HA talking to them directly on the local network — faster and works offline, unlike cloud routing. That's a **Lab → IoT** flow, which the matrix above blocks by default.
+
+    Add a narrowly-scoped policy then (e.g. `lab-to-hue-bridge`: Lab → `10.0.30.x` of the bridge/controller, TCP `80` and/or `443`). Scope to the specific device IP, not whole IoT zone, to avoid HA being able to reach the printer's web UI or other unrelated IoT devices.
 
 ### Step 3d: DNS enforcement (forward-looking)
 
@@ -410,14 +446,14 @@ Tailscale is easier (NAT traversal handled, no port forward needed). WireGuard o
 - [ ] IPv6 disabled on both WAN and every VLAN
 - [ ] SSIDs `home` (Trusted) and `home-iot` (IoT) created and assigned
 - [ ] Wired ports for home desktop and all four cluster nodes set to the right Native VLAN
-- [ ] Policy Engine: three custom zones (Trusted, Lab, IoT), zone matrix Block-by-default between custom pairs, four allow policies (trusted→lab services, trusted→nas SMB, iot→HA, iot→Plex)
+- [ ] Policy Engine: three custom zones (Trusted, Lab, IoT) with networks attached only after policies are in place, three override Allow policies (Internal↔Trusted, Trusted→IoT), six service-specific Allow policies (trusted→lab services, trusted→nas SMB, trusted→Plex, iot→HA, iot→Plex TCP, iot→Plex UDP)
 - [ ] From a Trusted device: `https://10.0.10.1` loads UDM UI
 - [ ] From a Trusted device: `curl https://10.0.20.10:6443` reaches ruby k3s API
 - [ ] From a Trusted device: arbitrary high-port connection to ruby (e.g. `nc -zv 10.0.20.10 9999`) is **refused** — proves the policy restricts to listed ports, not any
 - [ ] From a Trusted device: SMB mount of `\\10.0.20.50\<share>` succeeds (proves `trusted-to-nas-smb`)
 - [ ] From an IoT device: `ping 10.0.20.10` fails (no policy allows it)
 - [ ] From an IoT device: `curl http://<HA-IP>:8123` succeeds (iot-to-HA policy)
-- [ ] From the Apple TV: AirPlay handoff to Plex on the NAS works (proves mDNS reflector + `iot-to-plex` + IGMP snooping all wired up correctly)
+- [ ] From the Apple TV: AirPlay handoff to Plex on the NAS works via Infuse and/or the Plex app (proves mDNS reflector + `iot-to-plex-tcp` + `iot-to-plex-udp` + IGMP snooping all wired up correctly, plus Plex Server's LAN Networks setting includes `10.0.30.0/24`)
 - [ ] From a phone on `home` SSID: AirPlay from Photos / Music finds Apple TV in the picker and casts successfully — proves mDNS reflector is working
 - [ ] *(after Pi-hole deploy)* From any client: `dig @8.8.8.8 example.com` times out (proves `dns-public-block` policy); `dig @<pi-hole-ip> example.com` succeeds
 - [ ] From a Trusted device with Tailscale connected via cellular: `ping 10.0.20.10` over Tailscale works
