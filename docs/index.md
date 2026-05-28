@@ -19,32 +19,42 @@ A 4-node k3s cluster running self-hosted Git (Forgejo), password manager (Vaultw
 
 ## How the runbooks fit together
 
-[Runbook 0](00-prerequisites.md) sets the mental model — read it first. From there the path is:
+[Runbook 0](00-prerequisites.md) sets the mental model — read it first. The guide is split into **Foundation → Infrastructure → Apps**:
 
 ```
+─── Foundation ──────────────────────────────────────────────
 R0 Prerequisites
-  ↓
+ ↓
 R1 Git foundation (5 repos, sops, pre-commit)
-  ↓
-R2 UDM VLANs                   ← Tailscale step waits on R3
-  ↓
-R3 Flash DietPi to 4× CM4      ← step 5 (SSD prep) superseded by R4
-  ↓
-R4 Ansible (replaces R3 step 5, installs k3s)
-  ↓
-R5 k3s bring-up (MetalLB, NFS storage, ArgoCD, Sealed Secrets)
-  ├─→ R6 Traefik HTTPS (DNS-01 via Cloudflare)
-  │    ├─→ R7 Vaultwarden  ← first service; becomes your password manager for the rest
-  │    ├─→ R12 Nextcloud
-  │    ├─→ R14 Paperless-ngx
-  │    └─→ R15 Home Assistant
-  ├─→ R8 Terraform (Cloudflare DNS + UniFi IaC; retroactive)
-  ├─→ R9 Prometheus + Grafana + Loki
-  ├─→ R10 Restic + Velero backups
-  └─→ R11 Forgejo
-       └─→ R16 Woodpecker CI/CD
 
-R13 Immich runs on the NAS via Docker (not on k3s — see runbook for why).
+─── Infrastructure (platform + operator tooling) ────────────
+R2 UDM VLANs                   ← Tailscale step waits on R3
+ ↓
+R3 Flash DietPi to 4× CM4      ← step 5 (SSD prep) superseded by R4
+ ↓
+R4 Ansible (replaces R3 step 5, installs k3s)
+ ↓
+R5 k3s bring-up (MetalLB, NFS storage, ArgoCD, Sealed Secrets)
+ ↓
+R6 Traefik HTTPS (DNS-01 via Cloudflare)
+ ↓
+R7 Vaultwarden                 ← cred store for every later runbook
+ ↓
+R8 Terraform (Cloudflare DNS + UniFi IaC; retroactive)
+ ↓
+R9 Prometheus + Grafana + Loki
+ ↓
+R10 Restic + Velero backups
+ ↓
+R11 Forgejo
+ ↓
+R12 Woodpecker CI/CD
+
+─── Apps (user-facing services) ─────────────────────────────
+ ├─→ R13 Nextcloud       (cluster)
+ ├─→ R14 Paperless-ngx   (cluster)
+ ├─→ R15 Immich          (NAS-Docker — not on k3s, see runbook for why)
+ └─→ R16 Home Assistant  (NAS-Docker)
 ```
 
 ## How to use this guide

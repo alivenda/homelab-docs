@@ -27,13 +27,15 @@ Create these before starting Runbook 1. All free tiers are sufficient.
 
 ## Dependency Map
 
-Solid arrows are hard dependencies; the branches at R5 can be done in any order, though the recommended linear path is **R5 → R6 → R7 (Vaultwarden) → R8 / R9 / R10 / R11**.
+The guide is split into **Foundation → Infrastructure → Apps**. Infrastructure is the recommended linear path: each runbook unblocks the next. Apps (R13–R16) only hard-depend on R6 (Traefik) — the order shown is convenience, not requirement.
 
 ```
+─── Foundation ──────────────────────────────────────────────
 R0 Prerequisites + Mental Model
  ↓
 R1 Git / GitOps foundation (sops, pre-commit, 5 repos)
- ↓
+
+─── Infrastructure (platform + operator tooling) ────────────
 R2 UDM VLANs                  ← Tailscale step deferred until R3 done
  ↓
 R3 Flash DietPi to 4× CM4     ← step 5 superseded by R4 Ansible
@@ -41,18 +43,26 @@ R3 Flash DietPi to 4× CM4     ← step 5 superseded by R4 Ansible
 R4 Ansible: nodes, NFS, k3s install (replaces R3 step 5)
  ↓
 R5 k3s bring-up: MetalLB, NFS storage class, ArgoCD, Sealed Secrets
- ├─→ R6 Traefik HTTPS (DNS-01 via Cloudflare)
- │    ├─→ R7 Vaultwarden    ← first service; becomes your password manager for the rest
- │    ├─→ R12 Nextcloud
- │    ├─→ R14 Paperless-ngx
- │    └─→ R15 Home Assistant
- ├─→ R8 Terraform (Cloudflare DNS + UniFi IaC; retroactive)
- ├─→ R9 Prometheus + Grafana + Loki
- ├─→ R10 Restic + Velero backups
- └─→ R11 Forgejo
-      └─→ R16 Woodpecker CI/CD (build → push → bump manifest)
+ ↓
+R6 Traefik HTTPS (DNS-01 via Cloudflare)
+ ↓
+R7 Vaultwarden                ← cred store; becomes the password manager for every later runbook
+ ↓
+R8 Terraform (Cloudflare DNS + UniFi IaC; retroactive)
+ ↓
+R9 Prometheus + Grafana + Loki
+ ↓
+R10 Restic + Velero backups
+ ↓
+R11 Forgejo                   ← self-hosted Git host
+ ↓
+R12 Woodpecker CI/CD          ← build → push → bump manifest
 
-R13 Immich runs on the NAS via Docker, not on the k3s cluster.
+─── Apps (user-facing services) ─────────────────────────────
+ ├─→ R13 Nextcloud       (cluster)
+ ├─→ R14 Paperless-ngx   (cluster)
+ ├─→ R15 Immich          (NAS-Docker)
+ └─→ R16 Home Assistant  (NAS-Docker)
 ```
 
 ## How to Use This Guide

@@ -1,4 +1,4 @@
-# Runbook 16: CI/CD with Forgejo and Woodpecker CI
+# Runbook 12: CI/CD with Forgejo and Woodpecker CI
 
 End-to-end pipeline: push code, auto-build container images, deploy to k3s via GitOps.
 
