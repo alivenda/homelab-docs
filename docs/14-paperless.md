@@ -23,7 +23,7 @@ kubectl create namespace paperless
 
 kubectl create secret generic paperless-credentials \
   --namespace paperless \
-  --from-literal=admin-password="$PAPERLESS_ADMIN_PW" \
+  --from-literal=PAPERLESS_ADMIN_PASSWORD="$PAPERLESS_ADMIN_PW" \
   --from-literal=db-password="$PAPERLESS_DB_PW" \
   --dry-run=client -o yaml \
   | kubeseal --controller-name=sealed-secrets-controller \
@@ -67,8 +67,10 @@ redis:
   enabled: true
 service:
   type: ClusterIP
+# Pin to the heavy-workload worker (emerald) — OCR spikes must not
+# coexist with control-plane pods on ruby. See R0 resource budget + R5 Step 4.
 nodeSelector:
-  storage: large
+  workload: heavy
 ```
 
 Install:

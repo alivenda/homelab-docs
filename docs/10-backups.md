@@ -127,7 +127,10 @@ restic init
 
 ## Backup Script
 
-Run on ruby (where `kubectl` works against the cluster). Comment out the lines for services you haven't deployed yet — pulling a DB from a pod that doesn't exist will fail the whole script under `set -euo pipefail`.
+Run on ruby (where `kubectl` works against the cluster). Comment out the lines for services you haven't deployed yet — the `kubectl get pod` guard around each block skips a service whose pod is absent, so commenting out keeps the intent explicit.
+
+!!! warning "Verify the pod names against your charts"
+    The guards below hard-code StatefulSet-style names (`vaultwarden-0`, `nextcloud-postgresql-0`, `paperless-db-0`). If a chart version deploys the DB as a Deployment or under a different release name, the guard silently evaluates false and that database is **skipped without error** — the most dangerous backup failure mode. Confirm each name with `kubectl get pods -n <namespace>` before trusting the script, and prefer a label selector (e.g. `kubectl get pod -n nextcloud -l app.kubernetes.io/name=postgresql -o name`) if your chart's pod names aren't stable.
 
 ```bash
 #!/bin/bash
