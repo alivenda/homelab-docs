@@ -1,9 +1,16 @@
 site_name: Homelab Runbooks
 site_description: Turing Pi 2 + 4x CM4 k3s homelab — from zero to self-hosted everything
-site_url: https://docs.example.com/
-repo_url: https://github.com/yourusername/homelab-docs
-repo_name: homelab-docs
+site_url: https://alivenda.github.io/homelab-docs/
+repo_url: https://github.com/alivenda/homelab-docs
+repo_name: alivenda/homelab-docs
 edit_uri: edit/main/docs/
+
+# Fail the build (with `mkdocs build --strict`) on broken internal links and
+# anchors. Without this, anchor checks are INFO-level and slip through CI.
+validation:
+  links:
+    not_found: warn
+    anchors: warn
 
 theme:
   name: material

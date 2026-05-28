@@ -27,3 +27,7 @@ kubeconfig
 *.bak
 *.swp
 *.log
+
+#MkDocs
+site/
+.venv/
