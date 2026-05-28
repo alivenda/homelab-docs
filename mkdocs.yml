@@ -66,23 +66,26 @@ plugins:
 
 nav:
   - Home: index.md
-  - Runbook 0 — Prerequisites: 00-prerequisites.md
-  - Runbook 1 — Git: 01-git.md
-  - Runbook 2 — Networking: 02-networking.md
-  - Runbook 3 — Turing Pi: 03-turing-pi.md
-  - Runbook 4 — Ansible: 04-ansible.md
-  - Runbook 5 — Kubernetes: 05-kubernetes.md
-  - Runbook 6 — Traefik: 06-traefik.md
-  - Runbook 7 — Vaultwarden: 07-vaultwarden.md
-  - Runbook 8 — Terraform: 08-terraform.md
-  - Runbook 9 — Observability: 09-observability.md
-  - Runbook 10 — Backups: 10-backups.md
-  - Runbook 11 — Forgejo: 11-forgejo.md
-  - Runbook 12 — Nextcloud: 12-nextcloud.md
-  - Runbook 13 — Immich: 13-immich.md
-  - Runbook 14 — Paperless-ngx: 14-paperless.md
-  - Runbook 15 — Home Assistant: 15-home-assistant.md
-  - Runbook 16 — CI/CD: 16-cicd.md
+  - Foundation:
+      - Runbook 0 — Prerequisites: 00-prerequisites.md
+      - Runbook 1 — Git: 01-git.md
+  - Infrastructure:
+      - Runbook 2 — Networking: 02-networking.md
+      - Runbook 3 — Turing Pi: 03-turing-pi.md
+      - Runbook 4 — Ansible: 04-ansible.md
+      - Runbook 5 — Kubernetes: 05-kubernetes.md
+      - Runbook 6 — Traefik: 06-traefik.md
+      - Runbook 7 — Vaultwarden: 07-vaultwarden.md
+      - Runbook 8 — Terraform: 08-terraform.md
+      - Runbook 9 — Observability: 09-observability.md
+      - Runbook 10 — Backups: 10-backups.md
+      - Runbook 11 — Forgejo: 11-forgejo.md
+      - Runbook 12 — CI/CD: 12-cicd.md
+  - Apps:
+      - Runbook 13 — Nextcloud: 13-nextcloud.md
+      - Runbook 14 — Paperless-ngx: 14-paperless.md
+      - Runbook 15 — Immich: 15-immich.md
+      - Runbook 16 — Home Assistant: 16-home-assistant.md
   - Version History: version-history.md
 
 extra:

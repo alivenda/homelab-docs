@@ -1,4 +1,4 @@
-# Runbook 13: Immich
+# Runbook 15: Immich
 
 Self-hosted photo and video management.
 
