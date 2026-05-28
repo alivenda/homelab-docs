@@ -68,9 +68,11 @@ curl -sfL https://get.k3s.io | sh -s - \
   --disable traefik \
   --token "$K3S_TOKEN" \
   --node-ip 10.0.20.10 \
-  --disable-cloud-controller \
   --disable local-storage
 ```
+
+!!! note "Disable servicelb, but keep the cloud controller"
+    We disable `servicelb` (MetalLB replaces it) but **do not** pass `--disable-cloud-controller`. With servicelb disabled, that flag takes effect, and because k3s still runs the kubelet with `cloud-provider=external`, nodes get the `node.cloudprovider.kubernetes.io/uninitialized=true:NoSchedule` taint with nothing to remove it — pods won't schedule unless you deploy your own external CCM ([k3s#6554](https://github.com/k3s-io/k3s/issues/6554)). Keep the embedded cloud controller; it clears that taint and assigns node addresses.
 
 !!! note "Why `--cluster-init`"
     Without `--cluster-init`, k3s defaults to a sqlite datastore (via kine). `--cluster-init` initializes the embedded etcd datastore instead — required for the `k3s etcd-snapshot` flow in Step 10. The CPU/memory overhead is modest on a CM4 with 8 GB RAM, and you can join additional server nodes later for HA without rebuilding.
