@@ -40,9 +40,6 @@ ports:
           to: websecure
           scheme: https
           permanent: true
-  websecure:
-    tls:
-      enabled: true
 service:
   type: LoadBalancer
   # Kubernetes deprecated spec.loadBalancerIP in 1.24+.
@@ -68,6 +65,9 @@ env:
 
 !!! note "Source of truth"
     This `values.yaml` lives at `homelab-manifests/apps/traefik/values.yaml` and includes a pinned chart version. Apply via `helm upgrade --install` against a clone of that repo. The block above is shown inline for learning context — edit the repo, not your local copy.
+
+!!! note "Why no `websecure:` block"
+    The chart default already has `ports.websecure.http.tls.enabled: true` — TLS is on for the websecure entryPoint without configuration. Defining `ports.websecure.tls.enabled: true` directly is the wrong nesting and the chart's JSON schema rejects it as an "additional property" on `ports.websecure`; TLS config nests under `http`.
 
 !!! tip "Iterate against Let's Encrypt staging first"
     Prod LE caps you at 5 duplicate certs per week per registered domain. While you're tweaking IngressRoutes, add `--certificatesresolvers.cloudflare.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory` as a fifth `additionalArguments` entry. Staging certs aren't browser-trusted but don't count against the prod quota. When everything works, remove the line and `kubectl exec -n traefik deploy/traefik -- rm /data/acme.json` to force re-issuance against prod.
