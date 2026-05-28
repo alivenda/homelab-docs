@@ -24,9 +24,11 @@ sudo pacman -S kubectl
 # Ubuntu / Debian (snap)
 sudo snap install kubectl --classic
 
-# Pull the kubeconfig from ruby and rewrite the server URL
+# Pull the kubeconfig from ruby and rewrite the server URL.
+# Log in as dietpi (root login is disabled in R4); k3s wrote the file
+# world-readable via --write-kubeconfig-mode 644, so dietpi can read it.
 mkdir -p ~/.kube
-scp root@10.0.20.10:/etc/rancher/k3s/k3s.yaml ~/.kube/config
+scp dietpi@10.0.20.10:/etc/rancher/k3s/k3s.yaml ~/.kube/config
 sed -i 's/127.0.0.1/10.0.20.10/' ~/.kube/config
 chmod 600 ~/.kube/config
 
@@ -97,10 +99,13 @@ ruby is the control plane; the other three are workers. Use labels to express bo
 kubectl label nodes ruby node-role.kubernetes.io/control-plane=true storage=large
 
 # Workers
-kubectl label nodes emerald kubernetes.io/role=worker storage=large
+kubectl label nodes emerald kubernetes.io/role=worker storage=large workload=heavy
 kubectl label nodes topaz kubernetes.io/role=worker storage=small role=nfs
 kubectl label nodes amethyst kubernetes.io/role=worker storage=small
 ```
+
+!!! note "`workload=heavy` keeps OCR/build spikes off the control plane"
+    `node-role.kubernetes.io/control-plane=true` on ruby is only a **label**, not a taint — k3s does not taint its server by default, so a `nodeSelector: storage: large` (which matches both ruby and emerald) can still land a pod on ruby. The two spiky workloads R0 warns about — Paperless OCR (R14) and Woodpecker builds (R12) — target `workload=heavy` instead, which is only on emerald. If you'd rather hard-fence ruby, taint it (`kubectl taint nodes ruby node-role.kubernetes.io/control-plane=:NoSchedule`), but that also evicts the lighter app pods this build intentionally runs on ruby.
 
 ## Step 5: Install Helm
 

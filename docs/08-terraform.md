@@ -81,12 +81,13 @@ Two reasonable options:
       backend "s3" {
         bucket                      = "tfstate"
         key                         = "homelab/cloudflare.tfstate"
-        endpoint                    = "http://10.0.20.50:9000"  # NAS (R2 static-IP table)
+        endpoints                   = { s3 = "http://10.0.20.50:9000" }  # NAS (R2 static-IP table)
         region                      = "us-east-1"
+        use_path_style              = true
         skip_credentials_validation = true
         skip_metadata_api_check     = true
         skip_region_validation      = true
-        force_path_style            = true
+        skip_requesting_account_id  = true
       }
     }
     ```
@@ -169,7 +170,7 @@ provider "unifi" {
 
 ## Secret Handling
 
-Use sops + age ([Runbook 1 Step 5](01-git.md#step-5-secret-management-with-sops--age)). Tfvars are encrypted as `secrets.enc.tfvars`, which is allowed through the `.gitignore` via the `!*.enc.tfvars` exception.
+Use sops + age ([Runbook 1 Step 5](01-git.md#step-5-secret-management-with-sops-age)). Tfvars are encrypted as `secrets.enc.tfvars`, which is allowed through the `.gitignore` via the `!*.enc.tfvars` exception.
 
 ## Workflow
 
@@ -199,5 +200,5 @@ rm secrets.tfvars  # plaintext gone again
     # Expected: 'No changes. Your infrastructure matches the configuration.'
     ```
 
-- [ ] Cloudflare zone reflects Terraform state: visit dash.cloudflare.com — the records for `vault` / `nextcloud` / `forgejo` / etc. all match `var.traefik_ip`.
+- [ ] Cloudflare zone reflects Terraform state: visit dash.cloudflare.com — the records for `vault` / `nextcloud` / `git` / etc. all match `var.traefik_ip`.
 - [ ] If you've wired Woodpecker CI for Terraform: pushing a tfvars change triggers a `terraform plan` job whose output appears in the Woodpecker UI.

@@ -40,7 +40,7 @@ This table is the authoritative source for every later runbook (Terraform `unifi
 
 ### Static IP allocations
 
-Within the static range of each VLAN. Cluster nodes are assigned via netplan on the node (not UDM DHCP reservation) so they boot deterministically even if UDM is down.
+Within the static range of each VLAN. Cluster nodes get their static IP from `dietpi.txt` at first boot (R3 Step 3, via DietPi's `ifupdown` — not netplan, and not a UDM DHCP reservation) so they boot deterministically even if UDM is down.
 
 | Device | VLAN | IP | Assignment |
 |---|---|---|---|
@@ -48,10 +48,10 @@ Within the static range of each VLAN. Cluster nodes are assigned via netplan on 
 | UniFi switch | default | `10.0.0.2` | UDM DHCP reservation |
 | UniFi AP | default | `10.0.0.3` | UDM DHCP reservation |
 | Turing Pi 2 BMC | lab | `10.0.20.4` | UDM DHCP reservation |
-| ruby (k3s control plane, Tailscale subnet router) | lab | `10.0.20.10` | netplan on node |
-| emerald (Tailscale subnet router failover) | lab | `10.0.20.11` | netplan on node |
-| topaz | lab | `10.0.20.12` | netplan on node |
-| amethyst | lab | `10.0.20.13` | netplan on node |
+| ruby (k3s control plane, Tailscale subnet router) | lab | `10.0.20.10` | dietpi.txt static |
+| emerald (Tailscale subnet router failover) | lab | `10.0.20.11` | dietpi.txt static |
+| topaz | lab | `10.0.20.12` | dietpi.txt static |
+| amethyst | lab | `10.0.20.13` | dietpi.txt static |
 | UGREEN DXP6800 Pro NAS | lab | `10.0.20.50` | UDM DHCP reservation |
 | Apple TV | iot | `10.0.30.10` | UDM DHCP reservation |
 

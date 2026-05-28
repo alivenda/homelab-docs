@@ -7,7 +7,7 @@ End-to-end pipeline: push code, auto-build container images, deploy to k3s via G
 | **Difficulty** | Intermediate–Advanced |
 | **Time Estimate** | 2–3 hours |
 | **Runs On** | k3s cluster (32 GB node) |
-| **Depends On** | Runbook 5, 6, 10 |
+| **Depends On** | Runbook 5, 6, 10, 11 |
 
 ## Step 1: OAuth2 App in Forgejo
 
@@ -35,9 +35,9 @@ kubectl create namespace woodpecker
 
 kubectl create secret generic woodpecker-secrets \
   --namespace woodpecker \
-  --from-literal=forgejo-client-id="<CLIENT_ID_FROM_STEP_1>" \
-  --from-literal=forgejo-client-secret="<CLIENT_SECRET_FROM_STEP_1>" \
-  --from-literal=agent-secret="$WOODPECKER_AGENT_SECRET" \
+  --from-literal=WOODPECKER_FORGEJO_CLIENT="<CLIENT_ID_FROM_STEP_1>" \
+  --from-literal=WOODPECKER_FORGEJO_SECRET="<CLIENT_SECRET_FROM_STEP_1>" \
+  --from-literal=WOODPECKER_AGENT_SECRET="$WOODPECKER_AGENT_SECRET" \
   --dry-run=client -o yaml \
   | kubeseal --controller-name=sealed-secrets-controller \
              --controller-namespace=sealed-secrets \
@@ -77,8 +77,10 @@ agent:
     - woodpecker-secrets
   replicaCount: 2
 
+# Pin to the heavy-workload worker (emerald) — build spikes must not
+# coexist with control-plane pods on ruby. See R0 resource budget + R5 Step 4.
 nodeSelector:
-  storage: large
+  workload: heavy
 ```
 
 When you seal the credentials in Step 3, name the keys to match the Woodpecker env vars (`WOODPECKER_FORGEJO_CLIENT`, `WOODPECKER_FORGEJO_SECRET`, `WOODPECKER_AGENT_SECRET`) so `envFrom` wires them directly — no per-key mapping needed.
