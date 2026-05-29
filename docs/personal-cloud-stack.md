@@ -167,7 +167,17 @@ This is the automation layer that feeds Plex. Without it, adding new shows/movie
 | **Seerr** (Overseerr/Jellyseerr) | Request portal UI | ~200–300 MB |
 | **qBittorrent** or **SABnzbd** | Actual downloading | ~100–300 MB |
 
-⚠️ Running this on the NAS adds 1–2 GB to an already-tight 8 GB (Plex + Immich + HA already consume 3.5–6.5 GB). **Run on cluster** instead, pointing to NFS-mounted Plex library. This is a supported pattern — all four arr apps are happy scanning NFS paths.
+**At 8 GB NAS RAM:** run on the cluster pointing to NFS — all four arr apps handle NFS paths fine and this keeps the NAS comfortable under load.
+
+**At 16 GB NAS RAM (recommended):** run everything on the NAS via Docker Compose. This is the better architecture because Sonarr/Radarr can **hardlink** completed downloads directly into the Plex library — an instant inode rename rather than a full NFS copy. Keep all paths under a single root (e.g. `/data/downloads/` and `/data/media/`) so hardlinks work across the same filesystem.
+
+```
+/data/
+  downloads/complete/    ← qBittorrent drops files here
+  media/movies/          ← Radarr library path
+  media/tv/              ← Sonarr library path
+  media/music/           ← Lidarr library path
+```
 
 **Replaces:** Manual downloading, commercial indexer subscriptions, PlexAmp searches that return nothing.
 
