@@ -9,10 +9,11 @@ A comprehensive review of every awesome-selfhosted category mapped against your 
 | Platform | Specs | Already Running |
 |----------|-------|-----------------|
 | **Cluster (4× CM4)** | ARM64, 32 GB total RAM, 1 TB NFS | Traefik, ArgoCD, Prometheus/Grafana/Loki, Vaultwarden, Nextcloud, Paperless-ngx, Forgejo, Woodpecker |
-| **NAS (DXP6800 Pro)** | x86-64, **8 GB RAM** (expandable) | Plex, Immich, Home Assistant |
+| **NAS (DXP6800 Pro)** | x86-64, **8 GB RAM** (expandable) | Plex, Immich |
+| **Home Assistant node (Pi 4)** | ARM64, dedicated | Home Assistant OS |
 | **DNS nodes (2× Pi Zero 2 W)** | ARM64, 512 MB RAM each | AdGuard Home (primary + secondary) |
 
-> **NAS RAM is a meaningful constraint.** At 8 GB, Plex + Immich + Home Assistant can consume 3.5–6.5 GB under load, leaving 1.5–4.5 GB headroom. Enough to run the Arr stack locally (if you prefer), but not enough for Ollama or Frigate without a RAM upgrade. The DXP6800 Pro accepts standard DDR4 SO-DIMMs — upgrading to 16 GB (~$35–50) opens up AI workloads and makes the NAS more comfortable overall. This doc marks services that require the upgrade `⚠️ NAS RAM upgrade recommended`.
+> **NAS RAM is a meaningful constraint.** At 8 GB, Plex + Immich can consume 2.5–6 GB under load, leaving 2–5.5 GB headroom. Enough to run the Arr stack locally (if you prefer), but not enough for Ollama without a RAM upgrade. The DXP6800 Pro accepts standard DDR5 SO-DIMMs — upgrading to 16 GB (~$35–50) opens up AI workloads and makes the NAS more comfortable overall. This doc marks services that require the upgrade `⚠️ NAS RAM upgrade recommended`.
 
 ### Cluster RAM Budget
 
@@ -53,7 +54,7 @@ Headroom is comfortable. OCR (Paperless) and CI builds (Woodpecker) are still th
 | File sync + Calendar + Contacts | Nextcloud ✅ | R13; also covers Notes app, Bookmarks app, Collabora |
 | Document archive | Paperless-ngx ✅ | R14 |
 | Photo/video library | Immich ✅ | R15 (NAS) |
-| Smart home hub | Home Assistant ✅ | R16 (NAS) |
+| Smart home hub | Home Assistant ✅ | R16 (dedicated Pi 4, Home Assistant OS) |
 | Password manager + TOTP | Vaultwarden ✅ | R7; also generates 2FA codes natively — no separate app needed. If you want strict separation between passwords and 2FA, [2FAuth](https://2fauth.app) is the self-hosted option. |
 | Media streaming | Plex ✅ | NAS |
 | Music streaming | Plexamp ✅ | NAS |
@@ -379,7 +380,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Ticketing** | ⚪ Skip | Personal use; Forgejo issues serve this |
 | **Time Tracking** | 🟡 Kimai (~200 MB) if freelance; Wakapi for coding stats | |
 | **URL Shorteners** | 🟡 Shlink if you share links publicly | ~100 MB, PHP, ARM64 ✅ |
-| **Video Surveillance** | 🟡 Frigate | See note below |
+| **Video Surveillance** | ✅ Ubiquiti Protect (UDM + dedicated drive) | Handled at the network layer; no self-hosted NVR needed |
 | **VPN** | ✅ Tailscale | Redirects to awesome-sysadmin — solved |
 | **Web Servers** | ✅ Traefik | |
 | **Wikis** | 🟡 BookStack | See Part 4 |
@@ -404,14 +405,6 @@ If you want a self-hosted chat replacing iMessage/WhatsApp for friends/family: *
 
 If it's just for yourself: Signal is fine. Don't deploy a chat server unless you have people who'll use it.
 
-### Frigate — Video Surveillance
-
-**Frigate** (Python, Docker, MIT, ARM64 ✅) runs AI-based motion detection locally. You need:
-1. IP cameras (RTSP stream)
-2. A Coral TPU or GPU for real-time inference (CM4 lacks this; NAS may have it)
-3. Significant storage for recordings (your NFS fits)
-
-On CM4 without Coral: CPU inference only, which is slow and power-hungry. On NAS x86 without dedicated hardware: better, but still taxing. **Add Frigate only if you have cameras and are willing to add a Coral USB accelerator.**
 
 ### Collabora Online (Office Suite)
 
@@ -456,12 +449,10 @@ If starting fresh, add services in this sequence:
 At 8 GB RAM, your NAS can sustain:
 - Plex (0.5–2 GB)
 - Immich (2–4 GB)
-- Home Assistant (0.5 GB)
-- **Total: 3–6.5 GB → 1.5–4.5 GB headroom**
+- **Total: 2.5–6 GB → 2–5.5 GB headroom**
 
-The Arr stack (~1–1.5 GB total) *can* run on the NAS at 8 GB, but it will be tight during Plex transcode + Immich ML processing spikes. Running arr on the cluster (pointing to NFS) is safer and keeps the NAS headroom available. Upgrading to **16 GB DDR4 SO-DIMM** (~$35–50) makes everything comfortable and unlocks:
+The Arr stack (~1–1.5 GB total) *can* run on the NAS at 8 GB, but it will be tight during Plex transcode + Immich ML processing spikes. Running arr on the cluster (pointing to NFS) is safer and keeps the NAS headroom available. Upgrading to **16 GB DDR5 SO-DIMM** (~$35–50) makes everything comfortable and unlocks:
 - Arr stack on NAS (direct disk access, no NFS hop for downloads)
-- Frigate (if adding cameras + Coral USB)
 - Ollama with small models (Phi-3 mini, Llama 3.2 3B)
 - Jellyfin as a hardware-transcoding backup to Plex
 
