@@ -346,52 +346,9 @@ Install Tailscale on two cluster nodes (ruby + emerald) so the subnet router sur
 !!! warning "Requires ruby and emerald"
     This step needs the first two cluster nodes booted and reachable. If you have not finished Runbook 3 yet, complete Steps 1–4 of this runbook now (UDM, devices, firewall, UDM access) and return for Step 5 after the cluster nodes are flashed.
 
-### Step 5a: Generate a pre-authorized auth key
+### Step 5a: Configure Tailscale ACLs first
 
-In the Tailscale admin console → **Settings → Keys → Generate auth key**:
-
-- **Reusable:** on (you will use it on two nodes)
-- **Ephemeral:** off (subnet routers must persist across reboots)
-- **Pre-approved:** on (machine joins without manual approval)
-- **Tags:** `tag:homelab-router` (referenced from ACLs in Step 5d)
-- **Expiration:** 24h (long enough for the install session, short enough that a leaked key dies fast)
-
-Copy the `tskey-auth-...` value. Don't commit it. Store in Vaultwarden if you need it past today.
-
-### Step 5b: Install on ruby
-
-```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-
-sudo tailscale up \
-  --authkey=tskey-auth-XXXXX \
-  --advertise-routes=10.0.0.0/24,10.0.10.0/24,10.0.20.0/24 \
-  --advertise-tags=tag:homelab-router \
-  --ssh
-```
-
-`--ssh` enables Tailscale SSH on this node — SSH that authenticates via your Tailnet identity, no separate key management. Optional but very convenient when admin-ing from a phone.
-
-### Step 5c: Install on emerald for failover
-
-Same auth key (it's reusable). Same routes. Tailscale will pick one router as primary and switch to the other automatically if the primary goes offline. Brief (~30s) blip during failover.
-
-```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-
-sudo tailscale up \
-  --authkey=tskey-auth-XXXXX \
-  --advertise-routes=10.0.0.0/24,10.0.10.0/24,10.0.20.0/24 \
-  --advertise-tags=tag:homelab-router \
-  --ssh
-```
-
-!!! note "Why a second subnet router matters"
-    Ruby will reboot regularly — k3s upgrades, kernel updates, Ansible runs. Without a failover router, every reboot kills your remote access to the entire homelab until ruby comes back up. The failover takes five minutes to set up now and removes a sharp foot-gun forever.
-
-### Step 5d: Configure Tailscale ACLs
-
-Out of the box every Tailnet member can reach every advertised route. With three subnets exposed (default, trusted, lab), an ACL is what scopes "who can reach what."
+The policy file comes first: a tag can't be applied to a device — including through an auth key — until it exists in `tagOwners` (per Tailscale, *"Before assigning a tag to a device, you must create the tag in the tailnet policy file."*). So define the policy before you mint the tagged key in Step 5b. Out of the box every member can reach every advertised route; this ACL is what scopes who can reach what.
 
 Tailscale admin console → **Access Controls → Edit file**. Replace the default Allow-All with:
 
@@ -404,13 +361,79 @@ Tailscale admin console → **Access Controls → Edit file**. Replace the defau
     {
       "action": "accept",
       "src": ["autogroup:owner"],
-      "dst": ["10.0.0.0/24:*", "10.0.10.0/24:*", "10.0.20.0/24:*"]
+      "dst": [
+        "10.0.0.0/24:*",
+        "10.0.10.0/24:*",
+        "10.0.20.0/24:*",
+        "autogroup:owner:*",
+        "tag:homelab-router:*"
+      ]
     }
   ]
 }
 ```
 
-`autogroup:owner` is "devices owned by the Tailnet owner" — i.e., yours. Any future device added for someone else (family, friend) gets zero access until you write an explicit ACL for them.
+`autogroup:owner` is "devices owned by the Tailnet owner" — i.e., yours. Any future device added for someone else (family, friend) gets zero access until you write an explicit ACL for them. The `autogroup:owner:*` and `tag:homelab-router:*` destinations let your own devices reach each other and reach the router nodes directly — e.g. plain SSH to ruby/emerald over the tunnel (this homelab uses sshd over Tailscale rather than Tailscale SSH).
+
+### Step 5b: Generate a pre-authorized auth key
+
+In the Tailscale admin console → **Settings → Keys → Generate auth key**:
+
+- **Reusable:** on (you will use it on two nodes)
+- **Ephemeral:** off (subnet routers must persist across reboots)
+- **Pre-approved:** on (machine joins without manual approval)
+- **Tags:** `tag:homelab-router` (defined in the ACL in Step 5a)
+- **Expiration:** 24h (long enough for the install session, short enough that a leaked key dies fast)
+
+Copy the `tskey-auth-...` value. Don't commit it. Store in Vaultwarden if you need it past today.
+
+### Step 5c: Install on ruby
+
+A subnet router has to forward packets between the Tailnet and your LAN, so enable IP forwarding before bringing Tailscale up:
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+
+# Subnet routers must forward IP traffic — enable it persistently first
+echo 'net.ipv4.ip_forward = 1' | sudo tee -a /etc/sysctl.d/99-tailscale.conf
+echo 'net.ipv6.conf.all.forwarding = 1' | sudo tee -a /etc/sysctl.d/99-tailscale.conf
+sudo sysctl -p /etc/sysctl.d/99-tailscale.conf
+
+sudo tailscale up \
+  --authkey=tskey-auth-XXXXX \
+  --advertise-routes=10.0.0.0/24,10.0.10.0/24,10.0.20.0/24 \
+  --advertise-tags=tag:homelab-router
+```
+
+### Step 5d: Install on emerald for failover
+
+Same auth key (it's reusable), same routes, same IP-forwarding prerequisite. Tailscale will pick one router as primary and switch to the other automatically if the primary goes offline. Brief (~30s) blip during failover.
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+
+# Subnet routers must forward IP traffic — enable it persistently first
+echo 'net.ipv4.ip_forward = 1' | sudo tee -a /etc/sysctl.d/99-tailscale.conf
+echo 'net.ipv6.conf.all.forwarding = 1' | sudo tee -a /etc/sysctl.d/99-tailscale.conf
+sudo sysctl -p /etc/sysctl.d/99-tailscale.conf
+
+sudo tailscale up \
+  --authkey=tskey-auth-XXXXX \
+  --advertise-routes=10.0.0.0/24,10.0.10.0/24,10.0.20.0/24 \
+  --advertise-tags=tag:homelab-router
+```
+
+!!! tip "Subnet-router throughput: enable UDP GRO"
+    Tailscale recommends enabling UDP segmentation offload on a Linux subnet router's physical NIC for better throughput. On both ruby and emerald (install `ethtool` first if needed):
+
+    ```bash
+    sudo ethtool -K eth0 rx-udp-gro-forwarding on rx-gro-list off
+    ```
+
+    These settings reset on reboot, so persist them with a oneshot systemd unit that runs the command at boot. (The Ansible Tailscale play does this via a `tailscale-gro.service` unit.)
+
+!!! note "Why a second subnet router matters"
+    Ruby will reboot regularly — k3s upgrades, kernel updates, Ansible runs. Without a failover router, every reboot kills your remote access to the entire homelab until ruby comes back up. The failover takes five minutes to set up now and removes a sharp foot-gun forever.
 
 ### Step 5e: Approve advertised routes
 
