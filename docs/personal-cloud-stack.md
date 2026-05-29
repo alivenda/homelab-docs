@@ -259,12 +259,6 @@ Export-ready, ATS-friendly resume builder. Keep your resume on your own server.
 
 **Replaces:** LinkedIn Resume, Canva, Zety.
 
-### 🟡 Personal Analytics — Umami
-**Category:** Analytics | **Run:** 🖥️ Cluster | **RAM:** ~200–300 MB | **ARM64:** ✅ Official
-
-If you run any public-facing website or service, Umami gives you Google Analytics-style stats with zero tracking, no cookies, no GDPR consent banners. Fast, Node.js, multiarch.
-
-**Replaces:** Google Analytics, Plausible Cloud.
 
 ### 🟡 Read-Later / Web Archive — Wallabag or Readeck
 **Category:** Bookmarks / Archiving
@@ -304,7 +298,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 
 | Category | Verdict | Notes |
 |----------|---------|-------|
-| **Analytics** | 🟡 Umami if public site | Skip for internal-only homelabs |
+| **Analytics** | ⚪ Skip | No public-facing site |
 | **Archiving / DP** | ✅ Paperless-ngx covers docs; 🟡 ArchiveBox for URLs | ArchiveBox: ~300–500 MB, ARM64 verify |
 | **Automation** | ✅ HA + Node-RED covers home automation; 🟡 Huginn for web agents | Huginn is Ruby/heavy; n8n is ARM64 ✅ better |
 | **Backup** | ✅ Restic + Velero | Redirects to awesome-sysadmin — already solved |
