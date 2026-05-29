@@ -10,6 +10,7 @@ A comprehensive review of every awesome-selfhosted category mapped against your 
 |----------|-------|-----------------|
 | **Cluster (4× CM4)** | ARM64, 32 GB total RAM, 1 TB NFS | Traefik, ArgoCD, Prometheus/Grafana/Loki, Vaultwarden, Nextcloud, Paperless-ngx, Forgejo, Woodpecker |
 | **NAS (DXP6800 Pro)** | x86-64, **8 GB RAM** (expandable) | Plex, Immich, Home Assistant |
+| **DNS nodes (2× Pi Zero 2 W)** | ARM64, 512 MB RAM each | AdGuard Home (primary + secondary) |
 
 > **NAS RAM is a meaningful constraint.** At 8 GB, Plex + Immich + Home Assistant can consume 3.5–6.5 GB under load, leaving 1.5–4.5 GB headroom. Enough to run the Arr stack locally (if you prefer), but not enough for Ollama or Frigate without a RAM upgrade. The DXP6800 Pro accepts standard DDR4 SO-DIMMs — upgrading to 16 GB (~$35–50) opens up AI workloads and makes the NAS more comfortable overall. This doc marks services that require the upgrade `⚠️ NAS RAM upgrade recommended`.
 
@@ -40,6 +41,7 @@ Headroom is comfortable. OCR (Paperless) and CI builds (Woodpecker) are still th
 | ⚪ **Skip / edge case** | Niche, heavy, ARM issues, or not relevant |
 | 🖥️ **Cluster** | Run on k3s |
 | 💾 **NAS** | Run via Docker Compose on DXP6800 |
+| 🌐 **DNS nodes** | Run on Pi Zero 2 W (primary/secondary) |
 | ⚠️ | Needs NAS RAM upgrade to run comfortably |
 
 ---
@@ -70,18 +72,15 @@ Headroom is comfortable. OCR (Paperless) and CI builds (Woodpecker) are still th
 These unlock everything else. Add them before the "good additions" below.
 
 ### 🔴 DNS Ad-Blocking — AdGuard Home
-**Category:** DNS | **Run:** 🖥️ Cluster (amethyst, light worker) | **RAM:** ~100 MB | **ARM64:** ✅ Official multiarch
+**Category:** DNS | **Run:** 🌐 2× Pi Zero 2 W (primary + secondary) | **RAM:** ~100 MB each | **ARM64:** ✅ Official multiarch
 
-Pi-hole and AdGuard are equivalent for ad-blocking. **AdGuard Home** has a cleaner UI, built-in DoH/DoT (encrypted DNS), and native Docker multiarch. This is the single change that removes ads/trackers for every device on your network — phones, TVs, smart home devices — without any per-device config.
+Running on dedicated Pi Zero 2 Ws is the correct pattern: DNS must stay up independently of your cluster, and two units give you automatic failover. AdGuard Home has a built-in sync feature to keep the secondary's blocklists and config in lockstep with the primary.
+
+The Pi Zero 2 W has 512 MB RAM — AdGuard Home uses ~100 MB, leaving plenty of headroom. Install via the official one-line installer on DietPi or Raspberry Pi OS Lite.
+
+**Setup:** Configure your UDM to advertise both Pi Zero IPs as DNS servers via DHCP on each VLAN. If the primary goes down, clients fail over to the secondary automatically.
 
 **Replaces:** Google's DNS, your ISP's DNS, in-browser ad blockers.
-
-```yaml
-# Helm or kustomize; alternatively plain manifest — image is adguard/adguardhome
-# Pin to amethyst (light worker) via nodeSelector
-```
-
-> **Pi-hole** is fine too if you prefer the Linux-native installation path; same outcome, less polished UI, PHP-heavier.
 
 ### 🔴 SSO / Auth Layer — Authelia
 **Category:** Federated Identity | **Run:** 🖥️ Cluster | **RAM:** ~100–150 MB | **ARM64:** ✅ Official
@@ -327,7 +326,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **CMS** | ⚪ Skip | Nextcloud covers docs; BookStack covers wiki; Ghost covers blog |
 | **CRM** | ⚪ Skip | Personal use; Monica (personal CRM) is 🟡 if you track relationships |
 | **Database Management** | 🟡 Adminer or pgAdmin | Already in stack via Nextcloud/Paperless; Adminer is ~50 MB |
-| **DNS** | 🔴 AdGuard Home | See Part 2 |
+| **DNS** | 🔴 AdGuard Home | See Part 2 — runs on 2× Pi Zero 2 W |
 | **Document Mgmt** | ✅ Paperless-ngx | |
 | **Document Mgmt — E-Books** | 🔴 Kavita + 🔴 Audiobookshelf | See Part 3 |
 | **Document Mgmt — Library Systems** | ⚪ Skip | Institutional use |
