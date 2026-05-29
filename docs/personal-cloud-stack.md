@@ -167,7 +167,7 @@ This is the automation layer that feeds Plex. Without it, adding new shows/movie
 | **Seerr** (Overseerr/Jellyseerr) | Request portal UI | ~200–300 MB |
 | **qBittorrent** or **SABnzbd** | Actual downloading | ~100–300 MB |
 
-⚠️ Running this on the NAS adds 1–2 GB to an already-strained 6 GB. **Run on cluster** instead, pointing to NFS-mounted Plex library. This is a supported pattern — all four arr apps are happy scanning NFS paths.
+⚠️ Running this on the NAS adds 1–2 GB to an already-tight 8 GB (Plex + Immich + HA already consume 3.5–6.5 GB). **Run on cluster** instead, pointing to NFS-mounted Plex library. This is a supported pattern — all four arr apps are happy scanning NFS paths.
 
 **Replaces:** Manual downloading, commercial indexer subscriptions, PlexAmp searches that return nothing.
 
