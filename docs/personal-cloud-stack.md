@@ -54,7 +54,7 @@ Headroom is comfortable. OCR (Paperless) and CI builds (Woodpecker) are still th
 | Document archive | Paperless-ngx ✅ | R14 |
 | Photo/video library | Immich ✅ | R15 (NAS) |
 | Smart home hub | Home Assistant ✅ | R16 (NAS) |
-| Password manager | Vaultwarden ✅ | R7 |
+| Password manager + TOTP | Vaultwarden ✅ | R7; also generates 2FA codes natively — no separate app needed. If you want strict separation between passwords and 2FA, [2FAuth](https://2fauth.app) is the self-hosted option. |
 | Media streaming | Plex ✅ | NAS |
 | Music streaming | Plexamp ✅ | NAS |
 | Git hosting | Forgejo ✅ | R11 |
@@ -226,12 +226,6 @@ Books → Chapters → Pages hierarchy. Clean editor, search, image embedding, L
 
 **Replaces:** Confluence, Notion wiki, Google Docs scattered notes.
 
-### 🟡 2FA Manager — 2FAuth
-**Category:** Miscellaneous | **Run:** 🖥️ Cluster | **RAM:** ~50–100 MB | **ARM64:** ✅ Official
-
-Web-based TOTP manager. Stores your 2FA codes encrypted on your server. Accessible from any browser, works alongside your Vaultwarden TOTP if you want separation.
-
-**Replaces:** Authy cloud sync, Google Authenticator export anxiety.
 
 ### 🟡 Uptime Status Page — Uptime Kuma
 **Category:** Monitoring | **Run:** 🖥️ Cluster | **RAM:** ~150–200 MB | **ARM64:** ✅ Official
@@ -367,7 +361,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Media Streaming — Audio** | ✅ Plex/Plexamp + 🟡 Navidrome, 🔴 Audiobookshelf | |
 | **Media Streaming — Multimedia** | ✅ Plex; 🟡 Jellyfin NAS-side if transcoding limits hit | |
 | **Media Streaming — Video** | ✅ Plex | PeerTube only if you want public video hosting |
-| **Miscellaneous** | See individual picks | 2FAuth ✅, Habitica/Donetick ✅, Reactive Resume ✅ |
+| **Miscellaneous** | See individual picks | Habitica/Donetick ✅, Reactive Resume ✅ |
 | **Money + Budgeting** | 🔴 Actual Budget | See Part 3 |
 | **Monitoring** | ✅ Prometheus/Grafana/Loki + 🟡 Uptime Kuma | |
 | **Network Utilities** | 🟡 NetAlertX + Upsnap | See Part 4 |
@@ -508,7 +502,6 @@ Until then, run the Arr stack on the cluster pointing at NFS — it works fine.
 | 🟡 Good | Uptime Kuma | UptimeRobot |
 | 🟡 Good | Navidrome | Subsonic client support |
 | 🟡 Good | Dawarich + OwnTracks | Google Timeline |
-| 🟡 Good | 2FAuth | Authy cloud sync |
 | 🟡 Good | Ollama + Open-WebUI | ChatGPT (post NAS upgrade) |
 | 🟡 Good | Collabora (NC app) | Google Docs |
 | 🟡 Good | SearXNG | Google search |
