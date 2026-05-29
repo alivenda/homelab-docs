@@ -243,12 +243,6 @@ Privacy-first alternative to Google Timeline. Import your existing Google Locati
 
 **Replaces:** Google Timeline / Maps location history.
 
-### 🟡 Internet Radio / Music Alt — Navidrome
-**Category:** Audio Streaming | **Run:** 🖥️ Cluster | **RAM:** ~100–200 MB | **ARM64:** ✅ Official
-
-Subsonic-compatible music server. If your Plex/Plexamp setup has gaps (or you want a Subsonic API for DSub/Symfonium apps), Navidrome is the gold standard. Go binary — trivially light on ARM. Reads your existing Plex music library via NFS.
-
-**Note:** This is complementary to Plex, not a replacement. Plexamp is excellent; Navidrome fills the "Subsonic API" gap for alternative clients.
 
 ### 🟡 Habit Tracker — Habitica or Donetick
 **Category:** Miscellaneous / Task Management
@@ -358,7 +352,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Manufacturing** | ⚪ Skip | |
 | **Maps + GPS** | 🟡 Dawarich + OwnTracks | See Part 4 |
 | **Media Management** | 🔴 Arr stack (Sonarr/Radarr/Lidarr/Prowlarr + Seerr) | See Part 3 |
-| **Media Streaming — Audio** | ✅ Plex/Plexamp + 🟡 Navidrome, 🔴 Audiobookshelf | |
+| **Media Streaming — Audio** | ✅ Plex/Plexamp, 🔴 Audiobookshelf | Navidrome redundant — Plexamp covers the same ground |
 | **Media Streaming — Multimedia** | ✅ Plex; 🟡 Jellyfin NAS-side if transcoding limits hit | |
 | **Media Streaming — Video** | ✅ Plex | PeerTube only if you want public video hosting |
 | **Miscellaneous** | See individual picks | Habitica/Donetick ✅, Reactive Resume ✅ |
@@ -454,7 +448,6 @@ If starting fresh, add services in this sequence:
 12. Kavita               → e-book library
 13. Mealie               → recipes
 14. BookStack            → personal wiki
-15. Navidrome            → Subsonic API for music clients
 16. Dawarich + OwnTracks → location history
 17. Collabora (Nextcloud app) → office suite
 18. 2FAuth               → 2FA management
@@ -500,7 +493,6 @@ Until then, run the Arr stack on the cluster pointing at NFS — it works fine.
 | 🟡 Good | Mealie | Paprika, recipe screenshots |
 | 🟡 Good | BookStack | Confluence, scattered docs |
 | 🟡 Good | Uptime Kuma | UptimeRobot |
-| 🟡 Good | Navidrome | Subsonic client support |
 | 🟡 Good | Dawarich + OwnTracks | Google Timeline |
 | 🟡 Good | Ollama + Open-WebUI | ChatGPT (post NAS upgrade) |
 | 🟡 Good | Collabora (NC app) | Google Docs |
