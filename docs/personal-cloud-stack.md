@@ -362,7 +362,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Polls + Events** | 🟡 Rallly (Doodle alt, ~200 MB) if you schedule with others | |
 | **Proxy** | ✅ Traefik handles reverse proxy | |
 | **Recipe Management** | 🟡 Mealie | See Part 4 |
-| **Remote Access** | ✅ Tailscale + 🟡 Guacamole for web-based SSH/RDP | Guacamole: Java (~400 MB), ARM64 verify |
+| **Remote Access** | ✅ Tailscale + 🟡 RustDesk for graphical remote control | RustDesk server: Go, ~50–100 MB, ARM64 ✅; Tailscale handles network access, RustDesk handles the screen |
 | **Resource Planning** | ⚪ Skip | ERP territory; overkill |
 | **Search Engines** | 🟡 SearXNG if you want private web search | ~200 MB, Python, ARM64 ✅ |
 | **Self-hosting Solutions** | ✅ Your ArgoCD/k3s stack is this | CasaOS/Tipi are consumer panels; you've outgrown them |
