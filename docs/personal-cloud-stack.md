@@ -452,7 +452,7 @@ At 8 GB RAM, your NAS can sustain:
 - Immich (2–4 GB)
 - **Total: 2.5–6 GB → 2–5.5 GB headroom**
 
-The Arr stack (~1–1.5 GB total) *can* run on the NAS at 8 GB, but it will be tight during Plex transcode + Immich ML processing spikes. Running arr on the cluster (pointing to NFS) is safer and keeps the NAS headroom available. Upgrading to **16 GB DDR5 SO-DIMM** (~$35–50) makes everything comfortable and unlocks:
+The Arr stack (1–1.5 GB total) *can* run on the NAS at 8 GB, but it will be tight during Plex transcode + Immich ML processing spikes. Running arr on the cluster (pointing to NFS) is safer and keeps the NAS headroom available. Upgrading to **16 GB DDR5 SO-DIMM** ($35–50) makes everything comfortable and unlocks:
 - Arr stack on NAS (direct disk access, no NFS hop for downloads)
 - Ollama with small models (Phi-3 mini, Llama 3.2 3B)
 - Jellyfin as a hardware-transcoding backup to Plex
