@@ -98,7 +98,7 @@ You already have Traefik. Authelia bolts on as a forward-auth middleware and add
 ### 🔴 Push Notifications — ntfy
 **Category:** Communication | **Run:** 🖥️ Cluster | **RAM:** ~50 MB | **ARM64:** ✅ Official
 
-Self-hosted push notifications for everything: backup alerts, Woodpecker pipeline results, Home Assistant automations, Paperless document ingested, etc. Replaces paid notification services. Native Android/iOS app. Integrates with Home Assistant, Gotenberg, shell scripts.
+Self-hosted push notifications for everything: backup alerts, Woodpecker pipeline results, Home Assistant automations, Paperless document ingested, etc. Replaces paid notification services. Native Android/iOS app. Integrates with Home Assistant, Grafana, shell scripts.
 
 ---
 
@@ -418,7 +418,7 @@ The Nextcloud Collabora integration turns Nextcloud into a full Google Docs repl
 
 ## Part 6 — Recommended Deployment Order
 
-If starting fresh, add services in this sequence:
+If starting fresh, add services in this sequence. Note: AdGuard Home goes on the Pi Zero 2 Ws — everything else goes on the cluster unless marked 💾 NAS.
 
 ```
 1.  AdGuard Home              → whole-network ad blocking immediately
@@ -479,7 +479,9 @@ Until then, run the Arr stack on the cluster pointing at NFS — it works fine.
 | 🟡 Good | Mealie | Paprika, recipe screenshots |
 | 🟡 Good | BookStack | Confluence, scattered docs |
 | 🟡 Good | Uptime Kuma | UptimeRobot |
+| 🟡 Good | Donetick | Habit and chore tracking |
 | 🟡 Good | Dawarich + OwnTracks | Google Timeline |
+| 🟡 Good | RustDesk | TeamViewer, AnyDesk |
 | 🟡 Good | Ollama + Open-WebUI | ChatGPT (post NAS upgrade) |
 | 🟡 Good | Collabora (NC app) | Google Docs |
 | 🟡 Good | SearXNG | Google search |
