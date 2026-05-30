@@ -1,6 +1,6 @@
 # Personal Cloud Stack — Complete Service Guide
 
-A comprehensive review of every awesome-selfhosted category mapped against your specific hardware, existing stack, and day-to-day needs. Written against the Turing Pi 2 (4× CM4, ARM64, 32 GB cluster RAM) + UGREEN DXP6800 Pro NAS.
+A comprehensive review of every awesome-selfhosted category mapped against your specific hardware, existing stack, and day-to-day needs. Written against the Turing Pi 2 cluster, UGREEN DXP6800 Pro NAS, dedicated Home Assistant Pi 4, and 2× Pi Zero 2 W DNS nodes.
 
 ---
 
@@ -44,6 +44,7 @@ Headroom is comfortable. OCR (Paperless) and CI builds (Woodpecker) are still th
 | 💾 **NAS** | Run via Docker Compose on DXP6800 |
 | 🌐 **DNS nodes** | Run on Pi Zero 2 W (primary/secondary) |
 | ⚠️ | Needs NAS RAM upgrade to run comfortably |
+| 🚫 | Trap — don't self-host this |
 
 ---
 
@@ -89,7 +90,7 @@ The Pi Zero 2 W has 512 MB RAM — AdGuard Home uses ~100 MB, leaving plenty of 
 You already have Traefik. Authelia bolts on as a forward-auth middleware and adds:
 - 2FA (TOTP, WebAuthn) for all your services in one place
 - Single sign-on across Nextcloud, Paperless, Forgejo, new services
-- LDAP-compatible user store (or flat file for simplicity)
+- LDAP-compatible user store via **lldap** (Rust, ~30 MB, ARM64 ✅ — lightweight LDAP backend), or flat file for simplicity
 
 **Why before everything else:** every new service you add will want auth. Doing it now means each future service gets SSO for free.
 
@@ -98,7 +99,7 @@ You already have Traefik. Authelia bolts on as a forward-auth middleware and add
 ### 🔴 Push Notifications — ntfy
 **Category:** Communication | **Run:** 🖥️ Cluster | **RAM:** ~50 MB | **ARM64:** ✅ Official
 
-Self-hosted push notifications for everything: backup alerts, Woodpecker pipeline results, Home Assistant automations, Paperless document ingested, etc. Replaces paid notification services. Native Android/iOS app. Integrates with Home Assistant, Gotenberg, shell scripts.
+Self-hosted push notifications for everything: backup alerts, Woodpecker pipeline results, Home Assistant automations, Paperless document ingested, etc. Replaces paid notification services. Native Android/iOS app. Integrates with Home Assistant, Grafana, shell scripts.
 
 ---
 
@@ -245,11 +246,12 @@ Privacy-first alternative to Google Timeline. Import your existing Google Locati
 **Replaces:** Google Timeline / Maps location history.
 
 
-### 🟡 Habit Tracker — Habitica or Donetick
-**Category:** Miscellaneous / Task Management
+### 🟡 Chore + Habit Tracker — Donetick
+**Category:** Miscellaneous / Task Management | **Run:** 🖥️ Cluster | **RAM:** ~100 MB | **ARM64:** Verify with `docker manifest inspect`
 
-**Donetick** (~100 MB, ARM64 to verify) — habit and chore management with scheduling, family sharing, Vikunja-compatible. Lightweight.
-**Habitica** — RPG-gamified habits. Heavier (Node.js + MongoDB). Fun if that style motivates you.
+Recurring task scheduler built around "due X days after last completion" rather than fixed calendar dates. Scheduling, family sharing, Vikunja-compatible. Lightweight Go binary.
+
+**Alternative:** **Habitica** — RPG-gamified habits. Heavier (Node.js + MongoDB). Fun if that motivation style suits you.
 
 **Replaces:** Streaks (iOS), Habitify.
 
@@ -261,11 +263,12 @@ Export-ready, ATS-friendly resume builder. Keep your resume on your own server.
 **Replaces:** LinkedIn Resume, Canva, Zety.
 
 
-### 🟡 Read-Later / Web Archive — Wallabag or Readeck
-**Category:** Bookmarks / Archiving
+### 🟡 Read-Later / Web Archive — Readeck
+**Category:** Bookmarks / Archiving | **Run:** 🖥️ Cluster | **RAM:** ~100 MB | **ARM64:** ✅ Official
 
-**Readeck** (~100 MB, Go, ARM64 ✅) — saves articles as clean readable copies. Combines bookmark + read-later. Newer and cleaner than Wallabag.
-**Wallabag** — more mature, heavier PHP, also ARM64.
+Saves articles as clean readable copies. Combines bookmark + read-later in one app. Newer and cleaner than Wallabag.
+
+**Alternative:** **Wallabag** — more mature, heavier PHP, also ARM64.
 
 **Replaces:** Pocket, Instapaper, Safari Reading List.
 
@@ -301,14 +304,14 @@ Every category from awesome-selfhosted, with a one-line verdict:
 |----------|---------|-------|
 | **Analytics** | ⚪ Skip | No public-facing site |
 | **Archiving / DP** | ✅ Paperless-ngx covers docs; 🟡 ArchiveBox for URLs | ArchiveBox: ~300–500 MB, ARM64 verify |
-| **Automation** | ✅ HA + Node-RED covers home automation; 🟡 Huginn for web agents | Huginn is Ruby/heavy; n8n is ARM64 ✅ better |
+| **Automation** | ✅ Home Assistant covers this; 🟡 Node-RED or n8n if you want flow-based automation on top | n8n is ARM64 ✅; Huginn is Ruby/heavy |
 | **Backup** | ✅ Restic + Velero | Redirects to awesome-sysadmin — already solved |
 | **Blogging** | 🟡 Ghost if you want a public blog | Ghost ARM64 ✅, 300–500 MB. WriteFreely for Fediverse |
 | **Booking / Scheduling** | ⚪ Skip | Personal use only; Cal.com heavy |
 | **Bookmarks** | 🔴 linkding | See Part 3 |
 | **Calendar + Contacts** | ✅ Nextcloud (CalDAV/CardDAV) | Already in R13 |
 | **Communication — Chat** | 🟡 Matrix/Synapse if family needs | See note below |
-| **Communication — Email** | ⚠️ Do NOT self-host primary email | See note below |
+| **Communication — Email** | 🚫 Do NOT self-host primary email | See note below |
 | **Communication — IRC** | ⚪ Skip | |
 | **Communication — SIP** | ⚪ Skip | |
 | **Communication — Social / Forums** | ⚪ Skip | Personal use; heavy |
@@ -371,7 +374,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Software Dev — CI/CD** | ✅ Woodpecker | |
 | **Software Dev — FaaS** | ⚪ Skip | |
 | **Software Dev — Feature Toggle** | ⚪ Skip | |
-| **Software Dev — IDE + Tools** | 🟡 Gitea Codespaces (Forgejo-native) or Coder | Heavy; skip unless you need cloud dev env |
+| **Software Dev — IDE + Tools** | 🟡 code-server or Coder for a cloud IDE | Forgejo doesn't provide a hosted IDE; heavy — skip unless you specifically need remote coding |
 | **Software Dev — Low Code** | ⚪ Skip | |
 | **Software Dev — Project Mgmt** | 🟡 Plane (Jira alt) or Gitea-native if Forgejo issues suffice | |
 | **Software Dev — Testing** | ⚪ Skip | |
@@ -418,28 +421,29 @@ The Nextcloud Collabora integration turns Nextcloud into a full Google Docs repl
 
 ## Part 6 — Recommended Deployment Order
 
-If starting fresh, add services in this sequence:
+If starting fresh, add services in this sequence. Note: AdGuard Home goes on the Pi Zero 2 Ws — everything else goes on the cluster unless marked 💾 NAS.
 
 ```
-1. AdGuard Home          → whole-network ad blocking immediately
-2. Authelia              → SSO foundation for everything after
-3. Homepage              → visual dashboard of what you're running
-4. ntfy                  → notifications for everything that follows
-5. Uptime Kuma           → status monitoring for your services
-6. FreshRSS / Miniflux  → daily news/RSS replacement
-7. linkding              → bookmark manager
-8. Actual Budget         → financial tracking
-9. Vikunja               → task management
-10. Arr stack + Seerr   → Plex automation (Sonarr/Radarr/Lidarr/Prowlarr)
-11. Audiobookshelf       → audiobooks + podcasts
-12. Kavita               → e-book library
-13. Mealie               → recipes
-14. BookStack            → personal wiki
-16. Dawarich + OwnTracks → location history
+1.  AdGuard Home              → whole-network ad blocking immediately
+2.  Authelia                  → SSO foundation for everything after
+3.  Homepage                  → visual dashboard of what you're running
+4.  ntfy                      → notifications for everything that follows
+5.  Uptime Kuma               → status monitoring for your services
+6.  FreshRSS / Miniflux       → daily news/RSS replacement
+7.  linkding                  → bookmark manager
+8.  Actual Budget             → financial tracking
+9.  Vikunja                   → task management
+10. Donetick                  → recurring chores and habits
+11. Arr stack + Seerr         → Plex automation (Sonarr/Radarr/Lidarr/Prowlarr)
+12. Audiobookshelf            → audiobooks + podcasts
+13. Kavita                    → e-book library
+14. Mealie                    → recipes
+15. BookStack                 → personal wiki
+16. Dawarich + OwnTracks      → location history
 17. Collabora (Nextcloud app) → office suite
-18. 2FAuth               → 2FA management
-19. SearXNG              → private search engine
-20. Ollama + Open-WebUI  → AI assistant (NAS, post-RAM upgrade)
+18. RustDesk                  → graphical remote control
+19. SearXNG                   → private search engine
+20. Ollama + Open-WebUI       → AI assistant (NAS, post-RAM upgrade)
 ```
 
 ---
@@ -451,7 +455,7 @@ At 8 GB RAM, your NAS can sustain:
 - Immich (2–4 GB)
 - **Total: 2.5–6 GB → 2–5.5 GB headroom**
 
-The Arr stack (~1–1.5 GB total) *can* run on the NAS at 8 GB, but it will be tight during Plex transcode + Immich ML processing spikes. Running arr on the cluster (pointing to NFS) is safer and keeps the NAS headroom available. Upgrading to **16 GB DDR5 SO-DIMM** (~$35–50) makes everything comfortable and unlocks:
+The Arr stack (1–1.5 GB total) *can* run on the NAS at 8 GB, but it will be tight during Plex transcode + Immich ML processing spikes. Running arr on the cluster (pointing to NFS) is safer and keeps the NAS headroom available. Upgrading to **16 GB DDR5 SO-DIMM** ($35–50) makes everything comfortable and unlocks:
 - Arr stack on NAS (direct disk access, no NFS hop for downloads)
 - Ollama with small models (Phi-3 mini, Llama 3.2 3B)
 - Jellyfin as a hardware-transcoding backup to Plex
@@ -478,8 +482,10 @@ Until then, run the Arr stack on the cluster pointing at NFS — it works fine.
 | 🟡 Good | Mealie | Paprika, recipe screenshots |
 | 🟡 Good | BookStack | Confluence, scattered docs |
 | 🟡 Good | Uptime Kuma | UptimeRobot |
+| 🟡 Good | Donetick | Habit and chore tracking |
 | 🟡 Good | Dawarich + OwnTracks | Google Timeline |
+| 🟡 Good | RustDesk | TeamViewer, AnyDesk |
 | 🟡 Good | Ollama + Open-WebUI | ChatGPT (post NAS upgrade) |
 | 🟡 Good | Collabora (NC app) | Google Docs |
 | 🟡 Good | SearXNG | Google search |
-| ⚠️ Trap | Email server | — don't; use Proton/Migadu |
+| 🚫 Trap | Email server | — don't; use Proton/Migadu |
