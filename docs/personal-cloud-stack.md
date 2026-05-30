@@ -1,6 +1,6 @@
 # Personal Cloud Stack — Complete Service Guide
 
-A comprehensive review of every awesome-selfhosted category mapped against your specific hardware, existing stack, and day-to-day needs. Written against the Turing Pi 2 (4× CM4, ARM64, 32 GB cluster RAM) + UGREEN DXP6800 Pro NAS.
+A comprehensive review of every awesome-selfhosted category mapped against your specific hardware, existing stack, and day-to-day needs. Written against the Turing Pi 2 cluster, UGREEN DXP6800 Pro NAS, dedicated Home Assistant Pi 4, and 2× Pi Zero 2 W DNS nodes.
 
 ---
 
@@ -44,6 +44,7 @@ Headroom is comfortable. OCR (Paperless) and CI builds (Woodpecker) are still th
 | 💾 **NAS** | Run via Docker Compose on DXP6800 |
 | 🌐 **DNS nodes** | Run on Pi Zero 2 W (primary/secondary) |
 | ⚠️ | Needs NAS RAM upgrade to run comfortably |
+| 🚫 | Trap — don't self-host this |
 
 ---
 
@@ -89,7 +90,7 @@ The Pi Zero 2 W has 512 MB RAM — AdGuard Home uses ~100 MB, leaving plenty of 
 You already have Traefik. Authelia bolts on as a forward-auth middleware and adds:
 - 2FA (TOTP, WebAuthn) for all your services in one place
 - Single sign-on across Nextcloud, Paperless, Forgejo, new services
-- LDAP-compatible user store (or flat file for simplicity)
+- LDAP-compatible user store via **lldap** (Rust, ~30 MB, ARM64 ✅ — lightweight LDAP backend), or flat file for simplicity
 
 **Why before everything else:** every new service you add will want auth. Doing it now means each future service gets SSO for free.
 
@@ -245,11 +246,12 @@ Privacy-first alternative to Google Timeline. Import your existing Google Locati
 **Replaces:** Google Timeline / Maps location history.
 
 
-### 🟡 Habit Tracker — Habitica or Donetick
-**Category:** Miscellaneous / Task Management
+### 🟡 Chore + Habit Tracker — Donetick
+**Category:** Miscellaneous / Task Management | **Run:** 🖥️ Cluster | **RAM:** ~100 MB | **ARM64:** Verify with `docker manifest inspect`
 
-**Donetick** (~100 MB, ARM64 to verify) — habit and chore management with scheduling, family sharing, Vikunja-compatible. Lightweight.
-**Habitica** — RPG-gamified habits. Heavier (Node.js + MongoDB). Fun if that style motivates you.
+Recurring task scheduler built around "due X days after last completion" rather than fixed calendar dates. Scheduling, family sharing, Vikunja-compatible. Lightweight Go binary.
+
+**Alternative:** **Habitica** — RPG-gamified habits. Heavier (Node.js + MongoDB). Fun if that motivation style suits you.
 
 **Replaces:** Streaks (iOS), Habitify.
 
@@ -261,11 +263,12 @@ Export-ready, ATS-friendly resume builder. Keep your resume on your own server.
 **Replaces:** LinkedIn Resume, Canva, Zety.
 
 
-### 🟡 Read-Later / Web Archive — Wallabag or Readeck
-**Category:** Bookmarks / Archiving
+### 🟡 Read-Later / Web Archive — Readeck
+**Category:** Bookmarks / Archiving | **Run:** 🖥️ Cluster | **RAM:** ~100 MB | **ARM64:** ✅ Official
 
-**Readeck** (~100 MB, Go, ARM64 ✅) — saves articles as clean readable copies. Combines bookmark + read-later. Newer and cleaner than Wallabag.
-**Wallabag** — more mature, heavier PHP, also ARM64.
+Saves articles as clean readable copies. Combines bookmark + read-later in one app. Newer and cleaner than Wallabag.
+
+**Alternative:** **Wallabag** — more mature, heavier PHP, also ARM64.
 
 **Replaces:** Pocket, Instapaper, Safari Reading List.
 
@@ -301,14 +304,14 @@ Every category from awesome-selfhosted, with a one-line verdict:
 |----------|---------|-------|
 | **Analytics** | ⚪ Skip | No public-facing site |
 | **Archiving / DP** | ✅ Paperless-ngx covers docs; 🟡 ArchiveBox for URLs | ArchiveBox: ~300–500 MB, ARM64 verify |
-| **Automation** | ✅ HA + Node-RED covers home automation; 🟡 Huginn for web agents | Huginn is Ruby/heavy; n8n is ARM64 ✅ better |
+| **Automation** | ✅ Home Assistant covers this; 🟡 Node-RED or n8n if you want flow-based automation on top | n8n is ARM64 ✅; Huginn is Ruby/heavy |
 | **Backup** | ✅ Restic + Velero | Redirects to awesome-sysadmin — already solved |
 | **Blogging** | 🟡 Ghost if you want a public blog | Ghost ARM64 ✅, 300–500 MB. WriteFreely for Fediverse |
 | **Booking / Scheduling** | ⚪ Skip | Personal use only; Cal.com heavy |
 | **Bookmarks** | 🔴 linkding | See Part 3 |
 | **Calendar + Contacts** | ✅ Nextcloud (CalDAV/CardDAV) | Already in R13 |
 | **Communication — Chat** | 🟡 Matrix/Synapse if family needs | See note below |
-| **Communication — Email** | ⚠️ Do NOT self-host primary email | See note below |
+| **Communication — Email** | 🚫 Do NOT self-host primary email | See note below |
 | **Communication — IRC** | ⚪ Skip | |
 | **Communication — SIP** | ⚪ Skip | |
 | **Communication — Social / Forums** | ⚪ Skip | Personal use; heavy |
@@ -371,7 +374,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Software Dev — CI/CD** | ✅ Woodpecker | |
 | **Software Dev — FaaS** | ⚪ Skip | |
 | **Software Dev — Feature Toggle** | ⚪ Skip | |
-| **Software Dev — IDE + Tools** | 🟡 Gitea Codespaces (Forgejo-native) or Coder | Heavy; skip unless you need cloud dev env |
+| **Software Dev — IDE + Tools** | 🟡 code-server or Coder for a cloud IDE | Forgejo doesn't provide a hosted IDE; heavy — skip unless you specifically need remote coding |
 | **Software Dev — Low Code** | ⚪ Skip | |
 | **Software Dev — Project Mgmt** | 🟡 Plane (Jira alt) or Gitea-native if Forgejo issues suffice | |
 | **Software Dev — Testing** | ⚪ Skip | |
@@ -485,4 +488,4 @@ Until then, run the Arr stack on the cluster pointing at NFS — it works fine.
 | 🟡 Good | Ollama + Open-WebUI | ChatGPT (post NAS upgrade) |
 | 🟡 Good | Collabora (NC app) | Google Docs |
 | 🟡 Good | SearXNG | Google search |
-| ⚠️ Trap | Email server | — don't; use Proton/Migadu |
+| 🚫 Trap | Email server | — don't; use Proton/Migadu |
