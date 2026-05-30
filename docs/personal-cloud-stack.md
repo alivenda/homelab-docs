@@ -421,25 +421,26 @@ The Nextcloud Collabora integration turns Nextcloud into a full Google Docs repl
 If starting fresh, add services in this sequence:
 
 ```
-1. AdGuard Home          → whole-network ad blocking immediately
-2. Authelia              → SSO foundation for everything after
-3. Homepage              → visual dashboard of what you're running
-4. ntfy                  → notifications for everything that follows
-5. Uptime Kuma           → status monitoring for your services
-6. FreshRSS / Miniflux  → daily news/RSS replacement
-7. linkding              → bookmark manager
-8. Actual Budget         → financial tracking
-9. Vikunja               → task management
-10. Arr stack + Seerr   → Plex automation (Sonarr/Radarr/Lidarr/Prowlarr)
-11. Audiobookshelf       → audiobooks + podcasts
-12. Kavita               → e-book library
-13. Mealie               → recipes
-14. BookStack            → personal wiki
-16. Dawarich + OwnTracks → location history
+1.  AdGuard Home              → whole-network ad blocking immediately
+2.  Authelia                  → SSO foundation for everything after
+3.  Homepage                  → visual dashboard of what you're running
+4.  ntfy                      → notifications for everything that follows
+5.  Uptime Kuma               → status monitoring for your services
+6.  FreshRSS / Miniflux       → daily news/RSS replacement
+7.  linkding                  → bookmark manager
+8.  Actual Budget             → financial tracking
+9.  Vikunja                   → task management
+10. Donetick                  → recurring chores and habits
+11. Arr stack + Seerr         → Plex automation (Sonarr/Radarr/Lidarr/Prowlarr)
+12. Audiobookshelf            → audiobooks + podcasts
+13. Kavita                    → e-book library
+14. Mealie                    → recipes
+15. BookStack                 → personal wiki
+16. Dawarich + OwnTracks      → location history
 17. Collabora (Nextcloud app) → office suite
-18. 2FAuth               → 2FA management
-19. SearXNG              → private search engine
-20. Ollama + Open-WebUI  → AI assistant (NAS, post-RAM upgrade)
+18. RustDesk                  → graphical remote control
+19. SearXNG                   → private search engine
+20. Ollama + Open-WebUI       → AI assistant (NAS, post-RAM upgrade)
 ```
 
 ---
