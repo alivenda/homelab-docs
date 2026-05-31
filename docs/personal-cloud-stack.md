@@ -121,7 +121,7 @@ Pick Miniflux if you prefer lightweight and fast. Pick FreshRSS if you want more
 **Replaces:** Feedly, Inoreader, Google News.
 
 ### 🔴 Bookmarks — linkding
-**Category:** Bookmarks | **Run:** 🖥️ Cluster | **RAM:** ~100–150 MB | **ARM64:** ✅ Official | **Runbook:** [R22](22-linkding.md)
+**Category:** Bookmarks | **Run:** 🖥️ Cluster | **RAM:** ~100–150 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](apps-catalog.md#linkding)
 
 Minimal, clean, fast. Browser extension for one-click saving. Tags, search, archive via Wayback Machine. Simpler than Wallabag (which is more of a read-later app). Docker ARM64 image confirmed.
 
@@ -216,7 +216,7 @@ YAML-configured, Docker-native, integrates with ~100 services (Plex, Sonarr, Nex
 ## Part 4 — Good Additions (After the Above Are Stable)
 
 ### 🟡 Recipe Manager — Mealie
-**Category:** Recipe Management | **Run:** 🖥️ Cluster | **RAM:** ~200–300 MB | **ARM64:** ✅ Official | **Runbook:** [R30](30-mealie.md)
+**Category:** Recipe Management | **Run:** 🖥️ Cluster | **RAM:** ~200–300 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](apps-catalog.md#mealie)
 
 Material Design UI, import recipes from any URL, meal planning, shopping list generation. Python + Vue. Very popular in homelab circles.
 
@@ -233,7 +233,7 @@ Books → Chapters → Pages hierarchy. Clean editor, search, image embedding, L
 
 
 ### 🟡 Uptime Status Page — Uptime Kuma
-**Category:** Monitoring | **Run:** 🖥️ Cluster | **RAM:** ~150–200 MB | **ARM64:** ✅ Official | **Runbook:** [R33](33-uptime-kuma.md)
+**Category:** Monitoring | **Run:** 🖥️ Cluster | **RAM:** ~150–200 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](apps-catalog.md#uptime-kuma)
 
 Monitors HTTP, TCP, ping, DNS for all your services and shows a clean status page. Different job than Prometheus — this is user-facing "is it up?" vs infrastructure metrics. Pairs well with ntfy for alerts.
 
