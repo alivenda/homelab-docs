@@ -33,26 +33,27 @@ Pin `--version` to a current release listed on [nextcloud/helm](https://github.c
 !!! tip
     Cron-based background jobs are dramatically more reliable than AJAX. Configure under **Settings → Basic Settings**.
 
-## IngressRoute
+## HTTPRoute
+
+Attaches to the shared Traefik Gateway; the wildcard cert on the Gateway terminates TLS, so no per-app TLS config is needed (see [Deploying an App](apps-deploy-pattern.md)).
 
 ```yaml
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: nextcloud
   namespace: nextcloud
 spec:
-  entryPoints: [websecure]
-  routes:
-    - match: Host(`nextcloud.yourdomain.com`)
-      kind: Rule
-      services:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - nextcloud.yourdomain.com
+  rules:
+    - backendRefs:
         - name: nextcloud
           port: 80
-  tls:
-    certResolver: cloudflare
-    domains:
-      - main: nextcloud.yourdomain.com
 ```
 
 ## Verification

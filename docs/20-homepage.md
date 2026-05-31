@@ -18,7 +18,7 @@ See the [official documentation](https://gethomepage.dev) for full widget and co
 
 ## Step 1: RBAC
 
-Homepage queries the Kubernetes API to discover pods, nodes, and IngressRoutes for its Kubernetes widget. Create a ServiceAccount, ClusterRole, and ClusterRoleBinding.
+Homepage queries the Kubernetes API to discover pods, nodes, and HTTPRoutes for its Kubernetes widget. Create a ServiceAccount, ClusterRole, and ClusterRoleBinding.
 
 Create `homelab-manifests/apps/homepage/rbac.yaml`:
 
@@ -343,32 +343,48 @@ spec:
       targetPort: 3000
 ```
 
-## Step 5: IngressRoute
+## Step 5: HTTPRoute (with Authelia ForwardAuth)
 
-Create `homelab-manifests/apps/homepage/ingressroute.yaml`:
+Homepage has no built-in auth, so Authelia gates it via ForwardAuth. Under the Gateway API the `Middleware` lives in the app's namespace and the `HTTPRoute` references it with an `ExtensionRef` filter (see [Deploying an App](apps-deploy-pattern.md)). TLS is handled by the Gateway's wildcard cert. Create `homelab-manifests/apps/homepage/httproute.yaml`:
 
 ```yaml
 apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
+kind: Middleware
+metadata:
+  name: authelia-forwardauth
+  namespace: homepage
+spec:
+  forwardAuth:
+    address: http://authelia.authelia.svc.cluster.local/api/authz/forward-auth
+    trustForwardHeader: true
+    authResponseHeaders: [Remote-User, Remote-Groups, Remote-Name, Remote-Email]
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: homepage
   namespace: homepage
 spec:
-  entryPoints: [websecure]
-  routes:
-    - match: Host(`homepage.yourdomain.com`)
-      kind: Rule
-      middlewares:
-        - name: authelia@kubernetescrd
-          namespace: authelia
-      services:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - homepage.yourdomain.com
+  rules:
+    - filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: traefik.io
+            kind: Middleware
+            name: authelia-forwardauth
+      backendRefs:
         - name: homepage
           port: 3000
-  tls:
-    certResolver: cloudflare
-    domains:
-      - main: homepage.yourdomain.com
 ```
+
+!!! note "ForwardAuth prerequisites"
+    Per [Deploying an App](apps-deploy-pattern.md): Traefik's Kubernetes IngressRoute CRD provider must stay enabled for `ExtensionRef` middlewares to resolve, and the exact Authelia `forward-auth` address/headers are version-specific. No ForwardAuth app is deployed yet — confirm against Authelia's Traefik integration docs at deploy.
 
 Commit all manifests to `homelab-manifests/apps/homepage/` and let ArgoCD sync.
 

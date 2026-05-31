@@ -45,9 +45,12 @@ docker compose up -d
 !!! tip "Network isolation"
     Put smart devices on the IoT VLAN and only allow Home Assistant to cross VLANs. This isolates insecure IoT devices.
 
-## Traefik IngressRoute (optional)
+## Traefik HTTPRoute (optional)
 
-Same pattern as Immich — use an ExternalName Service pointing at the NAS, then add an IngressRoute for `ha.yourdomain.com`.
+Same pattern as Immich — front the Home Assistant host (the dedicated Pi) with a selector-less `Service` + a manual `EndpointSlice` pointing at its IP, then attach an `HTTPRoute` for `ha.yourdomain.com`. See [Immich's runbook](15-immich.md) for the manifest shape and [Deploying an App](apps-deploy-pattern.md) for the routing pattern.
+
+!!! warning "Home Assistant rejects reverse-proxied requests by default"
+    Set `http.use_x_forwarded_for: true` and `http.trusted_proxies:` (the cluster pod CIDR `10.42.0.0/16`) in HA's `configuration.yaml`, or HA returns `400 Bad Request` behind Traefik.
 
 ## Verification
 

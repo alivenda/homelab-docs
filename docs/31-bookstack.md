@@ -261,28 +261,27 @@ spec:
       targetPort: 6875
 ```
 
-## Step 5: IngressRoute
+## Step 5: HTTPRoute
 
-Create `homelab-manifests/apps/bookstack/ingressroute.yaml`:
+Create `homelab-manifests/apps/bookstack/httproute.yaml` (TLS is handled by the Gateway's wildcard cert — see [Deploying an App](apps-deploy-pattern.md)):
 
 ```yaml
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: bookstack
   namespace: bookstack
 spec:
-  entryPoints: [websecure]
-  routes:
-    - match: Host(`wiki.yourdomain.com`)
-      kind: Rule
-      services:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - wiki.yourdomain.com
+  rules:
+    - backendRefs:
         - name: bookstack
           port: 6875
-  tls:
-    certResolver: cloudflare
-    domains:
-      - main: wiki.yourdomain.com
 ```
 
 Commit all manifests to `homelab-manifests/apps/bookstack/` and let ArgoCD sync.

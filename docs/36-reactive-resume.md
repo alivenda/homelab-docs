@@ -256,28 +256,27 @@ spec:
       targetPort: 3000
 ```
 
-## Step 5: IngressRoute
+## Step 5: HTTPRoute
 
-Create `homelab-manifests/apps/reactive-resume/ingressroute.yaml`:
+Create `homelab-manifests/apps/reactive-resume/httproute.yaml` (TLS is handled by the Gateway's wildcard cert — see [Deploying an App](apps-deploy-pattern.md)):
 
 ```yaml
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: reactive-resume
   namespace: reactive-resume
 spec:
-  entryPoints: [websecure]
-  routes:
-    - match: Host(`resume.yourdomain.com`)
-      kind: Rule
-      services:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - resume.yourdomain.com
+  rules:
+    - backendRefs:
         - name: reactive-resume
           port: 3000
-  tls:
-    certResolver: cloudflare
-    domains:
-      - main: resume.yourdomain.com
 ```
 
 Commit all manifests to `homelab-manifests/apps/reactive-resume/` and let ArgoCD sync.
