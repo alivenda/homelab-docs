@@ -58,12 +58,14 @@ Headroom is comfortable. OCR (Paperless) and CI builds (Woodpecker) are still th
 | Smart home hub | Home Assistant ✅ | R16 (dedicated Pi 4, Home Assistant OS) |
 | Password manager + TOTP | Vaultwarden ✅ | R7; also generates 2FA codes natively — no separate app needed. If you want strict separation between passwords and 2FA, [2FAuth](https://2fauth.app) is the self-hosted option. |
 | Media streaming | Plex ✅ | NAS |
-| Music streaming | Plexamp ✅ | NAS |
+| Music streaming | Plex ✅ | NAS — Plex Media Server serves audio; Plexamp is the client player, not a separate daemon |
 | Git hosting | Forgejo ✅ | R11 |
 | CI/CD | Woodpecker ✅ | R12 |
 | GitOps | ArgoCD ✅ | R5 |
 | Monitoring + metrics | Prometheus + Grafana + Loki ✅ | R9 |
 | Backups | Restic + Velero ✅ | R10 |
+| Object storage (backup target) | MinIO ✅ | R10 — S3 backend for Velero, runs on the NAS |
+| Secrets management | Sealed Secrets ✅ | Cluster — encrypts secrets committed to Git for ArgoCD |
 | VPN / remote access | Tailscale ✅ | R2 |
 | HTTPS proxy | Traefik ✅ | R6 |
 
@@ -74,30 +76,31 @@ Headroom is comfortable. OCR (Paperless) and CI builds (Woodpecker) are still th
 These unlock everything else. Add them before the "good additions" below.
 
 ### 🔴 DNS Ad-Blocking — AdGuard Home
-**Category:** DNS | **Run:** 🌐 2× Pi Zero 2 W (primary + secondary) | **RAM:** ~100 MB each | **ARM64:** ✅ Official multiarch
+**Category:** DNS | **Run:** 🌐 2× Pi Zero 2 W (primary + secondary) | **RAM:** ~100 MB each | **ARM64:** ✅ Official multiarch | **Runbook:** [R17](17-adguard-home.md)
 
-Running on dedicated Pi Zero 2 Ws is the correct pattern: DNS must stay up independently of your cluster, and two units give you automatic failover. AdGuard Home has a built-in sync feature to keep the secondary's blocklists and config in lockstep with the primary.
+Running on dedicated Pi Zero 2 Ws is the correct pattern: DNS must stay up independently of your cluster, and two units give you redundancy. AdGuard Home has *no* native cross-instance sync — R17 runs the [`adguardhome-sync`](https://github.com/bakito/adguardhome-sync) container on the primary to keep the secondary's blocklists and config in lockstep.
 
 The Pi Zero 2 W has 512 MB RAM — AdGuard Home uses ~100 MB, leaving plenty of headroom. Install via the official one-line installer on DietPi or Raspberry Pi OS Lite.
 
-**Setup:** Configure your UDM to advertise both Pi Zero IPs as DNS servers via DHCP on each VLAN. If the primary goes down, clients fail over to the secondary automatically.
+**Setup:** Configure your UDM to advertise both Pi Zero IPs as DNS servers via DHCP on each VLAN. Handing clients two resolvers gives only *partial* failover, though — stub resolvers retry inconsistently and can stall on a dead server for several seconds. For true HA, front the pair with a shared [keepalived](https://www.keepalived.org/) VIP. Note also that the Pi Zero 2 W is Wi-Fi-only (no Ethernet port); for DNS infrastructure a USB-Ethernet dongle is worth considering.
 
 **Replaces:** Google's DNS, your ISP's DNS, in-browser ad blockers.
 
 ### 🔴 SSO / Auth Layer — Authelia
-**Category:** Federated Identity | **Run:** 🖥️ Cluster | **RAM:** ~100–150 MB | **ARM64:** ✅ Official
+**Category:** Federated Identity | **Run:** 🖥️ Cluster | **RAM:** ~100–150 MB | **ARM64:** ✅ Official | **Runbook:** [R18](18-authelia.md)
 
-You already have Traefik. Authelia bolts on as a forward-auth middleware and adds:
-- 2FA (TOTP, WebAuthn) for all your services in one place
-- Single sign-on across Nextcloud, Paperless, Forgejo, new services
-- LDAP-compatible user store via **lldap** (Rust, ~30 MB, ARM64 ✅ — lightweight LDAP backend), or flat file for simplicity
+You already have Traefik. Authelia adds a single login + 2FA layer, wired two different ways depending on the app (see R18):
+- **OIDC** for apps with their own login (Nextcloud, Paperless, Forgejo, Vikunja, …) — they redirect to Authelia and manage their own session. **Do not** put forward-auth in front of these: their API clients (desktop sync, git CLI, mobile apps) send credentials directly and can't follow the redirect.
+- **ForwardAuth** (Traefik middleware) only for apps with *no* login of their own (e.g. Homepage).
+- 2FA (TOTP, WebAuthn) and single sign-on across all of the above in one place.
+- LDAP-compatible user store via **lldap** (Rust, ~30 MB, ARM64 ✅ — lightweight LDAP backend), or flat file for simplicity.
 
 **Why before everything else:** every new service you add will want auth. Doing it now means each future service gets SSO for free.
 
 > **Authentik** is the heavier alternative (~600 MB Python). **Authelia** (Go, ~100 MB) is the right fit for your cluster.
 
 ### 🔴 Push Notifications — ntfy
-**Category:** Communication | **Run:** 🖥️ Cluster | **RAM:** ~50 MB | **ARM64:** ✅ Official
+**Category:** Communication | **Run:** 🖥️ Cluster | **RAM:** ~50 MB | **ARM64:** ✅ Official | **Runbook:** [R19](19-ntfy.md)
 
 Self-hosted push notifications for everything: backup alerts, Woodpecker pipeline results, Home Assistant automations, Paperless document ingested, etc. Replaces paid notification services. Native Android/iOS app. Integrates with Home Assistant, Grafana, shell scripts.
 
@@ -108,7 +111,7 @@ Self-hosted push notifications for everything: backup alerts, Woodpecker pipelin
 These are the services people use every day that currently rely on commercial clouds.
 
 ### 🔴 RSS / News Reader — FreshRSS or Miniflux
-**Category:** Feed Readers | **Run:** 🖥️ Cluster | **RAM:** ~100 MB | **ARM64:** ✅ Both official
+**Category:** Feed Readers | **Run:** 🖥️ Cluster | **RAM:** ~100 MB | **ARM64:** ✅ Both official | **Runbook:** [R21](21-freshrss.md)
 
 **FreshRSS** — PHP, feature-rich, mobile-friendly, supports Fever/Google Reader API (works with Reeder, NetNewsWire, etc.)
 **Miniflux** — Go binary, minimal, fast, Fever + Google Reader API, very low RAM.
@@ -118,7 +121,7 @@ Pick Miniflux if you prefer lightweight and fast. Pick FreshRSS if you want more
 **Replaces:** Feedly, Inoreader, Google News.
 
 ### 🔴 Bookmarks — linkding
-**Category:** Bookmarks | **Run:** 🖥️ Cluster | **RAM:** ~100–150 MB | **ARM64:** ✅ Official
+**Category:** Bookmarks | **Run:** 🖥️ Cluster | **RAM:** ~100–150 MB | **ARM64:** ✅ Official | **Runbook:** [R22](22-linkding.md)
 
 Minimal, clean, fast. Browser extension for one-click saving. Tags, search, archive via Wayback Machine. Simpler than Wallabag (which is more of a read-later app). Docker ARM64 image confirmed.
 
@@ -127,7 +130,7 @@ Minimal, clean, fast. Browser extension for one-click saving. Tags, search, arch
 **Replaces:** Browser bookmarks synced to Firefox/Chrome cloud, Pocket, Raindrop.
 
 ### 🔴 Notes — Joplin (sync via Nextcloud) or TriliumNext
-**Category:** Note-Taking | **Run:** 🖥️ Cluster (TriliumNext server) or sync only via Nextcloud | **ARM64:** ✅
+**Category:** Note-Taking | **Run:** 🖥️ Cluster (TriliumNext server) or sync only via Nextcloud | **ARM64:** ✅ | **Runbook:** [R23](23-trilium.md)
 
 Two options depending on what you want:
 
@@ -138,7 +141,7 @@ Two options depending on what you want:
 **Replaces:** Apple Notes, Google Keep, Notion (partially), Obsidian Sync.
 
 ### 🔴 Tasks / To-Do — Vikunja
-**Category:** Task Management | **Run:** 🖥️ Cluster | **RAM:** ~150–200 MB | **ARM64:** ✅ Official
+**Category:** Task Management | **Run:** 🖥️ Cluster | **RAM:** ~150–200 MB | **ARM64:** ✅ Official | **Runbook:** [R24](24-vikunja.md)
 
 The most complete self-hosted task app: lists, kanban, Gantt, calendar view, teams, labels, due dates, reminders. Has a mobile app and desktop clients. Go binary — very ARM-friendly.
 
@@ -147,16 +150,16 @@ The most complete self-hosted task app: lists, kanban, Gantt, calendar view, tea
 > **AppFlowy** is the Notion alternative but is significantly heavier and ARM builds are less polished. Skip unless you specifically want a Notion replacement rather than a task manager.
 
 ### 🔴 Finance — Actual Budget
-**Category:** Money & Budgeting | **Run:** 🖥️ Cluster | **RAM:** ~100–200 MB | **ARM64:** ✅ Official
+**Category:** Money & Budgeting | **Run:** 🖥️ Cluster | **RAM:** ~100–200 MB | **ARM64:** ✅ Official | **Runbook:** [R26](26-actual-budget.md)
 
-**Actual Budget** is the best-in-class local-first personal finance tool: zero-sum (envelope) budgeting, fast SQLite backend, no forced cloud sync, excellent mobile app. Syncs via self-hosted server.
+**Actual Budget** is the best-in-class local-first personal finance tool: zero-sum (envelope) budgeting, fast SQLite backend, no forced cloud sync. Syncs via a self-hosted server, and supports automatic bank sync via SimpleFIN (US) or GoCardless (EU/UK). Official mobile apps exist but trail the desktop/web experience.
 
-**Alternative:** **Firefly III** if you prefer double-entry bookkeeping style and want bank imports (PHP, more RAM, also ARM64).
+**Alternative:** **Firefly III** if you prefer double-entry bookkeeping (PHP, more RAM, also ARM64).
 
 **Replaces:** YNAB ($14/mo), Mint (defunct), spreadsheets.
 
 ### 🔴 Media Feeder Stack (Arr Suite + Downloader)
-**Category:** Media Management | **Run:** 💾 NAS or 🖥️ Cluster (pointing at NAS NFS storage) | **ARM64:** ✅ All official
+**Category:** Media Management | **Run:** 💾 NAS or 🖥️ Cluster (pointing at NAS NFS storage) | **ARM64:** ✅ All official | **Runbook:** [R27](27-arr-stack.md)
 
 This is the automation layer that feeds Plex. Without it, adding new shows/movies/music is manual.
 
@@ -171,7 +174,7 @@ This is the automation layer that feeds Plex. Without it, adding new shows/movie
 
 **At 8 GB NAS RAM:** run on the cluster pointing to NFS — all four arr apps handle NFS paths fine and this keeps the NAS comfortable under load.
 
-**At 16 GB NAS RAM (recommended):** run everything on the NAS via Docker Compose. This is the better architecture because Sonarr/Radarr can **hardlink** completed downloads directly into the Plex library — an instant inode rename rather than a full NFS copy. Keep all paths under a single root (e.g. `/data/downloads/` and `/data/media/`) so hardlinks work across the same filesystem.
+**At 16 GB NAS RAM (recommended):** run everything on the NAS via Docker Compose. This is the better architecture because Sonarr/Radarr can **hardlink** completed downloads directly into the Plex library — a second directory entry pointing at the same inode, with no data copied, rather than a full NFS transfer. Keep all paths under a single root (e.g. `/data/downloads/` and `/data/media/`) so hardlinks work across the same filesystem.
 
 ```
 /data/
@@ -184,14 +187,14 @@ This is the automation layer that feeds Plex. Without it, adding new shows/movie
 **Replaces:** Manual downloading, commercial indexer subscriptions, PlexAmp searches that return nothing.
 
 ### 🔴 Audiobook + Podcast Server — Audiobookshelf
-**Category:** Document Mgmt / Audio | **Run:** 🖥️ Cluster or 💾 NAS | **RAM:** ~200–400 MB | **ARM64:** ✅ Official
+**Category:** Document Mgmt / Audio | **Run:** 🖥️ Cluster or 💾 NAS | **RAM:** ~200–400 MB | **ARM64:** ✅ Official | **Runbook:** [R28](28-audiobookshelf.md)
 
 Streams all audio formats, syncs progress across devices, has native iOS/Android apps. Covers both audiobooks and podcasts in one app. Backed by your NFS storage.
 
 **Replaces:** Audible (audiobooks), Pocket Casts/Overcast (podcasts).
 
 ### 🔴 E-Book Library — Kavita
-**Category:** Document Mgmt / E-Books | **Run:** 🖥️ Cluster | **RAM:** ~100–200 MB | **ARM64:** ✅ Official
+**Category:** Document Mgmt / E-Books | **Run:** 🖥️ Cluster | **RAM:** ~100–200 MB | **ARM64:** ✅ Official | **Runbook:** [R29](29-kavita.md)
 
 Web reader + OPDS server for comics, manga, PDF, epub. Clean UI. .NET-based but ARM64 binaries ship officially. Covers your full ebook library via NFS.
 
@@ -200,9 +203,9 @@ Web reader + OPDS server for comics, manga, PDF, epub. Clean UI. .NET-based but 
 **Replaces:** Kindle Unlimited, Libby (still use Libby for library loans), reading on a desktop app.
 
 ### 🔴 Personal Dashboard — Homepage (gethomepage)
-**Category:** Personal Dashboards | **Run:** 🖥️ Cluster | **RAM:** ~150–200 MB | **ARM64:** ✅ Official
+**Category:** Personal Dashboards | **Run:** 🖥️ Cluster | **RAM:** ~150–200 MB | **ARM64:** ✅ Official | **Runbook:** [R20](20-homepage.md)
 
-YAML-configured, Docker-native, integrates with ~100 services (Plex, Sonarr, Nextcloud, Proxmox, etc.) to show live status and stats. Best maintained option in 2025. Replaces opening 12 browser tabs.
+YAML-configured, Docker-native, integrates with ~100 services (Plex, Sonarr, Nextcloud, Proxmox, etc.) to show live status and stats. The best-maintained dashboard option. Replaces opening 12 browser tabs.
 
 **Alternative:** **Homarr** has a web-based drag-and-drop editor if you prefer no-YAML config.
 
@@ -213,14 +216,14 @@ YAML-configured, Docker-native, integrates with ~100 services (Plex, Sonarr, Nex
 ## Part 4 — Good Additions (After the Above Are Stable)
 
 ### 🟡 Recipe Manager — Mealie
-**Category:** Recipe Management | **Run:** 🖥️ Cluster | **RAM:** ~200–300 MB | **ARM64:** ✅ Official
+**Category:** Recipe Management | **Run:** 🖥️ Cluster | **RAM:** ~200–300 MB | **ARM64:** ✅ Official | **Runbook:** [R30](30-mealie.md)
 
 Material Design UI, import recipes from any URL, meal planning, shopping list generation. Python + Vue. Very popular in homelab circles.
 
 **Replaces:** Paprika, Yummly, browser recipe tabs, screenshotting recipes.
 
 ### 🟡 Wiki — BookStack
-**Category:** Wikis | **Run:** 🖥️ Cluster | **RAM:** ~200–300 MB | **ARM64:** ✅ Official
+**Category:** Wikis | **Run:** 🖥️ Cluster | **RAM:** ~200–300 MB | **ARM64:** ✅ Official | **Runbook:** [R31](31-bookstack.md)
 
 Books → Chapters → Pages hierarchy. Clean editor, search, image embedding, LDAP/SAML auth (ties into Authelia). Ideal for personal runbooks, home documentation, ISP info, car maintenance records, etc.
 
@@ -230,7 +233,7 @@ Books → Chapters → Pages hierarchy. Clean editor, search, image embedding, L
 
 
 ### 🟡 Uptime Status Page — Uptime Kuma
-**Category:** Monitoring | **Run:** 🖥️ Cluster | **RAM:** ~150–200 MB | **ARM64:** ✅ Official
+**Category:** Monitoring | **Run:** 🖥️ Cluster | **RAM:** ~150–200 MB | **ARM64:** ✅ Official | **Runbook:** [R33](33-uptime-kuma.md)
 
 Monitors HTTP, TCP, ping, DNS for all your services and shows a clean status page. Different job than Prometheus — this is user-facing "is it up?" vs infrastructure metrics. Pairs well with ntfy for alerts.
 
@@ -241,22 +244,22 @@ Monitors HTTP, TCP, ping, DNS for all your services and shows a clean status pag
 
 Privacy-first alternative to Google Timeline. Import your existing Google Location History export, then use OwnTracks on your phone to record ongoing location. You own the data. Useful for travel logging, life events, mileage records.
 
-**Dependency:** Also deploy **OwnTracks Recorder** (Go, ~50 MB, ARM64 ✅) for the phone-to-server side.
+**Dependency:** Also deploy **OwnTracks Recorder** (C, ~50 MB, ARM64 ✅) for the phone-to-server side.
 
 **Replaces:** Google Timeline / Maps location history.
 
 
 ### 🟡 Chore + Habit Tracker — Donetick
-**Category:** Miscellaneous / Task Management | **Run:** 🖥️ Cluster | **RAM:** ~100 MB | **ARM64:** Verify with `docker manifest inspect`
+**Category:** Miscellaneous / Task Management | **Run:** 🖥️ Cluster | **RAM:** ~100 MB | **ARM64:** Verify with `docker manifest inspect` | **Runbook:** [R25](25-donetick.md)
 
-Recurring task scheduler built around "due X days after last completion" rather than fixed calendar dates. Scheduling, family sharing, Vikunja-compatible. Lightweight Go binary.
+Recurring task scheduler built around "due X days after last completion" rather than fixed calendar dates. Scheduling, family sharing, REST API + webhooks, and a native Home Assistant integration. Lightweight Go binary.
 
 **Alternative:** **Habitica** — RPG-gamified habits. Heavier (Node.js + MongoDB). Fun if that motivation style suits you.
 
 **Replaces:** Streaks (iOS), Habitify.
 
 ### 🟡 Resume Builder — Reactive Resume
-**Category:** Miscellaneous | **Run:** 🖥️ Cluster | **RAM:** ~200–300 MB | **ARM64:** ✅ Official (38K stars)
+**Category:** Miscellaneous | **Run:** 🖥️ Cluster | **RAM:** ~300–500 MB (app + PostgreSQL + Redis) | **ARM64:** ✅ Official | **Runbook:** [R36](36-reactive-resume.md)
 
 Export-ready, ATS-friendly resume builder. Keep your resume on your own server.
 
@@ -283,14 +286,16 @@ Scans your network for unknown devices and alerts you (via ntfy). Useful for IoT
 Web dashboard to wake sleeping machines (your desktop, NAS if asleep, etc.) via WOL. Small, Go binary.
 
 ### 🟡 AI Assistant — Ollama + Open-WebUI
-**Category:** Generative AI | **Run:** 💾 NAS (x86) ⚠️ NAS RAM upgrade required
+**Category:** Generative AI | **Run:** 💾 NAS (x86) ⚠️ NAS RAM upgrade required | **Runbook:** [R37](37-ollama.md)
 
-**Ollama** runs LLMs locally. **Open-WebUI** is the ChatGPT-like interface. This needs x86 + significant RAM for anything useful:
-- Small models (Llama 3.2 3B, Phi-3 mini): ~4–6 GB RAM
-- Decent models (Mistral 7B, Llama 3.1 8B): ~8–16 GB RAM
-- ARM CM4 can technically run Ollama but is very slow. NAS x86 is the right host.
+**Ollama** runs LLMs locally. **Open-WebUI** is the ChatGPT-like interface. The real constraint here isn't RAM — it's that the NAS's Pentium Gold 8505 has no usable GPU, so this is **CPU inference**: expect ~10–30 tok/s for a 3B model and meaningfully slower as models grow (R37 has the numbers).
+- Small models (Llama 3.2 3B, Phi-3 mini): ~4–6 GB RAM, usable on CPU
+- Larger models (Mistral 7B, Llama 3.1 8B): ~8–16 GB RAM, but slow on this CPU
+- ARM CM4 can technically run Ollama but is even slower. NAS x86 is the better of the always-on hosts.
 
 **Only practical after NAS RAM upgrade to 16 GB.**
+
+> **Consider the desktop instead.** Your daily-driver desktop (RTX 3080) would run 7–13B models an order of magnitude faster than the NAS's CPU. You already deploy **Upsnap** (WOL) in this doc — wake the desktop on demand, reach it over Tailscale, and point a cluster-hosted Open-WebUI at it. Tradeoff: the desktop isn't always on, so it suits interactive use, not 24/7 background tasks.
 
 **Replaces:** ChatGPT subscription (partially — local models are less capable but private).
 
@@ -330,11 +335,11 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Federated Identity / Auth** | 🔴 Authelia | See Part 2 |
 | **Feed Readers** | 🔴 FreshRSS or Miniflux | See Part 3 |
 | **File Transfer — Distributed FS** | ⚪ Skip | NFS already serves the cluster |
-| **File Transfer — Object Storage** | ⚪ Skip unless Nextcloud external storage needed | MinIO on NAS if required |
+| **File Transfer — Object Storage** | ✅ MinIO (already deployed) | Runs on the NAS as Velero's S3 backup target (R10); also available for Nextcloud external storage if needed |
 | **File Transfer — P2P** | ⚪ Skip | |
-| **File Transfer — Single-click Upload** | 🟡 copyparty if you want a quick file drop endpoint | ~100 MB, Go, ARM64 ✅ |
+| **File Transfer — Single-click Upload** | 🟡 copyparty if you want a quick file drop endpoint | ~100 MB, Python, ARM64 ✅ |
 | **File Transfer — Web File Managers** | 🟡 FileBrowser for NAS web access | ~100 MB, Go, ARM64 ✅ |
-| **File Transfer — Sync** | ✅ Nextcloud + 🟡 Syncthing | Syncthing (Go, ARM64 ✅) for P2P sync without server-round-trip |
+| **File Transfer — Sync** | ✅ Nextcloud + 🟡 Syncthing | Syncthing (Go, ARM64 ✅) for P2P sync without server-round-trip — [R32](32-syncthing.md) |
 | **Games** | ⚪ Skip | |
 | **Games — Admin Panels** | ⚪ Skip | No game servers in this setup |
 | **Genealogy** | ⚪ Skip | |
@@ -351,14 +356,14 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Maps + GPS** | 🟡 Dawarich + OwnTracks | See Part 4 |
 | **Media Management** | 🔴 Arr stack (Sonarr/Radarr/Lidarr/Prowlarr + Seerr) | See Part 3 |
 | **Media Streaming — Audio** | ✅ Plex/Plexamp, 🔴 Audiobookshelf | Navidrome redundant — Plexamp covers the same ground |
-| **Media Streaming — Multimedia** | ✅ Plex; 🟡 Jellyfin NAS-side if transcoding limits hit | |
+| **Media Streaming — Multimedia** | ✅ Plex; 🟡 Jellyfin NAS-side if transcoding limits hit | The 8505's Intel Quick Sync handles hardware transcoding for either Plex or Jellyfin |
 | **Media Streaming — Video** | ✅ Plex | PeerTube only if you want public video hosting |
 | **Miscellaneous** | See individual picks | Habitica/Donetick ✅, Reactive Resume ✅ |
 | **Money + Budgeting** | 🔴 Actual Budget | See Part 3 |
 | **Monitoring** | ✅ Prometheus/Grafana/Loki + 🟡 Uptime Kuma | |
 | **Network Utilities** | 🟡 NetAlertX + Upsnap | See Part 4 |
 | **Note-taking + Editors** | 🔴 Joplin via Nextcloud or TriliumNext server | See Part 3 |
-| **Office Suites** | 🟡 Nextcloud + Collabora Online | Enable as Nextcloud app; ~500 MB extra |
+| **Office Suites** | 🟡 Nextcloud + Collabora Online | Enable as Nextcloud app; ~500 MB extra — [R34](34-collabora.md) |
 | **Password Managers** | ✅ Vaultwarden | |
 | **Pastebins** | 🟡 PrivateBin (~50 MB) if you share code snippets | |
 | **Personal Dashboards** | 🔴 Homepage (gethomepage) | See Part 3 |
@@ -366,7 +371,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Polls + Events** | 🟡 Rallly (Doodle alt, ~200 MB) if you schedule with others | |
 | **Proxy** | ✅ Traefik handles reverse proxy | |
 | **Recipe Management** | 🟡 Mealie | See Part 4 |
-| **Remote Access** | ✅ Tailscale + 🟡 RustDesk for graphical remote control | RustDesk server: Go, ~50–100 MB, ARM64 ✅; Tailscale handles network access, RustDesk handles the screen |
+| **Remote Access** | ✅ Tailscale + 🟡 RustDesk for graphical remote control | RustDesk server: Rust, ~50–100 MB, ARM64 ✅ — [R35](35-rustdesk.md); Tailscale handles network access, RustDesk handles the screen |
 | **Resource Planning** | ⚪ Skip | ERP territory; overkill |
 | **Search Engines** | 🟡 SearXNG if you want private web search | ~200 MB, Python, ARM64 ✅ |
 | **Self-hosting Solutions** | ✅ Your ArgoCD/k3s stack is this | CasaOS/Tipi are consumer panels; you've outgrown them |
@@ -421,29 +426,31 @@ The Nextcloud Collabora integration turns Nextcloud into a full Google Docs repl
 
 ## Part 6 — Recommended Deployment Order
 
-If starting fresh, add services in this sequence. Note: AdGuard Home goes on the Pi Zero 2 Ws — everything else goes on the cluster unless marked 💾 NAS.
+If starting fresh, add services in this sequence. AdGuard Home goes on the Pi Zero 2 Ws — everything else goes on the cluster unless marked 💾 NAS. Items tagged `(Rxx)` have a runbook; untagged items are recommended but not yet documented.
 
 ```
-1.  AdGuard Home              → whole-network ad blocking immediately
-2.  Authelia                  → SSO foundation for everything after
-3.  Homepage                  → visual dashboard of what you're running
-4.  ntfy                      → notifications for everything that follows
-5.  Uptime Kuma               → status monitoring for your services
-6.  FreshRSS / Miniflux       → daily news/RSS replacement
-7.  linkding                  → bookmark manager
-8.  Actual Budget             → financial tracking
-9.  Vikunja                   → task management
-10. Donetick                  → recurring chores and habits
-11. Arr stack + Seerr         → Plex automation (Sonarr/Radarr/Lidarr/Prowlarr)
-12. Audiobookshelf            → audiobooks + podcasts
-13. Kavita                    → e-book library
-14. Mealie                    → recipes
-15. BookStack                 → personal wiki
-16. Dawarich + OwnTracks      → location history
-17. Collabora (Nextcloud app) → office suite
-18. RustDesk                  → graphical remote control
-19. SearXNG                   → private search engine
-20. Ollama + Open-WebUI       → AI assistant (NAS, post-RAM upgrade)
+1.  AdGuard Home              (R17) → whole-network ad blocking immediately
+2.  Authelia                  (R18) → SSO foundation for everything after
+3.  Homepage                  (R20) → visual dashboard of what you're running
+4.  ntfy                      (R19) → notifications for everything that follows
+5.  Uptime Kuma               (R33) → status monitoring for your services
+6.  FreshRSS / Miniflux       (R21) → daily news/RSS replacement
+7.  linkding                  (R22) → bookmark manager
+8.  Actual Budget             (R26) → financial tracking
+9.  Vikunja                   (R24) → task management
+10. Donetick                  (R25) → recurring chores and habits
+11. Arr stack + Seerr         (R27) → Plex automation (Sonarr/Radarr/Lidarr/Prowlarr)
+12. Audiobookshelf            (R28) → audiobooks + podcasts
+13. Kavita                    (R29) → e-book library
+14. Mealie                    (R30) → recipes
+15. BookStack                 (R31) → personal wiki
+16. Syncthing                 (R32) → P2P file sync
+17. Collabora (Nextcloud app) (R34) → office suite
+18. RustDesk                  (R35) → graphical remote control
+19. Reactive Resume           (R36) → resume builder
+20. Dawarich + OwnTracks            → location history (no runbook yet)
+21. SearXNG                         → private search engine (no runbook yet)
+22. Ollama + Open-WebUI       (R37) → AI assistant (NAS, post-RAM upgrade)
 ```
 
 ---
