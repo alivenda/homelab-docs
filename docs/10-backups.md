@@ -27,7 +27,7 @@ This is **step zero of any real disaster recovery**. Restic and Velero restore y
 Every secret in the homelab funnels through **one age keypair**:
 
 - The same recipient — `age164pxwzqulte2t6uh6vpkg4kd84uvk0cks5gzg3wc508lvs0x7syskmykd9` — encrypts every SOPS file across `homelab-ansible`, `homelab-terraform`, and `homelab-secrets`.
-- The private key lives at `~/.config/sops/age/keys.txt`. Its only off-machine copy is the Bitwarden item **"sops homelab decryption key"**.
+- The private key lives at `~/.config/sops/age/keys.txt`. Its only off-machine copy is a secure-note item in your password manager (hosted Bitwarden).
 - The Sealed Secrets controller's signing-key backup (`homelab-secrets/sealed-secrets-controller-key.enc.yaml`) is itself SOPS/age-encrypted — so it, too, is locked behind that one age key.
 
 Recovery therefore runs in a strict order, rooted on Bitwarden:
@@ -48,7 +48,7 @@ On your machine (or any host that will run `sops`/`tofu`/`ansible`):
 mkdir -p ~/.config/sops/age
 ```
 
-Open the Bitwarden item **"sops homelab decryption key"**, copy its contents (the `AGE-SECRET-KEY-1…` line plus the `# public key:` comment), and save them into `~/.config/sops/age/keys.txt`. Pasting into an editor avoids any shell-quoting pitfalls. Then lock the file down:
+Open your password manager and retrieve the saved homelab age key — the secure note holding the `AGE-SECRET-KEY-1…` line plus its `# public key:` comment — and save it into `~/.config/sops/age/keys.txt`. Pasting into an editor avoids any shell-quoting pitfalls. Then lock the file down:
 
 ```sh
 chmod 600 ~/.config/sops/age/keys.txt
