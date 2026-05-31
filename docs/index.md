@@ -69,7 +69,17 @@ R19 ntfy                ← push notifications for the whole stack
  ├─→ R23 TriliumNext    (cluster — ForwardAuth)
  ├─→ R24 Vikunja        (cluster — OIDC)
  ├─→ R25 Donetick       (cluster — OIDC)
- └─→ R26+ (see personal-cloud-stack.md)
+ ├─→ R26 Actual Budget    (cluster — OIDC)
+ ├─→ R27 Arr Stack        (cluster — ForwardAuth; NAS after 16 GB upgrade)
+ ├─→ R28 Audiobookshelf  (cluster — ForwardAuth)
+ ├─→ R29 Kavita           (cluster — OIDC via UI)
+ ├─→ R30 Mealie           (cluster — OIDC)
+ ├─→ R31 BookStack        (cluster — OIDC + MariaDB)
+ ├─→ R32 Syncthing        (per-device — not k3s)
+ ├─→ R33 Uptime Kuma      (cluster — local-path storage, ForwardAuth)
+ ├─→ R34 Collabora Online (cluster — extends R13 Nextcloud)
+ ├─→ R35 RustDesk Server  (cluster — MetalLB LoadBalancer)
+ └─→ R36 Reactive Resume  (cluster — OIDC)
 ```
 
 ## How to use this guide
@@ -84,4 +94,4 @@ R19 ntfy                ← push notifications for the whole stack
 
 ## Version
 
-The current source set is v17. See the [Version History](version-history.md) for the prior PDF lineage and what each release added.
+The current source set is v18. See the [Version History](version-history.md) for the prior PDF lineage and what each release added.
