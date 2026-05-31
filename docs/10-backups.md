@@ -18,6 +18,97 @@ Local backups with a clearly-marked offsite TODO.
 
 The strategy above covers application data (DB dumps) and IaC (manifests). It does NOT cover Kubernetes objects themselves — PVCs, CRDs, secrets in non-Git-tracked namespaces, helm release state. For that, install Velero.
 
+## Secrets and key-material recovery
+
+This is **step zero of any real disaster recovery**. Restic and Velero restore your *data*; this section restores the ability to *decrypt* it. After rebuilding a machine or the cluster, do this first — nothing else works until it's done.
+
+### The single root of trust
+
+Every secret in the homelab funnels through **one age keypair**:
+
+- The same recipient — `age164pxwzqulte2t6uh6vpkg4kd84uvk0cks5gzg3wc508lvs0x7syskmykd9` — encrypts every SOPS file across `homelab-ansible`, `homelab-terraform`, and `homelab-secrets`.
+- The private key lives at `~/.config/sops/age/keys.txt`. Its only off-machine copy is the Bitwarden item **"sops homelab decryption key"**.
+- The Sealed Secrets controller's signing-key backup (`homelab-secrets/sealed-secrets-controller-key.enc.yaml`) is itself SOPS/age-encrypted — so it, too, is locked behind that one age key.
+
+Recovery therefore runs in a strict order, rooted on Bitwarden:
+
+```
+Bitwarden ──> age private key ──┬──> SOPS files (Ansible + Terraform secrets)
+                                └──> Sealed Secrets signing key ──> cluster SealedSecrets
+```
+
+!!! danger "Bitwarden is the keystone — make sure *it* is independently recoverable"
+    Everything below decrypts from one age key whose only off-machine copy is in Bitwarden. If you can't get into Bitwarden, nothing is recoverable. Confirm now: master password memorized (not stored only inside the vault), and the Bitwarden two-factor **recovery code** printed and kept offline (fireproof safe / second location). Note that **Vaultwarden runs inside this cluster** — never make the cluster's recovery depend on a secrets store the cluster itself hosts. The root of trust must be the externally-hosted Bitwarden (or an offline `bw export`), not Vaultwarden.
+
+### Step 1 — Restore the age private key
+
+On your machine (or any host that will run `sops`/`tofu`/`ansible`):
+
+```sh
+mkdir -p ~/.config/sops/age
+```
+
+Open the Bitwarden item **"sops homelab decryption key"**, copy its contents (the `AGE-SECRET-KEY-1…` line plus the `# public key:` comment), and save them into `~/.config/sops/age/keys.txt`. Pasting into an editor avoids any shell-quoting pitfalls. Then lock the file down:
+
+```sh
+chmod 600 ~/.config/sops/age/keys.txt
+```
+
+Verify it is the correct key — the derived public key must equal the recipient in every repo's `.sops.yaml`:
+
+```sh
+age-keygen -y ~/.config/sops/age/keys.txt
+# Expected: age164pxwzqulte2t6uh6vpkg4kd84uvk0cks5gzg3wc508lvs0x7syskmykd9
+```
+
+If that matches, the repo-side secret layer is recoverable. SOPS reads `~/.config/sops/age/keys.txt` automatically; if you keep the key elsewhere, point `SOPS_AGE_KEY_FILE` at it.
+
+### Step 2 — Confirm you can decrypt the repos
+
+```sh
+sops --decrypt homelab-secrets/sealed-secrets-controller-key.enc.yaml | head
+```
+
+A successful decrypt confirms the whole SOPS layer. Each repo unlocks a different part of the rebuild:
+
+| Repo | File | Unlocks |
+|---|---|---|
+| `homelab-ansible` | `secrets/secrets.sops.yaml` | `k3s_token`, `tailscale_authkey` — needed to re-bootstrap the cluster and Tailscale routers |
+| `homelab-terraform` | `cloudflare/secrets.enc.yaml` | Cloudflare API token — needed for `tofu apply` |
+| `homelab-secrets` | `sealed-secrets-controller-key.enc.yaml` | the cluster's Sealed Secrets signing key (Step 3) |
+
+### Step 3 — Restore the Sealed Secrets signing key (cluster rebuild only)
+
+Only needed when the cluster was rebuilt. A fresh Sealed Secrets controller generates a **new** keypair and cannot decrypt secrets that were sealed against the old one — so every `SealedSecret` committed to `homelab-manifests` would be undecryptable. Restoring the backed-up signing key avoids re-sealing anything.
+
+```bash
+# 1. Ensure the controller exists (ArgoCD installs it into the sealed-secrets namespace).
+kubectl get deploy -n sealed-secrets sealed-secrets-controller
+
+# 2. Decrypt the backed-up signing key on your machine and apply it to the cluster.
+sops --decrypt sealed-secrets-controller-key.enc.yaml | kubectl apply -f -
+
+# 3. Restart the controller so it loads the restored key.
+kubectl delete pod -n sealed-secrets -l app.kubernetes.io/name=sealed-secrets
+
+# 4. Confirm the restored key is present and active.
+kubectl get secret -n sealed-secrets -l sealedsecrets.bitnami.com/sealed-secrets-key
+# Expected: a kubernetes.io/tls secret labelled ...sealed-secrets-key=active
+```
+
+Re-syncing `homelab-manifests` in ArgoCD will now decrypt every existing SealedSecret normally — no manifest changes required.
+
+### Keep the signing-key backup current
+
+The controller rotates/renews its key on a schedule and on some upgrades, so the backup goes stale. Re-take it after any Sealed Secrets controller upgrade or key rotation, then commit via a branch + PR to `homelab-secrets`:
+
+```sh
+kubectl get secret -n sealed-secrets \
+  -l sealedsecrets.bitnami.com/sealed-secrets-key -o yaml > controller-key.yaml
+sops --encrypt controller-key.yaml > sealed-secrets-controller-key.enc.yaml
+rm controller-key.yaml   # never commit the plaintext
+```
+
 ## Velero for k8s-native PVC backup
 
 Velero with the restic backend snapshots PVC contents and stores them in an S3-compatible target. The simplest target is a MinIO container on your NAS.
@@ -207,6 +298,15 @@ Once a month, restore latest snapshot to a temp directory and verify the DB open
 
 ## Verification
 
+- [ ] Bitwarden two-factor **recovery code** is printed and stored offline (the keystone — see [The single root of trust](#the-single-root-of-trust)).
+- [ ] age key restores from Bitwarden and derives the expected public key:
+
+    ```sh
+    age-keygen -y ~/.config/sops/age/keys.txt
+    # Expected: age164pxwzqulte2t6uh6vpkg4kd84uvk0cks5gzg3wc508lvs0x7syskmykd9
+    ```
+
+- [ ] `sops --decrypt` succeeds on a known encrypted file (e.g. `homelab-secrets/sealed-secrets-controller-key.enc.yaml`).
 - [ ] Restic repo has snapshots:
 
     ```bash
