@@ -10,7 +10,7 @@ Local LLM inference on the NAS with a browser chat interface.
 | **Depends On** | NAS RAM upgrade to 16 GB, Runbook 6 (Traefik reverse proxy for HTTPS) |
 
 !!! warning "Defer until NAS RAM upgrade"
-    Ollama and the models it runs are RAM-hungry. The NAS currently has 8 GB DDR5, which leaves insufficient headroom after Plex and Immich are running. Upgrade to 16 GB DDR5 SO-DIMM first (see [personal-cloud-stack.md](personal-cloud-stack.md#nas-upgrade-path)) — then deploy this runbook.
+    Ollama and the models it runs are RAM-hungry. The NAS currently has 8 GB DDR5, which leaves insufficient headroom after Plex and Immich are running. Upgrade to 16 GB DDR5 SO-DIMM first (see [personal-cloud-stack.md](personal-cloud-stack.md#part-7--nas-upgrade-path)) — then deploy this runbook.
 
     With 16 GB: Plex + Immich use roughly 4–6 GB combined, leaving 10+ GB for Ollama. Models like `llama3.2:3b` (2 GB) or `gemma2:9b` (5 GB) are practical. The NAS uses x86 CPU inference — expect 10–30 tokens/second for 3B models, slower for larger ones.
 
