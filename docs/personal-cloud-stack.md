@@ -111,7 +111,7 @@ Self-hosted push notifications for everything: backup alerts, Woodpecker pipelin
 These are the services people use every day that currently rely on commercial clouds.
 
 ### 🔴 RSS / News Reader — FreshRSS or Miniflux
-**Category:** Feed Readers | **Run:** 🖥️ Cluster | **RAM:** ~100 MB | **ARM64:** ✅ Both official | **Runbook:** [R21](21-freshrss.md)
+**Category:** Feed Readers | **Run:** 🖥️ Cluster | **RAM:** ~100 MB | **ARM64:** ✅ Both official | **Runbook:** [App Catalog](apps-catalog.md#freshrss)
 
 **FreshRSS** — PHP, feature-rich, mobile-friendly, supports Fever/Google Reader API (works with Reeder, NetNewsWire, etc.)
 **Miniflux** — Go binary, minimal, fast, Fever + Google Reader API, very low RAM.
@@ -121,7 +121,7 @@ Pick Miniflux if you prefer lightweight and fast. Pick FreshRSS if you want more
 **Replaces:** Feedly, Inoreader, Google News.
 
 ### 🔴 Bookmarks — linkding
-**Category:** Bookmarks | **Run:** 🖥️ Cluster | **RAM:** ~100–150 MB | **ARM64:** ✅ Official | **Runbook:** [R22](22-linkding.md)
+**Category:** Bookmarks | **Run:** 🖥️ Cluster | **RAM:** ~100–150 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](apps-catalog.md#linkding)
 
 Minimal, clean, fast. Browser extension for one-click saving. Tags, search, archive via Wayback Machine. Simpler than Wallabag (which is more of a read-later app). Docker ARM64 image confirmed.
 
@@ -130,7 +130,7 @@ Minimal, clean, fast. Browser extension for one-click saving. Tags, search, arch
 **Replaces:** Browser bookmarks synced to Firefox/Chrome cloud, Pocket, Raindrop.
 
 ### 🔴 Notes — Joplin (sync via Nextcloud) or TriliumNext
-**Category:** Note-Taking | **Run:** 🖥️ Cluster (TriliumNext server) or sync only via Nextcloud | **ARM64:** ✅ | **Runbook:** [R23](23-trilium.md)
+**Category:** Note-Taking | **Run:** 🖥️ Cluster (TriliumNext server) or sync only via Nextcloud | **ARM64:** ✅ | **Runbook:** [App Catalog](apps-catalog.md#triliumnext-notes)
 
 Two options depending on what you want:
 
@@ -141,7 +141,7 @@ Two options depending on what you want:
 **Replaces:** Apple Notes, Google Keep, Notion (partially), Obsidian Sync.
 
 ### 🔴 Tasks / To-Do — Vikunja
-**Category:** Task Management | **Run:** 🖥️ Cluster | **RAM:** ~150–200 MB | **ARM64:** ✅ Official | **Runbook:** [R24](24-vikunja.md)
+**Category:** Task Management | **Run:** 🖥️ Cluster | **RAM:** ~150–200 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](apps-catalog.md#vikunja)
 
 The most complete self-hosted task app: lists, kanban, Gantt, calendar view, teams, labels, due dates, reminders. Has a mobile app and desktop clients. Go binary — very ARM-friendly.
 
@@ -150,7 +150,7 @@ The most complete self-hosted task app: lists, kanban, Gantt, calendar view, tea
 > **AppFlowy** is the Notion alternative but is significantly heavier and ARM builds are less polished. Skip unless you specifically want a Notion replacement rather than a task manager.
 
 ### 🔴 Finance — Actual Budget
-**Category:** Money & Budgeting | **Run:** 🖥️ Cluster | **RAM:** ~100–200 MB | **ARM64:** ✅ Official | **Runbook:** [R26](26-actual-budget.md)
+**Category:** Money & Budgeting | **Run:** 🖥️ Cluster | **RAM:** ~100–200 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](apps-catalog.md#actual-budget)
 
 **Actual Budget** is the best-in-class local-first personal finance tool: zero-sum (envelope) budgeting, fast SQLite backend, no forced cloud sync. Syncs via a self-hosted server, and supports automatic bank sync via SimpleFIN (US) or GoCardless (EU/UK). Official mobile apps exist but trail the desktop/web experience.
 
@@ -187,14 +187,14 @@ This is the automation layer that feeds Plex. Without it, adding new shows/movie
 **Replaces:** Manual downloading, commercial indexer subscriptions, PlexAmp searches that return nothing.
 
 ### 🔴 Audiobook + Podcast Server — Audiobookshelf
-**Category:** Document Mgmt / Audio | **Run:** 🖥️ Cluster or 💾 NAS | **RAM:** ~200–400 MB | **ARM64:** ✅ Official | **Runbook:** [R28](28-audiobookshelf.md)
+**Category:** Document Mgmt / Audio | **Run:** 🖥️ Cluster or 💾 NAS | **RAM:** ~200–400 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](apps-catalog.md#audiobookshelf)
 
 Streams all audio formats, syncs progress across devices, has native iOS/Android apps. Covers both audiobooks and podcasts in one app. Backed by your NFS storage.
 
 **Replaces:** Audible (audiobooks), Pocket Casts/Overcast (podcasts).
 
 ### 🔴 E-Book Library — Kavita
-**Category:** Document Mgmt / E-Books | **Run:** 🖥️ Cluster | **RAM:** ~100–200 MB | **ARM64:** ✅ Official | **Runbook:** [R29](29-kavita.md)
+**Category:** Document Mgmt / E-Books | **Run:** 🖥️ Cluster | **RAM:** ~100–200 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](apps-catalog.md#kavita)
 
 Web reader + OPDS server for comics, manga, PDF, epub. Clean UI. .NET-based but ARM64 binaries ship officially. Covers your full ebook library via NFS.
 
@@ -216,7 +216,7 @@ YAML-configured, Docker-native, integrates with ~100 services (Plex, Sonarr, Nex
 ## Part 4 — Good Additions (After the Above Are Stable)
 
 ### 🟡 Recipe Manager — Mealie
-**Category:** Recipe Management | **Run:** 🖥️ Cluster | **RAM:** ~200–300 MB | **ARM64:** ✅ Official | **Runbook:** [R30](30-mealie.md)
+**Category:** Recipe Management | **Run:** 🖥️ Cluster | **RAM:** ~200–300 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](apps-catalog.md#mealie)
 
 Material Design UI, import recipes from any URL, meal planning, shopping list generation. Python + Vue. Very popular in homelab circles.
 
@@ -233,7 +233,7 @@ Books → Chapters → Pages hierarchy. Clean editor, search, image embedding, L
 
 
 ### 🟡 Uptime Status Page — Uptime Kuma
-**Category:** Monitoring | **Run:** 🖥️ Cluster | **RAM:** ~150–200 MB | **ARM64:** ✅ Official | **Runbook:** [R33](33-uptime-kuma.md)
+**Category:** Monitoring | **Run:** 🖥️ Cluster | **RAM:** ~150–200 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](apps-catalog.md#uptime-kuma)
 
 Monitors HTTP, TCP, ping, DNS for all your services and shows a clean status page. Different job than Prometheus — this is user-facing "is it up?" vs infrastructure metrics. Pairs well with ntfy for alerts.
 
@@ -250,7 +250,7 @@ Privacy-first alternative to Google Timeline. Import your existing Google Locati
 
 
 ### 🟡 Chore + Habit Tracker — Donetick
-**Category:** Miscellaneous / Task Management | **Run:** 🖥️ Cluster | **RAM:** ~100 MB | **ARM64:** Verify with `docker manifest inspect` | **Runbook:** [R25](25-donetick.md)
+**Category:** Miscellaneous / Task Management | **Run:** 🖥️ Cluster | **RAM:** ~100 MB | **ARM64:** Verify with `docker manifest inspect` | **Runbook:** [App Catalog](apps-catalog.md#donetick)
 
 Recurring task scheduler built around "due X days after last completion" rather than fixed calendar dates. Scheduling, family sharing, REST API + webhooks, and a native Home Assistant integration. Lightweight Go binary.
 
@@ -363,7 +363,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Monitoring** | ✅ Prometheus/Grafana/Loki + 🟡 Uptime Kuma | |
 | **Network Utilities** | 🟡 NetAlertX + Upsnap | See Part 4 |
 | **Note-taking + Editors** | 🔴 Joplin via Nextcloud or TriliumNext server | See Part 3 |
-| **Office Suites** | 🟡 Nextcloud + Collabora Online | Enable as Nextcloud app; ~500 MB extra — [R34](34-collabora.md) |
+| **Office Suites** | 🟡 Nextcloud + Collabora Online | Enable as Nextcloud app; ~500 MB extra — [App Catalog](apps-catalog.md#collabora-online) |
 | **Password Managers** | ✅ Vaultwarden | |
 | **Pastebins** | 🟡 PrivateBin (~50 MB) if you share code snippets | |
 | **Personal Dashboards** | 🔴 Homepage (gethomepage) | See Part 3 |
