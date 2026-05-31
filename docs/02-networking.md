@@ -66,53 +66,45 @@ Lab VLAN is wired only — no SSID.
 
 ## Topology
 
-```text
-Internet
-   │
-   ▼
-┌──────────────────────────────────────────────────────────────┐
-│ UDM (10.0.0.1)                                               │
-│   ├─ Default LAN  10.0.0.0/24    gateway: 10.0.0.1           │
-│   ├─ VLAN 10  Trusted  10.0.10.0/24   gateway: 10.0.10.1     │
-│   ├─ VLAN 20  Lab      10.0.20.0/24   gateway: 10.0.20.1     │
-│   └─ VLAN 30  IoT      10.0.30.0/24   gateway: 10.0.30.1     │
-└────────────────────────┬─────────────────────────────────────┘
-                         │
-                ┌────────┴────────┐
-                │                 │
-        ┌───────▼──────┐   ┌──────▼──────┐
-        │ UniFi Switch │   │  UniFi AP   │
-        └──────────────┘   └─────────────┘
+```mermaid
+flowchart TB
+    INET([Internet]) --> UDM["UDM — 10.0.0.1<br/>L3 router · Zone-Based Firewall"]
 
-   Default LAN  10.0.0.0/24                  [mDNS off]
-     └─ UDM, switch, AP management
+    subgraph DEFAULT["Default LAN · 10.0.0.0/24 · mDNS off"]
+        SW["UniFi switch · .2"]
+        AP["UniFi AP · .3"]
+    end
 
-   VLAN 10  Trusted  10.0.10.0/24            [mDNS on]
-     ├─ SSID "home"
-     └─ phones · laptops · home desktop
+    subgraph TRUSTED["VLAN 10 · Trusted · 10.0.10.0/24 · mDNS on"]
+        DESK["Home desktop"]
+        PHONES["Phones / laptops · SSID home"]
+    end
 
-   VLAN 20  Lab  10.0.20.0/24                [mDNS on]
-     ├─ ruby      .10   k3s control plane + Tailscale subnet router
-     ├─ emerald   .11   k3s worker + Tailscale subnet router (failover)
-     ├─ topaz     .12   k3s worker
-     ├─ amethyst  .13   k3s worker
-     ├─ NAS       .50   UGREEN DXP6800 Pro (NFS PVs, MinIO S3, Plex, Immich)
-     └─ MetalLB pool  .200–.250  (Traefik VIP and other LoadBalancer services)
+    subgraph LAB["VLAN 20 · Lab · 10.0.20.0/24 · wired-only · mDNS on"]
+        BMC["TP2 BMC · .4"]
+        RUBY["ruby · .10<br/>k3s control-plane + etcd<br/>Tailscale subnet router"]
+        EMERALD["emerald · .11<br/>k3s worker<br/>Tailscale router · failover"]
+        TOPAZ["topaz · .12 · k3s worker"]
+        AMETHYST["amethyst · .13 · k3s worker"]
+        NAS["NAS · .50<br/>NFS PVs · MinIO S3 · Plex · Immich"]
+        METALLB["MetalLB pool · .200–.250<br/>Traefik VIP"]
+    end
 
-   VLAN 30  IoT  10.0.30.0/24                [mDNS on]
-     ├─ SSID "home-iot"
-     └─ Apple TV .10 · smart home devices
+    subgraph IOT["VLAN 30 · IoT · 10.0.30.0/24 · mDNS on"]
+        ATV["Apple TV · .10 · SSID home-iot"]
+        SMART["Smart-home devices"]
+    end
 
-   mDNS reflector:  Trusted ↔ IoT ↔ Lab  (AirPlay phone→AppleTV,
-                                          phone→Plex on NAS,
-                                          AppleTV→Plex on NAS)
+    UDM --> DEFAULT
+    UDM --> TRUSTED
+    UDM --> LAB
+    UDM --> IOT
 
-   Tailscale subnet routes advertised by ruby:
-     10.0.0.0/24    (Default — UDM admin from afar)
-     10.0.10.0/24   (Trusted — reach home desktop remotely)
-     10.0.20.0/24   (Lab — cluster admin)
-     IoT (10.0.30.0/24) intentionally NOT advertised
+    TAILNET([Tailscale tailnet]) -.->|"advertises Default + Trusted + Lab<br/>(10.0.0.0/24, 10.0.10.0/24, 10.0.20.0/24)<br/>IoT intentionally NOT advertised"| RUBY
+    TAILNET -.->|failover| EMERALD
 ```
+
+*Solid arrows are UDM's L3 routing between VLANs — every inter-VLAN hop is subject to the Policy Engine zone matrix (Step 3), with Lab unable to initiate to any other zone. Dotted lines are Tailscale subnet routing (ruby primary, emerald failover). mDNS reflector spans Trusted, Lab, and IoT; see [VLAN Architecture](#vlan-architecture) for the per-zone rationale.*
 
 ## VLAN Architecture
 

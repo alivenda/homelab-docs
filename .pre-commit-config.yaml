@@ -5,6 +5,10 @@ repos:
     - id: trailing-whitespace
     - id: end-of-file-fixer
     - id: check-yaml
+      # mkdocs.yml uses the !!python/name: tag (Mermaid custom fence) that a
+      # generic safe-load linter can't parse; mkdocs has its own loader. Scope
+      # the exemption to this one file rather than weakening checks repo-wide.
+      exclude: ^mkdocs\.yml$
     - id: check-added-large-files
     - id: detect-private-key
 - repo: https://github.com/gitleaks/gitleaks
