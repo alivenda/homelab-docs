@@ -63,7 +63,13 @@ R19 ntfy                ← push notifications for the whole stack
  ├─→ R14 Paperless-ngx   (cluster)
  ├─→ R15 Immich          (NAS-Docker — not on k3s, see runbook for why)
  ├─→ R16 Home Assistant  (dedicated Pi 4)
- └─→ R20+ Personal cloud apps (see personal-cloud-stack.md)
+ ├─→ R20 Homepage        (cluster — ForwardAuth)
+ ├─→ R21 FreshRSS       (cluster — ForwardAuth/header)
+ ├─→ R22 linkding       (cluster — OIDC)
+ ├─→ R23 TriliumNext    (cluster — ForwardAuth)
+ ├─→ R24 Vikunja        (cluster — OIDC)
+ ├─→ R25 Donetick       (cluster — OIDC)
+ └─→ R26+ (see personal-cloud-stack.md)
 ```
 
 ## How to use this guide
@@ -78,4 +84,4 @@ R19 ntfy                ← push notifications for the whole stack
 
 ## Version
 
-The current source set is v16. See the [Version History](version-history.md) for the prior PDF lineage and what each release added.
+The current source set is v17. See the [Version History](version-history.md) for the prior PDF lineage and what each release added.

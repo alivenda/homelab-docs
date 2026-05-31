@@ -96,6 +96,12 @@ nav:
       - Runbook 14 — Paperless-ngx: 14-paperless.md
       - Runbook 15 — Immich: 15-immich.md
       - Runbook 16 — Home Assistant: 16-home-assistant.md
+      - Runbook 20 — Homepage: 20-homepage.md
+      - Runbook 21 — FreshRSS: 21-freshrss.md
+      - Runbook 22 — linkding: 22-linkding.md
+      - Runbook 23 — TriliumNext Notes: 23-trilium.md
+      - Runbook 24 — Vikunja: 24-vikunja.md
+      - Runbook 25 — Donetick: 25-donetick.md
   - Version History: version-history.md
 
 extra:
