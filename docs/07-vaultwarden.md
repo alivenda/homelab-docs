@@ -9,7 +9,7 @@ Lightweight self-hosted Bitwarden-compatible server. First service runbook after
 | **Runs On** | Any node (fine on amethyst) |
 | **Depends On** | Runbook 6 (HTTPS required) |
 
-Deploy Vaultwarden via the well-maintained community Helm chart instead of docker-compose. NFS-backed persistence, ArgoCD visibility, single Traefik IngressRoute.
+Deploy Vaultwarden via the well-maintained community Helm chart instead of docker-compose. NFS-backed persistence, ArgoCD visibility, a single HTTPRoute on the shared Gateway.
 
 ## Step 1: Seal the admin token
 
@@ -63,27 +63,26 @@ helm upgrade --install vaultwarden vaultwarden/vaultwarden \
 !!! warning
     Save the admin token immediately. The `/admin` panel is the only way to manage settings without DB access, and the token is the only way in.
 
-## Step 3: IngressRoute
+## Step 3: HTTPRoute
 
 ```yaml
-# homelab-manifests/apps/vaultwarden/ingressroute.yaml
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
+# homelab-manifests/apps/vaultwarden/manifests/httproute.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: vaultwarden
   namespace: vaultwarden
 spec:
-  entryPoints: [websecure]
-  routes:
-    - match: Host(`vault.yourdomain.com`)
-      kind: Rule
-      services:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - vault.yourdomain.com
+  rules:
+    - backendRefs:
         - name: vaultwarden
           port: 80
-  tls:
-    certResolver: cloudflare
-    domains:
-      - main: vault.yourdomain.com
 ```
 
 ## Step 4: Account creation (signups are off)
@@ -103,7 +102,7 @@ helm upgrade vaultwarden vaultwarden/vaultwarden -n vaultwarden \
 ```
 
 !!! tip
-    Vaultwarden requires HTTPS or browser extensions silently refuse to connect. The Traefik IngressRoute above handles this. If you see "cannot reach server" from the browser extension, verify the cert with `curl -v https://vault.yourdomain.com`.
+    Vaultwarden requires HTTPS or browser extensions silently refuse to connect. The HTTPRoute above — with TLS terminated by the Gateway's wildcard cert — handles this. If you see "cannot reach server" from the browser extension, verify the cert with `curl -v https://vault.yourdomain.com`.
 
 ## Verification
 

@@ -9,7 +9,7 @@ Self-hosted Git server.
 | **Runs On** | k3s (pin to 32 GB node) |
 | **Depends On** | Runbook 6 |
 
-Deploy Forgejo via the official Helm chart instead of docker-compose. This keeps the Git server inside the cluster's GitOps lifecycle: persistent volumes go through the NFS provisioner, the workload is visible to ArgoCD, and an IngressRoute (Runbook 6) gives you HTTPS without exposing NodePorts.
+Deploy Forgejo via the official Helm chart instead of docker-compose. This keeps the Git server inside the cluster's GitOps lifecycle: persistent volumes go through the NFS provisioner, the workload is visible to ArgoCD, and an HTTPRoute (Runbook 6) gives you HTTPS without exposing NodePorts.
 
 ## Step 1: Seal the admin credentials
 
@@ -117,42 +117,47 @@ spec:
 
 This pattern uses ArgoCD's [multi-source Application](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#multiple-sources-for-an-application) so the Helm chart and your `values.yaml` can live in different repos.
 
-## Step 4: IngressRoute
+## Step 4: HTTPRoute (+ SSH)
 
 ```yaml
-# homelab-manifests/infrastructure/forgejo/manifests/ingressroute.yaml
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
+# homelab-manifests/infrastructure/forgejo/manifests/httproute.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: forgejo
   namespace: forgejo
 spec:
-  entryPoints: [websecure]
-  routes:
-    - match: Host(`git.yourdomain.com`)
-      kind: Rule
-      services:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - git.yourdomain.com
+  rules:
+    - backendRefs:
         - name: forgejo-http
           port: 3000
-  tls:
-    certResolver: cloudflare
-    domains:
-      - main: git.yourdomain.com
----
-# Optional: TCP route for git-over-SSH
-apiVersion: traefik.io/v1alpha1
-kind: IngressRouteTCP
+```
+
+Git-over-SSH is TCP, which the HTTP Gateway can't carry. Expose it with a MetalLB `LoadBalancer` Service instead — simplest is the chart's own `service.ssh.type: LoadBalancer` (MetalLB assigns an IP from the pool). A standalone Service works too (match the selector to your Forgejo pods):
+
+```yaml
+apiVersion: v1
+kind: Service
 metadata:
   name: forgejo-ssh
   namespace: forgejo
 spec:
-  entryPoints: [ssh]   # add this entrypoint to Traefik values.yaml if you want SSH on 2222
-  routes:
-    - match: HostSNI(`*`)
-      services:
-        - name: forgejo-ssh
-          port: 22
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: forgejo
+  ports:
+    - port: 22
+      targetPort: 22
 ```
+
+!!! note "TCPRoute alternative"
+    The Gateway API can route TCP via a `TCPRoute`, but that needs the Gateway API **experimental** channel plus a dedicated TCP listener on the Gateway — neither is configured here (the Gateway has only HTTP/HTTPS listeners). The LoadBalancer Service is the simpler path.
 
 ## Step 5: Initial setup
 

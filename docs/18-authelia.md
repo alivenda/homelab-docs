@@ -138,33 +138,46 @@ spec:
       targetPort: 17170
 ```
 
-Create the IngressRoute for the web UI (protected by Authelia ForwardAuth once Authelia is running):
+Create the HTTPRoute for the web UI, protected by Authelia ForwardAuth. Under the Gateway API the `Middleware` lives in lldap's own namespace (an `ExtensionRef` filter can't cross namespaces) and points back at the Authelia service:
 
 ```yaml
 apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
+kind: Middleware
+metadata:
+  name: authelia-forwardauth
+  namespace: lldap
+spec:
+  forwardAuth:
+    address: http://authelia.authelia.svc.cluster.local:9091/api/authz/forward-auth
+    trustForwardHeader: true
+    authResponseHeaders: [Remote-User, Remote-Groups, Remote-Name, Remote-Email]
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: lldap
   namespace: lldap
 spec:
-  entryPoints: [websecure]
-  routes:
-    - match: Host(`lldap.yourdomain.com`)
-      kind: Rule
-      middlewares:
-        - name: authelia
-          namespace: authelia
-      services:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - lldap.yourdomain.com
+  rules:
+    - filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: traefik.io
+            kind: Middleware
+            name: authelia-forwardauth
+      backendRefs:
         - name: lldap
           port: 17170
-  tls:
-    certResolver: cloudflare
-    domains:
-      - main: lldap.yourdomain.com
 ```
 
 !!! note
-    The `authelia` middleware referenced above is created in Part 2. Skip this IngressRoute until Authelia is deployed and the middleware exists, otherwise the IngressRoute will fail to attach.
+    Authelia must be running (Part 2) and the `Middleware` must exist before this route attaches with auth. The ForwardAuth middleware is copied into each protected namespace — see [Deploying an App](apps-deploy-pattern.md).
 
 ### Step 3: Create the Authelia Service Account in lldap
 
@@ -313,7 +326,7 @@ configMap:
       clients: []   # OIDC clients are added per-app in each app's runbook
 
 ingress:
-  enabled: false   # We use Traefik IngressRoute below
+  enabled: false   # We use an HTTPRoute below
 ```
 
 Deploy:
@@ -327,38 +340,37 @@ helm upgrade --install authelia authelia/authelia \
 
 Pin `--version` to the latest release listed on [charts.authelia.com](https://charts.authelia.com/).
 
-### Step 7: Traefik IngressRoute and ForwardAuth Middleware
+### Step 7: HTTPRoute and ForwardAuth Middleware
 
-Create `homelab-manifests/apps/authelia/ingressroute.yaml`:
+The Authelia portal itself is **not** behind ForwardAuth (it *is* the auth). Create `homelab-manifests/apps/authelia/manifests/httproute.yaml`:
 
 ```yaml
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: authelia
   namespace: authelia
 spec:
-  entryPoints: [websecure]
-  routes:
-    - match: Host(`auth.yourdomain.com`)
-      kind: Rule
-      services:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - auth.yourdomain.com
+  rules:
+    - backendRefs:
         - name: authelia
           port: 9091
-  tls:
-    certResolver: cloudflare
-    domains:
-      - main: auth.yourdomain.com
 ```
 
-Create `homelab-manifests/apps/authelia/middleware.yaml`. This middleware is referenced by any IngressRoute that should require authentication:
+Every *other* protected service gets a ForwardAuth `Middleware` **in its own namespace**, referenced from its `HTTPRoute` with an `ExtensionRef` filter. Under the Gateway API an `ExtensionRef` can't cross namespaces, so — unlike the old `authelia@kubernetescrd` cross-namespace reference — this `Middleware` is copied into each protected app's namespace (its `address` still points back at the central Authelia service):
 
 ```yaml
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
-  name: authelia
-  namespace: authelia
+  name: authelia-forwardauth
+  namespace: <app-namespace>
 spec:
   forwardAuth:
     address: http://authelia.authelia.svc.cluster.local:9091/api/authz/forward-auth
@@ -370,22 +382,16 @@ spec:
       - Remote-Name
 ```
 
-!!! tip "Cross-namespace middleware reference"
-    When referencing this middleware from an IngressRoute in another namespace, use the fully qualified form:
-    ```yaml
-    middlewares:
-      - name: authelia@kubernetescrd
-        namespace: authelia
-    ```
-    Or in Traefik v3 annotation style: `authelia-authelia@kubernetescrd`.
+See [Deploying an App](apps-deploy-pattern.md) for the per-app HTTPRoute + `ExtensionRef` wiring. Commit all manifests to `homelab-manifests/apps/authelia/` and let ArgoCD sync.
 
-Commit all manifests to `homelab-manifests/apps/authelia/` and let ArgoCD sync.
+!!! note "ExtensionRef prerequisite"
+    Traefik's Kubernetes IngressRoute CRD provider must stay enabled for `ExtensionRef` middlewares to resolve — moving to the Gateway API doesn't remove that requirement.
 
 ### Step 8: First Login
 
 Open `https://auth.yourdomain.com`. Log in with your personal user account from lldap. You should be prompted to set up TOTP (use Vaultwarden's built-in TOTP generator and save the secret).
 
-Once logged in, any service whose IngressRoute includes the `authelia` middleware will redirect unauthenticated requests to this portal.
+Once logged in, any service whose HTTPRoute attaches an `authelia-forwardauth` middleware (via an `ExtensionRef` filter) will redirect unauthenticated requests to this portal.
 
 ## OIDC Client Setup (Per-App)
 

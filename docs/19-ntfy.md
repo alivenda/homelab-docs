@@ -116,28 +116,27 @@ spec:
       targetPort: 80
 ```
 
-## Step 3: IngressRoute
+## Step 3: HTTPRoute
 
-Create `homelab-manifests/apps/ntfy/ingressroute.yaml`:
+Create `homelab-manifests/apps/ntfy/manifests/httproute.yaml`:
 
 ```yaml
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: ntfy
   namespace: ntfy
 spec:
-  entryPoints: [websecure]
-  routes:
-    - match: Host(`ntfy.yourdomain.com`)
-      kind: Rule
-      services:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - ntfy.yourdomain.com
+  rules:
+    - backendRefs:
         - name: ntfy
           port: 80
-  tls:
-    certResolver: cloudflare
-    domains:
-      - main: ntfy.yourdomain.com
 ```
 
 !!! note "No Authelia middleware on ntfy"

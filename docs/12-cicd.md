@@ -101,9 +101,9 @@ Pin `--version` to a current release listed on [woodpecker-ci/helm](https://gith
 !!! warning "FORGEJO vs GITEA env var names"
     Modern Woodpecker (>= 2.x) ships a dedicated Forgejo provider (`WOODPECKER_FORGEJO_*`). Older versions only had `WOODPECKER_GITEA_*` which still works against Forgejo (same API surface). If your chart version is older, swap `FORGEJO` → `GITEA` in the env-var names.
 
-## Step 5: IngressRoute
+## Step 5: HTTPRoute
 
-Standard IngressRoute for `ci.yourdomain.com`. Same shape as [Vaultwarden Step 3](07-vaultwarden.md#step-3-ingressroute) — change the service name to `woodpecker-server` and port to `8000`.
+Standard HTTPRoute for `ci.yourdomain.com`. Same shape as [Vaultwarden Step 3](07-vaultwarden.md#step-3-httproute) — change the backend service to `woodpecker-server`, port `8000`.
 
 ## Step 6: Why kubernetes backend (not docker)
 
@@ -267,7 +267,7 @@ helm upgrade --install harbor harbor/harbor \
   --set persistence.persistentVolumeClaim.registry.size=50Gi \
   --set trivy.enabled=true
 
-# Then add a Traefik IngressRoute for harbor.yourdomain.com.
+# Then add an HTTPRoute for harbor.yourdomain.com.
 ```
 
 Pin `--version` to a current release listed on [goharbor/harbor-helm](https://github.com/goharbor/harbor-helm).
