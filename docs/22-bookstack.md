@@ -1,4 +1,4 @@
-# Runbook 31: BookStack
+# Runbook 22: BookStack
 
 Self-hosted wiki and knowledge base with OIDC login and role-based access.
 

@@ -1,4 +1,4 @@
-# Runbook 27: Arr Stack
+# Runbook 21: Arr Stack
 
 Media automation: Sonarr, Radarr, Lidarr, Prowlarr, Seerr, and qBittorrent.
 
