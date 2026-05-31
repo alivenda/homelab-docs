@@ -364,133 +364,153 @@ spec:
 
 Add a `seerr-config` entry to `pvcs.yaml` (1 Gi, nfs-storage).
 
-## Step 6: IngressRoutes
+## Step 6: HTTPRoutes
 
-Create `homelab-manifests/apps/arr/ingressroutes.yaml`. All arr UIs are protected by Authelia ForwardAuth:
+Create `homelab-manifests/apps/arr/httproutes.yaml`. All arr UIs except Seerr are protected by Authelia ForwardAuth — under the Gateway API the `Middleware` lives in the `arr` namespace and each protected route references it with an `ExtensionRef` filter (see [Deploying an App](apps-deploy-pattern.md)). TLS is handled by the Gateway's wildcard cert.
 
 ```yaml
 apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
+kind: Middleware
+metadata:
+  name: authelia-forwardauth
+  namespace: arr
+spec:
+  forwardAuth:
+    address: http://authelia.authelia.svc.cluster.local/api/authz/forward-auth
+    trustForwardHeader: true
+    authResponseHeaders: [Remote-User, Remote-Groups, Remote-Name, Remote-Email]
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: sonarr
   namespace: arr
 spec:
-  entryPoints: [websecure]
-  routes:
-    - match: Host(`sonarr.yourdomain.com`)
-      kind: Rule
-      middlewares:
-        - name: authelia@kubernetescrd
-          namespace: authelia
-      services:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - sonarr.yourdomain.com
+  rules:
+    - filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: traefik.io
+            kind: Middleware
+            name: authelia-forwardauth
+      backendRefs:
         - name: sonarr
           port: 8989
-  tls:
-    certResolver: cloudflare
-    domains:
-      - main: sonarr.yourdomain.com
 ---
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: radarr
   namespace: arr
 spec:
-  entryPoints: [websecure]
-  routes:
-    - match: Host(`radarr.yourdomain.com`)
-      kind: Rule
-      middlewares:
-        - name: authelia@kubernetescrd
-          namespace: authelia
-      services:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - radarr.yourdomain.com
+  rules:
+    - filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: traefik.io
+            kind: Middleware
+            name: authelia-forwardauth
+      backendRefs:
         - name: radarr
           port: 7878
-  tls:
-    certResolver: cloudflare
-    domains:
-      - main: radarr.yourdomain.com
 ---
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: lidarr
   namespace: arr
 spec:
-  entryPoints: [websecure]
-  routes:
-    - match: Host(`lidarr.yourdomain.com`)
-      kind: Rule
-      middlewares:
-        - name: authelia@kubernetescrd
-          namespace: authelia
-      services:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - lidarr.yourdomain.com
+  rules:
+    - filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: traefik.io
+            kind: Middleware
+            name: authelia-forwardauth
+      backendRefs:
         - name: lidarr
           port: 8686
-  tls:
-    certResolver: cloudflare
-    domains:
-      - main: lidarr.yourdomain.com
 ---
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: prowlarr
   namespace: arr
 spec:
-  entryPoints: [websecure]
-  routes:
-    - match: Host(`prowlarr.yourdomain.com`)
-      kind: Rule
-      middlewares:
-        - name: authelia@kubernetescrd
-          namespace: authelia
-      services:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - prowlarr.yourdomain.com
+  rules:
+    - filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: traefik.io
+            kind: Middleware
+            name: authelia-forwardauth
+      backendRefs:
         - name: prowlarr
           port: 9696
-  tls:
-    certResolver: cloudflare
-    domains:
-      - main: prowlarr.yourdomain.com
 ---
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: qbittorrent
   namespace: arr
 spec:
-  entryPoints: [websecure]
-  routes:
-    - match: Host(`qbt.yourdomain.com`)
-      kind: Rule
-      middlewares:
-        - name: authelia@kubernetescrd
-          namespace: authelia
-      services:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - qbt.yourdomain.com
+  rules:
+    - filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: traefik.io
+            kind: Middleware
+            name: authelia-forwardauth
+      backendRefs:
         - name: qbittorrent
           port: 8080
-  tls:
-    certResolver: cloudflare
-    domains:
-      - main: qbt.yourdomain.com
 ---
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: seerr
   namespace: arr
 spec:
-  entryPoints: [websecure]
-  routes:
-    - match: Host(`request.yourdomain.com`)
-      kind: Rule
-      services:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - request.yourdomain.com
+  rules:
+    - backendRefs:
         - name: seerr
           port: 5055
-  tls:
-    certResolver: cloudflare
-    domains:
-      - main: request.yourdomain.com
 ```
 
 !!! note "Seerr has no Authelia middleware"
@@ -533,7 +553,7 @@ Once the NAS has 16 GB RAM, migrate the arr stack off the cluster for native har
 2. Copy config directories from the NFS PVCs to NAS local storage.
 3. Create a `docker-compose.yml` on the NAS following the Servarr unified `/data` layout.
 4. Delete the k3s deployments and Ingresses (keep the PVCs until the migration is verified).
-5. Expose the NAS arr UIs via Traefik reverse proxy entries (Traefik is already running on the cluster — add ServersTransport + IngressRoutes pointing to the NAS IP).
+5. Expose the NAS arr UIs through Traefik by fronting each with a selector-less `Service` + `EndpointSlice` pointing at the NAS IP, then an `HTTPRoute` (the same pattern Immich uses — see [Deploying an App](apps-deploy-pattern.md)). Re-create the Authelia ForwardAuth `Middleware` in that namespace too.
 
 ## Verification
 

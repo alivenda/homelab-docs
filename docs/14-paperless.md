@@ -86,9 +86,9 @@ helm upgrade --install paperless paperless-ngx/paperless-ngx \
 
 Pin `--version` to a current release listed on [charts.paperless-ngx.com](https://charts.paperless-ngx.com/).
 
-## Step 3: IngressRoute and scan source
+## Step 3: HTTPRoute and scan source
 
-Add an IngressRoute for `paperless.yourdomain.com` (same pattern as Vaultwarden). For scan-to-archive, mount your NAS's scan folder via a PersistentVolume backed by NFS rather than the SMB/local-path option from the original compose.
+Add an `HTTPRoute` for `paperless.yourdomain.com` attached to the shared Gateway — same pattern as every app (see [Deploying an App](apps-deploy-pattern.md)). For scan-to-archive, mount your NAS's scan folder via a PersistentVolume backed by NFS rather than the SMB/local-path option from the original compose.
 
 !!! tip
     Point a network scanner or phone scanning app at the consume folder via SMB on the NAS, then sync into the cluster via a NFS-backed PV. Document scanning lives in the consume folder; Paperless polls it.

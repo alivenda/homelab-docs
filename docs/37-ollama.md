@@ -79,64 +79,60 @@ In `homelab-manifests/apps/authelia/values.yaml`, add under `configMap.identity_
 
 Commit and upgrade Authelia.
 
-## Step 3: Enable ExternalName routing in Traefik
+## Step 3: Front the NAS service in the cluster
 
-Traefik blocks ExternalName Services by default. Enable it in your Traefik Helm values (`homelab-manifests/apps/traefik/values.yaml`):
-
-```yaml
-providers:
-  kubernetesIngress:
-    allowExternalNameServices: true
-  kubernetesCRD:
-    allowExternalNameServices: true
-```
-
-Commit and let ArgoCD sync before creating the IngressRoute.
-
-## Step 4: Expose via Traefik
-
-The NAS services need to be reachable through Traefik (running on the cluster). Add a ServersTransport and IngressRoute pointing to the NAS IP.
+Open WebUI runs on the NAS, so the cluster reaches it via a selector-less `Service` + a manual `EndpointSlice` pointing at the NAS IP — the same pattern Immich uses (`homelab-manifests/apps/immich/manifests/`). No Traefik `ExternalName` allowance is needed.
 
 Create `homelab-manifests/apps/nas-services/open-webui.yaml`:
 
 ```yaml
-apiVersion: traefik.io/v1alpha1
-kind: ServersTransport
-metadata:
-  name: nas-transport
-  namespace: default
-spec:
-  insecureSkipVerify: true
----
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
-metadata:
-  name: open-webui
-  namespace: default
-spec:
-  entryPoints: [websecure]
-  routes:
-    - match: Host(`ai.yourdomain.com`)
-      kind: Rule
-      services:
-        - name: open-webui-nas
-          port: 3000
-          kind: Service
-  tls:
-    certResolver: cloudflare
-    domains:
-      - main: ai.yourdomain.com
----
 apiVersion: v1
 kind: Service
 metadata:
   name: open-webui-nas
-  namespace: default
+  namespace: nas-services
 spec:
-  type: ExternalName
-  externalName: <nas-ip>
   ports:
     - port: 3000
+      targetPort: 3000
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: open-webui-nas
+  namespace: nas-services
+  labels:
+    kubernetes.io/service-name: open-webui-nas
+addressType: IPv4
+endpoints:
+  - addresses: ["<nas-ip>"]
+    conditions:
+      ready: true
+ports:
+  - port: 3000
+```
+
+## Step 4: Expose via Traefik (HTTPRoute)
+
+Attach an `HTTPRoute` to the shared Gateway; TLS is handled by the Gateway's wildcard cert (see [Deploying an App](apps-deploy-pattern.md)). Add it to the same `open-webui.yaml`:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: open-webui
+  namespace: nas-services
+spec:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - ai.yourdomain.com
+  rules:
+    - backendRefs:
+        - name: open-webui-nas
+          port: 3000
 ```
 
 ## Step 5: Pull Models

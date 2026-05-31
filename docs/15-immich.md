@@ -42,9 +42,55 @@ docker exec -t immich_postgres pg_dumpall -c -U postgres \
 
 The [R10 backup script](10-backups.md#backup-script) already includes this for routine snapshots.
 
-## Traefik IngressRoute (optional, for HTTPS on the cluster domain)
+## Traefik HTTPRoute (optional, for HTTPS on the cluster domain)
 
-If you want `https://immich.yourdomain.com` to resolve through Traefik on the cluster (instead of `http://<nas-ip>:2283`), expose Immich's web port via a Kubernetes ExternalName service pointing at the NAS, then add an IngressRoute. Otherwise just access it via NAS IP.
+To resolve `https://immich.yourdomain.com` through Traefik on the cluster (instead of `http://<nas-ip>:2283`), front the NAS-hosted Immich with a selector-less `Service` + a manual `EndpointSlice` pointing at the NAS, then attach an `HTTPRoute`. This is exactly how `homelab-manifests/apps/immich/manifests/` already exposes it — TLS is handled by the Gateway's wildcard cert (see [Deploying an App](apps-deploy-pattern.md)):
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: immich-nas
+  namespace: immich
+spec:
+  ports:
+    - port: 2283
+      targetPort: 2283
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: immich-nas
+  namespace: immich
+  labels:
+    kubernetes.io/service-name: immich-nas
+addressType: IPv4
+endpoints:
+  - addresses: ["<nas-ip>"]
+    conditions:
+      ready: true
+ports:
+  - port: 2283
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: immich
+  namespace: immich
+spec:
+  parentRefs:
+    - name: traefik
+      namespace: traefik
+      sectionName: websecure
+  hostnames:
+    - immich.yourdomain.com
+  rules:
+    - backendRefs:
+        - name: immich-nas
+          port: 2283
+```
+
+Otherwise just access it via the NAS IP.
 
 ## Verification
 
