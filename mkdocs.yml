@@ -88,6 +88,9 @@ nav:
       - Runbook 10 — Backups: 10-backups.md
       - Runbook 11 — Forgejo: 11-forgejo.md
       - Runbook 12 — CI/CD: 12-cicd.md
+      - Runbook 17 — AdGuard Home: 17-adguard-home.md
+      - Runbook 18 — Authelia + lldap: 18-authelia.md
+      - Runbook 19 — ntfy: 19-ntfy.md
   - Apps:
       - Runbook 13 — Nextcloud: 13-nextcloud.md
       - Runbook 14 — Paperless-ngx: 14-paperless.md
