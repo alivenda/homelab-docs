@@ -300,12 +300,12 @@ spec:
             - name: http
               containerPort: 3000
           env:
-            - name: HOMEPAGE_ALLOWED_HOSTS
-              value: "homepage.yourdomain.com,$(POD_IP)"
             - name: POD_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            - name: HOMEPAGE_ALLOWED_HOSTS
+              value: "homepage.yourdomain.com,$(POD_IP)"
           envFrom:
             - secretRef:
                 name: homepage-env

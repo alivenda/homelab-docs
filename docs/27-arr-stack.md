@@ -17,7 +17,7 @@ The arr stack automates downloading and organising TV shows, films, and music. P
 
 The Servarr wiki's strongest recommendation is a **unified `/data` layout** where download client and media library share the same filesystem path. This allows atomic hardlink renames instead of slow copy+delete operations.
 
-**Current state (8 GB NAS RAM):** arr apps run on the cluster and point to NFS paths. Hardlinks do **not** work over NFS. Downloads complete, files are copied to the media library, and the original download is deleted. This works but adds NAS I/O load.
+**Current state (8 GB NAS RAM):** arr apps run on the cluster via a single NFS mount. Hardlinks require that source and destination live on the same filesystem — since the cluster mounts `/data` over NFS, moves from `/data/downloads` to `/data/media` cross a network boundary and are done as copy+delete. This works but doubles NAS I/O during post-processing.
 
 **After 16 GB NAS RAM upgrade:** move the entire arr stack to NAS Docker Compose with both the download client and Plex sharing the same local filesystem. This enables native hardlinks and eliminates the double-copy. Each app's runbook section notes when this matters.
 
@@ -98,69 +98,45 @@ spec:
       storage: 1Gi
 ```
 
-### NFS volume for media and downloads
+### NFS volume for data
 
-The NAS exports two NFS shares that all arr containers mount:
+All arr apps and the download client mount a **single NFS export** as `/data`. Downloads land under `/data/downloads/` and the media library lives under `/data/media/`. Sharing one filesystem root is what makes hardlinks possible — on the cluster the files are still copied (NFS boundary), but when you migrate to NAS Docker after the RAM upgrade, both qBittorrent and Plex will use the same local filesystem and the hardlinks work natively.
 
-| NFS path | Mount in container | Purpose |
-|----------|--------------------|---------|
-| `<nas-ip>:/volume1/downloads` | `/data/downloads` | qBittorrent download landing zone |
-| `<nas-ip>:/volume1/media` | `/data/media` | Plex library — TV, movies, music |
+Create the NAS directory layout first (SSH into the NAS):
 
-Create `homelab-manifests/apps/arr/pv-media.yaml`:
+```bash
+mkdir -p /volume1/data/downloads/{movies,tv,music}
+mkdir -p /volume1/data/media/{movies,tv,music}
+```
+
+Create `homelab-manifests/apps/arr/pv-data.yaml`:
 
 ```yaml
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: arr-downloads
+  name: arr-data
 spec:
   capacity:
-    storage: 500Gi
+    storage: 2Ti
   accessModes: [ReadWriteMany]
   nfs:
     server: <nas-ip>
-    path: /volume1/downloads
+    path: /volume1/data
   persistentVolumeReclaimPolicy: Retain
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: arr-downloads
+  name: arr-data
   namespace: arr
 spec:
   accessModes: [ReadWriteMany]
   storageClassName: ""
-  volumeName: arr-downloads
+  volumeName: arr-data
   resources:
     requests:
-      storage: 500Gi
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: arr-media
-spec:
-  capacity:
-    storage: 1Ti
-  accessModes: [ReadWriteMany]
-  nfs:
-    server: <nas-ip>
-    path: /volume1/media
-  persistentVolumeReclaimPolicy: Retain
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: arr-media
-  namespace: arr
-spec:
-  accessModes: [ReadWriteMany]
-  storageClassName: ""
-  volumeName: arr-media
-  resources:
-    requests:
-      storage: 1Ti
+      storage: 2Ti
 ```
 
 ## Step 2: qBittorrent
@@ -203,15 +179,15 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
-            - name: downloads
-              mountPath: /data/downloads
+            - name: data
+              mountPath: /data
       volumes:
         - name: config
           persistentVolumeClaim:
             claimName: qbittorrent-config
-        - name: downloads
+        - name: data
           persistentVolumeClaim:
-            claimName: arr-downloads
+            claimName: arr-data
 ---
 apiVersion: v1
 kind: Service
@@ -315,20 +291,15 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
-            - name: downloads
-              mountPath: /data/downloads
-            - name: media
-              mountPath: /data/media
+            - name: data
+              mountPath: /data
       volumes:
         - name: config
           persistentVolumeClaim:
             claimName: sonarr-config
-        - name: downloads
+        - name: data
           persistentVolumeClaim:
-            claimName: arr-downloads
-        - name: media
-          persistentVolumeClaim:
-            claimName: arr-media
+            claimName: arr-data
 ---
 apiVersion: v1
 kind: Service
@@ -343,7 +314,7 @@ spec:
       targetPort: 8989
 ```
 
-Duplicate the above for **Radarr** (port 7878, image `linuxserver/radarr`, PVC `radarr-config`) and **Lidarr** (port 8686, image `linuxserver/lidarr`, PVC `lidarr-config`).
+Duplicate the above for **Radarr** (port 7878, image `linuxserver/radarr`, config PVC `radarr-config`) and **Lidarr** (port 8686, image `linuxserver/lidarr`, config PVC `lidarr-config`). All three share the same `arr-data` PVC.
 
 ## Step 5: Seerr (Request Interface)
 

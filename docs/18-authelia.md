@@ -400,10 +400,14 @@ clients:
     redirect_uris:
       - https://appname.yourdomain.com/oauth2/callback   # Varies per app — check app docs
     scopes: [openid, profile, email, groups]
+    claims_policy: default
     token_endpoint_auth_method: client_secret_basic
     grant_types: [authorization_code]
     response_types: [code]
 ```
+
+!!! note "claims_policy required for groups"
+    As of Authelia 4.39, group membership is **not** included in the ID token by default. Any client that requests the `groups` scope must also set `claims_policy: default` to reference the claims policy defined in `configMap.identity_providers.oidc.claims_policies`. Without this, apps like Mealie (`OIDC_ADMIN_GROUP`) and Donetick (`admin_groups`) will authenticate users but never recognise their group memberships.
 
 !!! warning "Hashed client secrets"
     As of Authelia 4.38, client secrets must be stored as hashes in the config. Generate with:

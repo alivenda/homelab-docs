@@ -43,6 +43,7 @@ In `homelab-manifests/apps/authelia/values.yaml`, add under `configMap.identity_
     - https://recipes.yourdomain.com/login
     - https://recipes.yourdomain.com/login?direct=1
   scopes: [openid, profile, email, groups]
+  claims_policy: default
   token_endpoint_auth_method: client_secret_basic
   grant_types: [authorization_code]
   response_types: [code]

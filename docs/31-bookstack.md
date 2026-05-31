@@ -89,6 +89,14 @@ spec:
 
 ## Step 2: SealedSecrets
 
+`APP_KEY` is required by BookStack for session encryption. Generate it using the official method before sealing:
+
+```bash
+# Generate APP_KEY using the LinuxServer image
+APP_KEY=$(docker run --rm --entrypoint /bin/bash lscr.io/linuxserver/bookstack:latest appkey)
+echo $APP_KEY  # Copy this value
+```
+
 ```bash
 kubectl create secret generic bookstack-db-secrets \
   --namespace bookstack \
@@ -102,6 +110,7 @@ kubectl create secret generic bookstack-db-secrets \
 
 kubectl create secret generic bookstack-secrets \
   --namespace bookstack \
+  --from-literal=APP_KEY=<app_key_from_above> \
   --from-literal=OIDC_CLIENT_SECRET=<oidc_client_secret_plaintext> \
   --from-literal=DB_PASSWORD=<same_MYSQL_PASSWORD_from_above> \
   --dry-run=client -o yaml \
@@ -125,6 +134,7 @@ In `homelab-manifests/apps/authelia/values.yaml`, add under `configMap.identity_
   redirect_uris:
     - https://wiki.yourdomain.com/oidc/callback
   scopes: [openid, profile, email, groups]
+  claims_policy: default
   token_endpoint_auth_method: client_secret_basic
   grant_types: [authorization_code]
   response_types: [code]
@@ -176,6 +186,11 @@ spec:
               value: bookstack
             - name: DB_USERNAME
               value: bookstack
+            - name: APP_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bookstack-secrets
+                  key: APP_KEY
             - name: AUTH_METHOD
               value: oidc
             - name: AUTH_AUTO_INITIATE

@@ -54,29 +54,29 @@ spec:
       storage: 1Gi
 ```
 
-Create `homelab-manifests/apps/rustdesk/deployment.yaml`:
+Create `homelab-manifests/apps/rustdesk/deployment.yaml`. Both `hbbs` and `hbbr` run as containers in the same pod so they can share the key volume without multi-writer PVC complications:
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: hbbs
+  name: rustdesk
   namespace: rustdesk
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: hbbs
+      app: rustdesk
   template:
     metadata:
       labels:
-        app: hbbs
+        app: rustdesk
     spec:
       containers:
         - name: hbbs
           image: rustdesk/rustdesk-server:latest
           command: ["hbbs"]
-          args: ["-r", "<rustdesk-lb-ip>:21117"]
+          args: ["-r", "10.0.20.50:21117"]
           ports:
             - containerPort: 21115
               protocol: TCP
@@ -84,35 +84,18 @@ spec:
               protocol: TCP
             - containerPort: 21116
               protocol: UDP
+            - containerPort: 21118
+              protocol: TCP
           volumeMounts:
             - name: data
               mountPath: /root
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: rustdesk-data
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: hbbr
-  namespace: rustdesk
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: hbbr
-  template:
-    metadata:
-      labels:
-        app: hbbr
-    spec:
-      containers:
         - name: hbbr
           image: rustdesk/rustdesk-server:latest
           command: ["hbbr"]
           ports:
             - containerPort: 21117
+              protocol: TCP
+            - containerPort: 21119
               protocol: TCP
           volumeMounts:
             - name: data
@@ -123,11 +106,11 @@ spec:
             claimName: rustdesk-data
 ```
 
-Replace `<rustdesk-lb-ip>` with the MetalLB IP you will assign in Step 2.
+Replace `10.0.20.50` in the `hbbs` args with the MetalLB IP you assign in Step 2.
 
 ## Step 2: LoadBalancer Service
 
-Create `homelab-manifests/apps/rustdesk/service.yaml`. A single LoadBalancer service exposes all ports and gets a dedicated IP from MetalLB:
+A single Service selects the pod and exposes all ports on one MetalLB IP:
 
 ```yaml
 apiVersion: v1
@@ -140,40 +123,35 @@ metadata:
 spec:
   type: LoadBalancer
   selector:
-    app: hbbs
+    app: rustdesk
   ports:
-    - name: hbbs-tcp1
+    - name: hbbs-nat
       port: 21115
       targetPort: 21115
       protocol: TCP
-    - name: hbbs-tcp2
+    - name: hbbs-id-tcp
       port: 21116
       targetPort: 21116
       protocol: TCP
-    - name: hbbs-udp
+    - name: hbbs-id-udp
       port: 21116
       targetPort: 21116
       protocol: UDP
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: rustdesk-relay
-  namespace: rustdesk
-  annotations:
-    metallb.universe.tf/loadBalancerIPs: 10.0.20.50
-spec:
-  type: LoadBalancer
-  selector:
-    app: hbbr
-  ports:
     - name: hbbr-relay
       port: 21117
       targetPort: 21117
       protocol: TCP
+    - name: hbbs-ws
+      port: 21118
+      targetPort: 21118
+      protocol: TCP
+    - name: hbbr-ws
+      port: 21119
+      targetPort: 21119
+      protocol: TCP
 ```
 
-Set `metallb.universe.tf/loadBalancerIPs` to an unused IP in your MetalLB pool. Both services share the same IP — MetalLB supports this across different services when using `spec.loadBalancerIP` or the annotation.
+Set `metallb.universe.tf/loadBalancerIPs` to an unused IP in your MetalLB pool.
 
 Commit all manifests to `homelab-manifests/apps/rustdesk/` and let ArgoCD sync.
 
@@ -182,7 +160,7 @@ Commit all manifests to `homelab-manifests/apps/rustdesk/` and let ArgoCD sync.
 On first startup, `hbbs` generates an Ed25519 key pair in the `/root` volume. Retrieve the public key — clients must have it to verify the server identity:
 
 ```bash
-kubectl exec -n rustdesk deploy/hbbs -- cat /root/id_ed25519.pub
+kubectl exec -n rustdesk deploy/rustdesk -c hbbs -- cat /root/id_ed25519.pub
 ```
 
 Save the public key to Vaultwarden.
@@ -207,10 +185,12 @@ If you want to access the RustDesk server from outside your LAN without opening 
 
 ## Verification
 
-- [ ] hbbs and hbbr pods Running:
+- [ ] RustDesk pod Running (both hbbs and hbbr containers):
 
     ```bash
     kubectl get pods -n rustdesk
+    kubectl logs -n rustdesk deploy/rustdesk -c hbbs
+    kubectl logs -n rustdesk deploy/rustdesk -c hbbr
     ```
 
 - [ ] MetalLB has assigned the expected IP:

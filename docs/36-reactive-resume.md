@@ -204,6 +204,11 @@ spec:
           env:
             - name: APP_URL
               value: https://resume.yourdomain.com
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rxresume-secrets
+                  key: DATABASE_PASSWORD
             - name: DATABASE_URL
               value: postgresql://rxresume:$(DATABASE_PASSWORD)@rxresume-postgres:5432/resume
             - name: REDIS_URL
@@ -233,7 +238,7 @@ spec:
 ```
 
 !!! note "DATABASE_URL interpolation"
-    The `DATABASE_URL` uses `$(DATABASE_PASSWORD)` to reference the secret value injected via `envFrom`. Kubernetes supports this interpolation when both `env` and `envFrom` are present and the `envFrom` secret is listed first. Alternatively, use a separate `env` entry with `valueFrom.secretKeyRef`.
+    Kubernetes `$(VAR)` expansion only works against earlier entries in the same `env` list — not against `envFrom`. `DATABASE_PASSWORD` is declared as an explicit `env` entry with `valueFrom.secretKeyRef` **before** `DATABASE_URL` so the interpolation resolves at pod start.
 
 Create `homelab-manifests/apps/reactive-resume/service.yaml`:
 

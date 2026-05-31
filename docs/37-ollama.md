@@ -79,7 +79,21 @@ In `homelab-manifests/apps/authelia/values.yaml`, add under `configMap.identity_
 
 Commit and upgrade Authelia.
 
-## Step 3: Expose via Traefik
+## Step 3: Enable ExternalName routing in Traefik
+
+Traefik blocks ExternalName Services by default. Enable it in your Traefik Helm values (`homelab-manifests/apps/traefik/values.yaml`):
+
+```yaml
+providers:
+  kubernetesIngress:
+    allowExternalNameServices: true
+  kubernetesCRD:
+    allowExternalNameServices: true
+```
+
+Commit and let ArgoCD sync before creating the IngressRoute.
+
+## Step 4: Expose via Traefik
 
 The NAS services need to be reachable through Traefik (running on the cluster). Add a ServersTransport and IngressRoute pointing to the NAS IP.
 
@@ -125,7 +139,7 @@ spec:
     - port: 3000
 ```
 
-## Step 4: Pull Models
+## Step 5: Pull Models
 
 Once Ollama is running, pull models via Docker exec on the NAS. A good starting set:
 
@@ -142,7 +156,7 @@ docker exec ollama ollama pull qwen2.5-coder:7b
 
 Find all available models at [ollama.com/library](https://ollama.com/library). Check the model page for RAM requirements — a 7B model needs roughly 5 GB of RAM.
 
-## Step 5: First Login
+## Step 6: First Login
 
 Open `https://ai.yourdomain.com`. Click **Continue with Authelia** to log in. The first user to log in becomes admin.
 
