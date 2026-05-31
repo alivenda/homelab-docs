@@ -79,7 +79,8 @@ R19 ntfy                ← push notifications for the whole stack
  ├─→ R33 Uptime Kuma      (cluster — local-path storage, ForwardAuth)
  ├─→ R34 Collabora Online (cluster — extends R13 Nextcloud)
  ├─→ R35 RustDesk Server  (cluster — MetalLB LoadBalancer)
- └─→ R36 Reactive Resume  (cluster — OIDC)
+ ├─→ R36 Reactive Resume  (cluster — OIDC)
+ └─→ R37 Ollama + WebUI  (NAS Docker — defer until 16 GB RAM upgrade)
 ```
 
 ## How to use this guide
@@ -94,4 +95,4 @@ R19 ntfy                ← push notifications for the whole stack
 
 ## Version
 
-The current source set is v18. See the [Version History](version-history.md) for the prior PDF lineage and what each release added.
+The current source set is v19. See the [Version History](version-history.md) for the prior PDF lineage and what each release added.

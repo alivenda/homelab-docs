@@ -113,6 +113,7 @@ nav:
       - Runbook 34 — Collabora Online: 34-collabora.md
       - Runbook 35 — RustDesk Server: 35-rustdesk.md
       - Runbook 36 — Reactive Resume: 36-reactive-resume.md
+      - Runbook 37 — Ollama + Open WebUI: 37-ollama.md
   - Version History: version-history.md
 
 extra:
