@@ -42,6 +42,7 @@ In `homelab-manifests/apps/authelia/values.yaml`, add under `configMap.identity_
   redirect_uris:
     - https://tasks.yourdomain.com/auth/openid/authelia
   scopes: [openid, profile, email, groups]
+  claims_policy: default
   token_endpoint_auth_method: client_secret_basic
   grant_types: [authorization_code]
   response_types: [code]
