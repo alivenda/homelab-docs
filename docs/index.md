@@ -58,29 +58,23 @@ R18 Authelia + lldap    ← SSO + OIDC provider (depends on R6, R7)
  ↓
 R19 ntfy                ← push notifications for the whole stack
 
-─── Apps (user-facing services) ─────────────────────────────
- ├─→ R13 Nextcloud       (cluster)
- ├─→ R14 Paperless-ngx   (cluster)
+─── Apps · full runbooks (DB / multi-service / special model) ─
+ ├─→ R13 Nextcloud       (cluster — Postgres)
+ ├─→ R14 Paperless-ngx   (cluster — Postgres + Redis)
  ├─→ R15 Immich          (NAS-Docker — not on k3s, see runbook for why)
  ├─→ R16 Home Assistant  (dedicated Pi 4)
- ├─→ R20 Homepage        (cluster — ForwardAuth)
- ├─→ R21 FreshRSS       (cluster — ForwardAuth/header)
- ├─→ R22 linkding       (cluster — OIDC)
- ├─→ R23 TriliumNext    (cluster — ForwardAuth)
- ├─→ R24 Vikunja        (cluster — OIDC)
- ├─→ R25 Donetick       (cluster — OIDC)
- ├─→ R26 Actual Budget    (cluster — OIDC)
- ├─→ R27 Arr Stack        (cluster — ForwardAuth; NAS after 16 GB upgrade)
- ├─→ R28 Audiobookshelf  (cluster — ForwardAuth)
- ├─→ R29 Kavita           (cluster — OIDC via UI)
- ├─→ R30 Mealie           (cluster — OIDC)
- ├─→ R31 BookStack        (cluster — OIDC + MariaDB)
- ├─→ R32 Syncthing        (per-device — not k3s)
- ├─→ R33 Uptime Kuma      (cluster — local-path storage, ForwardAuth)
- ├─→ R34 Collabora Online (cluster — extends R13 Nextcloud)
- ├─→ R35 RustDesk Server  (cluster — MetalLB LoadBalancer)
- ├─→ R36 Reactive Resume  (cluster — OIDC)
+ ├─→ R20 Homepage        (cluster — config-heavy dashboard)
+ ├─→ R27 Arr Stack       (cluster — 6 services + hardlinks; NAS after 16 GB)
+ ├─→ R31 BookStack       (cluster — MariaDB)
+ ├─→ R32 Syncthing       (per-device — not k3s)
+ ├─→ R35 RustDesk Server (cluster — TCP/UDP relay via MetalLB)
+ ├─→ R36 Reactive Resume (cluster — Postgres + Redis + MinIO)
  └─→ R37 Ollama + WebUI  (NAS Docker — defer until 16 GB RAM upgrade)
+
+─── Apps · catalog (simple HTTP apps — one shared pattern) ────
+ │  See: Deploying an App (pattern) + App Catalog
+ └─→ Actual Budget · Audiobookshelf · Collabora · Donetick · FreshRSS ·
+     Kavita · linkding · Mealie · TriliumNext · Uptime Kuma · Vikunja
 ```
 
 ## How to use this guide
