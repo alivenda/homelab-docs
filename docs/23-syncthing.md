@@ -1,4 +1,4 @@
-# Runbook 32: Syncthing
+# Runbook 23: Syncthing
 
 Continuous peer-to-peer file synchronisation between devices — no cloud relay needed.
 

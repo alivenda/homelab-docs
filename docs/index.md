@@ -64,12 +64,12 @@ R19 ntfy                ← push notifications for the whole stack
  ├─→ R15 Immich          (NAS-Docker — not on k3s, see runbook for why)
  ├─→ R16 Home Assistant  (dedicated Pi 4)
  ├─→ R20 Homepage        (cluster — config-heavy dashboard)
- ├─→ R27 Arr Stack       (cluster — 6 services + hardlinks; NAS after 16 GB)
- ├─→ R31 BookStack       (cluster — MariaDB)
- ├─→ R32 Syncthing       (per-device — not k3s)
- ├─→ R35 RustDesk Server (cluster — TCP/UDP relay via MetalLB)
- ├─→ R36 Reactive Resume (cluster — Postgres + Redis + MinIO)
- └─→ R37 Ollama + WebUI  (NAS Docker — defer until 16 GB RAM upgrade)
+ ├─→ R21 Arr Stack       (cluster — 6 services + hardlinks; NAS after 16 GB)
+ ├─→ R22 BookStack       (cluster — MariaDB)
+ ├─→ R23 Syncthing       (per-device — not k3s)
+ ├─→ R24 RustDesk Server (cluster — TCP/UDP relay via MetalLB)
+ ├─→ R25 Reactive Resume (cluster — Postgres + Redis + MinIO)
+ └─→ R26 Ollama + WebUI  (NAS Docker — defer until 16 GB RAM upgrade)
 
 ─── Apps · catalog (simple HTTP apps — one shared pattern) ────
  │  See: Deploying an App (pattern) + App Catalog

@@ -1,4 +1,4 @@
-# Runbook 37: Ollama + Open WebUI
+# Runbook 26: Ollama + Open WebUI
 
 Local LLM inference on the NAS with a browser chat interface.
 

@@ -1,4 +1,4 @@
-# Runbook 35: RustDesk Server
+# Runbook 24: RustDesk Server
 
 Self-hosted relay server for RustDesk remote desktop — ID registration and traffic relay.
 

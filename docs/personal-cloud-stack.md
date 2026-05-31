@@ -159,7 +159,7 @@ The most complete self-hosted task app: lists, kanban, Gantt, calendar view, tea
 **Replaces:** YNAB ($14/mo), Mint (defunct), spreadsheets.
 
 ### 🔴 Media Feeder Stack (Arr Suite + Downloader)
-**Category:** Media Management | **Run:** 💾 NAS or 🖥️ Cluster (pointing at NAS NFS storage) | **ARM64:** ✅ All official | **Runbook:** [R27](27-arr-stack.md)
+**Category:** Media Management | **Run:** 💾 NAS or 🖥️ Cluster (pointing at NAS NFS storage) | **ARM64:** ✅ All official | **Runbook:** [R21](21-arr-stack.md)
 
 This is the automation layer that feeds Plex. Without it, adding new shows/movies/music is manual.
 
@@ -223,7 +223,7 @@ Material Design UI, import recipes from any URL, meal planning, shopping list ge
 **Replaces:** Paprika, Yummly, browser recipe tabs, screenshotting recipes.
 
 ### 🟡 Wiki — BookStack
-**Category:** Wikis | **Run:** 🖥️ Cluster | **RAM:** ~200–300 MB | **ARM64:** ✅ Official | **Runbook:** [R31](31-bookstack.md)
+**Category:** Wikis | **Run:** 🖥️ Cluster | **RAM:** ~200–300 MB | **ARM64:** ✅ Official | **Runbook:** [R22](22-bookstack.md)
 
 Books → Chapters → Pages hierarchy. Clean editor, search, image embedding, LDAP/SAML auth (ties into Authelia). Ideal for personal runbooks, home documentation, ISP info, car maintenance records, etc.
 
@@ -259,7 +259,7 @@ Recurring task scheduler built around "due X days after last completion" rather 
 **Replaces:** Streaks (iOS), Habitify.
 
 ### 🟡 Resume Builder — Reactive Resume
-**Category:** Miscellaneous | **Run:** 🖥️ Cluster | **RAM:** ~300–500 MB (app + PostgreSQL + Redis) | **ARM64:** ✅ Official | **Runbook:** [R36](36-reactive-resume.md)
+**Category:** Miscellaneous | **Run:** 🖥️ Cluster | **RAM:** ~300–500 MB (app + PostgreSQL + Redis) | **ARM64:** ✅ Official | **Runbook:** [R25](25-reactive-resume.md)
 
 Export-ready, ATS-friendly resume builder. Keep your resume on your own server.
 
@@ -286,9 +286,9 @@ Scans your network for unknown devices and alerts you (via ntfy). Useful for IoT
 Web dashboard to wake sleeping machines (your desktop, NAS if asleep, etc.) via WOL. Small, Go binary.
 
 ### 🟡 AI Assistant — Ollama + Open-WebUI
-**Category:** Generative AI | **Run:** 💾 NAS (x86) ⚠️ NAS RAM upgrade required | **Runbook:** [R37](37-ollama.md)
+**Category:** Generative AI | **Run:** 💾 NAS (x86) ⚠️ NAS RAM upgrade required | **Runbook:** [R26](26-ollama.md)
 
-**Ollama** runs LLMs locally. **Open-WebUI** is the ChatGPT-like interface. The real constraint here isn't RAM — it's that the NAS's Pentium Gold 8505 has no usable GPU, so this is **CPU inference**: expect ~10–30 tok/s for a 3B model and meaningfully slower as models grow (R37 has the numbers).
+**Ollama** runs LLMs locally. **Open-WebUI** is the ChatGPT-like interface. The real constraint here isn't RAM — it's that the NAS's Pentium Gold 8505 has no usable GPU, so this is **CPU inference**: expect ~10–30 tok/s for a 3B model and meaningfully slower as models grow (R26 has the numbers).
 - Small models (Llama 3.2 3B, Phi-3 mini): ~4–6 GB RAM, usable on CPU
 - Larger models (Mistral 7B, Llama 3.1 8B): ~8–16 GB RAM, but slow on this CPU
 - ARM CM4 can technically run Ollama but is even slower. NAS x86 is the better of the always-on hosts.
@@ -339,7 +339,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **File Transfer — P2P** | ⚪ Skip | |
 | **File Transfer — Single-click Upload** | 🟡 copyparty if you want a quick file drop endpoint | ~100 MB, Python, ARM64 ✅ |
 | **File Transfer — Web File Managers** | 🟡 FileBrowser for NAS web access | ~100 MB, Go, ARM64 ✅ |
-| **File Transfer — Sync** | ✅ Nextcloud + 🟡 Syncthing | Syncthing (Go, ARM64 ✅) for P2P sync without server-round-trip — [R32](32-syncthing.md) |
+| **File Transfer — Sync** | ✅ Nextcloud + 🟡 Syncthing | Syncthing (Go, ARM64 ✅) for P2P sync without server-round-trip — [R23](23-syncthing.md) |
 | **Games** | ⚪ Skip | |
 | **Games — Admin Panels** | ⚪ Skip | No game servers in this setup |
 | **Genealogy** | ⚪ Skip | |
@@ -371,7 +371,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Polls + Events** | 🟡 Rallly (Doodle alt, ~200 MB) if you schedule with others | |
 | **Proxy** | ✅ Traefik handles reverse proxy | |
 | **Recipe Management** | 🟡 Mealie | See Part 4 |
-| **Remote Access** | ✅ Tailscale + 🟡 RustDesk for graphical remote control | RustDesk server: Rust, ~50–100 MB, ARM64 ✅ — [R35](35-rustdesk.md); Tailscale handles network access, RustDesk handles the screen |
+| **Remote Access** | ✅ Tailscale + 🟡 RustDesk for graphical remote control | RustDesk server: Rust, ~50–100 MB, ARM64 ✅ — [R24](24-rustdesk.md); Tailscale handles network access, RustDesk handles the screen |
 | **Resource Planning** | ⚪ Skip | ERP territory; overkill |
 | **Search Engines** | 🟡 SearXNG if you want private web search | ~200 MB, Python, ARM64 ✅ |
 | **Self-hosting Solutions** | ✅ Your ArgoCD/k3s stack is this | CasaOS/Tipi are consumer panels; you've outgrown them |
@@ -439,18 +439,18 @@ If starting fresh, add services in this sequence. AdGuard Home goes on the Pi Ze
 8.  Actual Budget             (R26) → financial tracking
 9.  Vikunja                   (R24) → task management
 10. Donetick                  (R25) → recurring chores and habits
-11. Arr stack + Seerr         (R27) → Plex automation (Sonarr/Radarr/Lidarr/Prowlarr)
+11. Arr stack + Seerr         (R21) → Plex automation (Sonarr/Radarr/Lidarr/Prowlarr)
 12. Audiobookshelf            (R28) → audiobooks + podcasts
 13. Kavita                    (R29) → e-book library
 14. Mealie                    (R30) → recipes
-15. BookStack                 (R31) → personal wiki
-16. Syncthing                 (R32) → P2P file sync
+15. BookStack                 (R22) → personal wiki
+16. Syncthing                 (R23) → P2P file sync
 17. Collabora (Nextcloud app) (R34) → office suite
-18. RustDesk                  (R35) → graphical remote control
-19. Reactive Resume           (R36) → resume builder
+18. RustDesk                  (R24) → graphical remote control
+19. Reactive Resume           (R25) → resume builder
 20. Dawarich + OwnTracks            → location history (no runbook yet)
 21. SearXNG                         → private search engine (no runbook yet)
-22. Ollama + Open-WebUI       (R37) → AI assistant (NAS, post-RAM upgrade)
+22. Ollama + Open-WebUI       (R26) → AI assistant (NAS, post-RAM upgrade)
 ```
 
 ---

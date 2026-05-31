@@ -103,12 +103,12 @@ nav:
       - Runbook 15 — Immich: 15-immich.md
       - Runbook 16 — Home Assistant: 16-home-assistant.md
       - Runbook 20 — Homepage: 20-homepage.md
-      - Runbook 27 — Arr Stack: 27-arr-stack.md
-      - Runbook 31 — BookStack: 31-bookstack.md
-      - Runbook 32 — Syncthing: 32-syncthing.md
-      - Runbook 35 — RustDesk Server: 35-rustdesk.md
-      - Runbook 36 — Reactive Resume: 36-reactive-resume.md
-      - Runbook 37 — Ollama + Open WebUI: 37-ollama.md
+      - Runbook 21 — Arr Stack: 21-arr-stack.md
+      - Runbook 22 — BookStack: 22-bookstack.md
+      - Runbook 23 — Syncthing: 23-syncthing.md
+      - Runbook 24 — RustDesk Server: 24-rustdesk.md
+      - Runbook 25 — Reactive Resume: 25-reactive-resume.md
+      - Runbook 26 — Ollama + Open WebUI: 26-ollama.md
   - Version History: version-history.md
 
 extra:

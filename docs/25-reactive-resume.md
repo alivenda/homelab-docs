@@ -1,4 +1,4 @@
-# Runbook 36: Reactive Resume
+# Runbook 25: Reactive Resume
 
 Self-hosted resume builder with OIDC login, PDF export, and a polished editor.
 
