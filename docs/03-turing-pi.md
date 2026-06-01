@@ -171,19 +171,29 @@ The rule that keeps you safe: **every NFS client shuts down before the NFS serve
     ssh dietpi@10.0.20.10 'sudo k3s etcd-snapshot save'
     ```
 
-Shut each node down over SSH in this order — the dropped connection is expected. `shutdown` stops the k3s systemd unit, which tears down the containerd shims, so no `kubectl drain` is needed: draining only reshuffles pods onto nodes that are also going down.
+Shut the nodes down over SSH — the dropped connection is expected. `shutdown` stops the k3s systemd unit, which tears down the containerd shims, so no `kubectl drain` is needed: draining only reshuffles pods onto nodes that are also going down.
+
+First the three NFS *clients* (their order relative to each other doesn't matter):
 
 ```bash
 ssh dietpi@10.0.20.13 'sudo shutdown -h now'   # amethyst — worker
 ssh dietpi@10.0.20.11 'sudo shutdown -h now'   # emerald  — worker
 ssh dietpi@10.0.20.10 'sudo shutdown -h now'   # ruby     — control plane / etcd
-ssh dietpi@10.0.20.12 'sudo shutdown -h now'   # topaz    — NFS server, LAST
+```
+
+!!! warning "Wait for the clients to fully halt before topaz"
+    Issuing the commands in sequence is **not** the same as the nodes halting in sequence. Confirm amethyst, emerald, **and** ruby have stopped responding to ping before you shut down topaz. Kubelet's NFS mounts are `hard` mounts, so if topaz's `nfsd` stops while ruby is still unmounting, ruby blocks indefinitely on the stale handle — and that hang on your single etcd node is exactly the failure this ordering exists to prevent.
+
+Then the NFS *server*:
+
+```bash
+ssh dietpi@10.0.20.12 'sudo shutdown -h now'   # topaz — NFS server, LAST
 ```
 
 The standalone NAS is not part of k3s and has no ordering dependency on the cluster — shut it down through its own interface whenever it suits you.
 
 !!! warning "The BMC does not gracefully shut down nodes"
-    `tpi power off` and the front **power** button cut the slot's power rail. The CM4 has no ACPI soft-off, and nothing on the DietPi side listens for a BMC shutdown signal, so from the running OS's point of view this is identical to pulling the plug. Always run `sudo shutdown` on the OS first, wait for the node to actually halt (pings stop, ~30–60 s), and only then use `tpi power off` if you want the idle slots fully de-powered. The **reset** button hard-cuts every slot at once — never use it to shut the cluster down.
+    `tpi power off` and the front **power** button cut the slot's power rail. The CM4 has no ACPI soft-off, and nothing on the DietPi side listens for a BMC shutdown signal, so from the running OS's point of view this is identical to pulling the plug. Always run `sudo shutdown` on the OS first, wait for the node to actually halt (pings stop, ~30–60 s), and only then use `tpi power off` if you want the idle slots fully de-powered. The **reset** button power-cycles every slot at once — it reboots the cluster rather than shutting it down, so it is never the tool for this.
 
 ### Startup
 
