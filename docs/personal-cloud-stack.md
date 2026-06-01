@@ -64,7 +64,7 @@ Headroom is comfortable. OCR (Paperless) and CI builds (Woodpecker) are still th
 | GitOps | ArgoCD ✅ | R5 |
 | Monitoring + metrics | Prometheus + Grafana + Loki ✅ | R9 |
 | Backups | Restic + Velero ✅ | R10 |
-| Object storage (backup target) | MinIO ✅ | R10 — S3 backend for Velero, runs on the NAS |
+| Object storage (backup target) | Garage ✅ | R10 — S3 store for etcd snapshots + Velero, runs on the NAS |
 | Secrets management | Sealed Secrets ✅ | Cluster — encrypts secrets committed to Git for ArgoCD |
 | VPN / remote access | Tailscale ✅ | R2 |
 | HTTPS proxy | Traefik ✅ | R6 |
@@ -335,7 +335,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Federated Identity / Auth** | 🔴 Authelia | See Part 2 |
 | **Feed Readers** | 🔴 FreshRSS or Miniflux | See Part 3 |
 | **File Transfer — Distributed FS** | ⚪ Skip | NFS already serves the cluster |
-| **File Transfer — Object Storage** | ✅ MinIO (already deployed) | Runs on the NAS as Velero's S3 backup target (R10); also available for Nextcloud external storage if needed |
+| **File Transfer — Object Storage** | ✅ Garage (already deployed) | Runs on the NAS as the S3 backup target for etcd snapshots + Velero (R10); also available for Nextcloud external storage if needed |
 | **File Transfer — P2P** | ⚪ Skip | |
 | **File Transfer — Single-click Upload** | 🟡 copyparty if you want a quick file drop endpoint | ~100 MB, Python, ARM64 ✅ |
 | **File Transfer — Web File Managers** | 🟡 FileBrowser for NAS web access | ~100 MB, Go, ARM64 ✅ |

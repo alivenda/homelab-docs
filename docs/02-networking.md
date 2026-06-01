@@ -33,7 +33,7 @@ This table is the authoritative source for every later runbook (Terraform `unifi
 - MetalLB pool: `10.0.20.200–.250` (reserved within Lab VLAN, outside DHCP)
 
 !!! note "Why NAS sits on Lab, not Trusted"
-    NAS (`10.0.20.50`) provides NFS persistent volumes to the cluster (Velero → MinIO, Immich uploads, Plex media). Cluster ↔ NAS traffic stays intra-VLAN with no firewall hop, keeping the storage path low-latency. Trusted devices reach SMB and the UGOS Pro web UI via the per-service `trusted-to-nas-smb` policy (Step 3c). Dual-NICing the UGREEN DXP6800 Pro across Lab+Trusted is an alternative if SMB performance from desktops ever bottlenecks; not chosen for v1.
+    NAS (`10.0.20.50`) provides NFS persistent volumes to the cluster (Velero → Garage, Immich uploads, Plex media). Cluster ↔ NAS traffic stays intra-VLAN with no firewall hop, keeping the storage path low-latency. Trusted devices reach SMB and the UGOS Pro web UI via the per-service `trusted-to-nas-smb` policy (Step 3c). Dual-NICing the UGREEN DXP6800 Pro across Lab+Trusted is an alternative if SMB performance from desktops ever bottlenecks; not chosen for v1.
 
 !!! note "Guest VLAN — deferred"
     2026 homelab best-practice typically adds a Guest VLAN (visitors get internet only, isolated from everything else). Skipped here to keep the initial scope tight. Easy 10-minute future addition: VLAN 40 `guest`, separate SSID with client isolation, zone-matrix Block to all other zones.
@@ -86,7 +86,7 @@ flowchart TB
         EMERALD["emerald · .11<br/>k3s worker<br/>Tailscale router · failover"]
         TOPAZ["topaz · .12 · k3s worker"]
         AMETHYST["amethyst · .13 · k3s worker"]
-        NAS["NAS · .50<br/>NFS PVs · MinIO S3 · Plex · Immich"]
+        NAS["NAS · .50<br/>NFS PVs · Garage S3 · Plex · Immich"]
         METALLB["MetalLB pool · .200–.250<br/>Traefik VIP"]
     end
 

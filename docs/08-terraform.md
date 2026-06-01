@@ -57,22 +57,8 @@ By default, Terraform writes state to `terraform.tfstate` in the working directo
 
 Two reasonable options:
 
-=== "S3 backend → MinIO on NAS"
-    Stand up MinIO on the NAS (Runbook 10 references this for Velero too):
-
-    ```yaml
-    # NAS docker-compose snippet
-    services:
-      minio:
-        image: minio/minio:latest
-        command: server /data --console-address ":9001"
-        environment:
-          MINIO_ROOT_USER: <USER>
-          MINIO_ROOT_PASSWORD: <PASSWORD>
-        volumes:
-          - ./minio-data:/data
-        ports: ["9000:9000", "9001:9001"]
-    ```
+=== "S3 backend → Garage on NAS"
+    Use the shared Garage S3 store from [Runbook 10](10-backups.md) — create a dedicated `tfstate` bucket and key there (same `bucket create` / `key create` / `bucket allow` pattern). Garage already serves the S3 API on `:9000` with `s3_region = "us-east-1"` and path-style addressing, exactly what the backend config below expects.
 
     Then `backend.tf`:
 
