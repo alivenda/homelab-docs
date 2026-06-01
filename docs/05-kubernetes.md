@@ -197,7 +197,7 @@ Then:
 - Password: the value you decoded from the secret in Step 8.
 
 !!! tip
-    After Runbook 6 (Traefik) is up, you'll add an IngressRoute so `argocd.yourdomain.com` works without port-forwarding. The port-forward method is the bootstrap path that always works.
+    After Runbook 6 (Traefik) is up, you'll add an HTTPRoute so `argocd.yourdomain.com` works without port-forwarding. The port-forward method is the bootstrap path that always works.
 
 ## Step 10: Control-plane redundancy (SPOF awareness)
 

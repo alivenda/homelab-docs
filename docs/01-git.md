@@ -17,7 +17,7 @@ Resist the urge to put everything in one mono-repo. Each repo below has a distin
 |---|---|---|
 | `homelab-docs` | These runbooks, diagrams, decisions log | You (humans) |
 | `homelab-ansible` | OS provisioning playbooks (Runbook 4) | Your machine |
-| `homelab-manifests` | k3s YAML, Helm values, IngressRoutes | ArgoCD |
+| `homelab-manifests` | k3s YAML, Helm values, HTTPRoutes | ArgoCD |
 | `homelab-terraform` | Cloudflare DNS, UniFi config, cloud practice | Your machine → Woodpecker |
 | `homelab-secrets` | Encrypted secrets (sops/age) — **PRIVATE** | Your machine (sops); Sealed Secrets controller for in-cluster manifests |
 
@@ -353,7 +353,7 @@ Now any new directory under `apps/` in `homelab-manifests` automatically becomes
 Even working solo, use [Conventional Commits](https://www.conventionalcommits.org/). It makes `git log` scannable and lets tools auto-generate changelogs:
 
 ```
-feat(traefik): add IngressRoute for paperless
+feat(traefik): add HTTPRoute for paperless
 fix(ansible): correct cgroups regex for newer DietPi
 docs(runbooks): update Immich min RAM requirement
 chore(deps): bump Helm chart versions

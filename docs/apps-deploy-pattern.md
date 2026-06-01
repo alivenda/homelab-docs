@@ -118,7 +118,7 @@ metadata:
   namespace: <app>
 spec:
   forwardAuth:
-    address: http://authelia.authelia.svc.cluster.local/api/authz/forward-auth
+    address: http://authelia.authelia.svc.cluster.local:9091/api/authz/forward-auth
     trustForwardHeader: true
     authResponseHeaders: [Remote-User, Remote-Groups, Remote-Name, Remote-Email]
 ```

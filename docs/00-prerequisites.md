@@ -78,7 +78,7 @@ k3s isn't a single shared bucket — every workload lives in a namespace. Set co
 
 - **System-level (cluster-wide infrastructure):** namespace ends in `-system`. Examples: `metallb-system`, `traefik`, `argocd`, `sealed-secrets`, `monitoring`. These shouldn't host application workloads.
 - **One namespace per user-facing app:** `forgejo`, `vaultwarden`, `nextcloud`, `paperless`, `woodpecker`. Never use `default` for anything you'll later need to clean up.
-- **All resources for an app** (Deployment, Service, PVC, SealedSecret, IngressRoute) live in the app's namespace. RBAC and NetworkPolicies operate at namespace granularity — keeping things colocated is what makes those tools effective.
+- **All resources for an app** (Deployment, Service, PVC, SealedSecret, HTTPRoute) live in the app's namespace. RBAC and NetworkPolicies operate at namespace granularity — keeping things colocated is what makes those tools effective.
 - **ArgoCD Application objects themselves live in `argocd`.** Each Application points at a manifests path that targets the destination namespace.
 
 !!! tip
