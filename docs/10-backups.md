@@ -109,44 +109,115 @@ sops --encrypt controller-key.yaml > sealed-secrets-controller-key.enc.yaml
 rm controller-key.yaml   # never commit the plaintext
 ```
 
-## Velero for k8s-native PVC backup
+## S3 object storage on the NAS (Garage)
 
-Velero with the restic backend snapshots PVC contents and stores them in an S3-compatible target. The simplest target is a MinIO container on your NAS.
+This S3-compatible store on the NAS backs both k3s etcd snapshots (below) and Velero, at `http://10.0.20.50:9000`. The same store can serve other S3 consumers (e.g. the Terraform state backend) — each with its own bucket and key.
 
-### Stand up MinIO on the NAS
+!!! warning "Why Garage, not MinIO"
+    MinIO's Community Edition is effectively end-of-life: the `minio/minio` repo was archived (read-only) in **April 2026**, free Docker/Quay image publishing stopped in **October 2025** (last tag `RELEASE.2025-10-15T17-29-55Z`), and the admin console was stripped from CE in **May 2025**. This runbook uses [Garage](https://garagehq.deuxfleurs.fr/) — a maintained, Rust, self-host-focused S3 store — instead.
+
+### Stand up Garage
+
+`/volume1/docker/garage/garage.toml` (generate the two secrets with `openssl rand -hex 32` and `openssl rand -base64 32`):
+
+```toml
+replication_factor = 1
+metadata_dir = "/var/lib/garage/meta"
+data_dir     = "/var/lib/garage/data"
+db_engine    = "lmdb"
+
+rpc_bind_addr   = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"   # single-node self-reference
+rpc_secret      = "<openssl rand -hex 32>"
+
+[s3_api]
+api_bind_addr = "[::]:9000"   # bind S3 on :9000 …
+s3_region     = "us-east-1"   # … with region us-east-1 to match k3s's default
+
+[admin]
+api_bind_addr = "127.0.0.1:3903"
+admin_token   = "<openssl rand -base64 32>"
+```
+
+`/volume1/docker/garage/docker-compose.yml`:
 
 ```yaml
-# /volume1/docker/minio/docker-compose.yml
 services:
-  minio:
-    image: minio/minio:latest
-    container_name: minio
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: <USER>
-      MINIO_ROOT_PASSWORD: <STRONG_PASSWORD>
+  garage:
+    image: dxflrs/garage:v2.3.0
+    container_name: garage
+    command: ["/garage", "server"]
     volumes:
-      - /volume1/minio-data:/data
+      - /volume1/docker/garage/garage.toml:/etc/garage.toml:ro
+      - /volume1/docker/garage/meta:/var/lib/garage/meta
+      - /volume1/docker/garage/data:/var/lib/garage/data
     ports:
       - "9000:9000"   # S3 API
-      - "9001:9001"   # web console
     restart: unless-stopped
 ```
 
 ```bash
-docker compose -f /volume1/docker/minio/docker-compose.yml up -d
+mkdir -p /volume1/docker/garage/meta /volume1/docker/garage/data
+docker compose -f /volume1/docker/garage/docker-compose.yml up -d
+docker logs garage   # confirm: "S3 API server listening on http://[::]:9000"
 ```
 
-Visit `http://<nas-ip>:9001`, log in, create a bucket named `homelab`.
+Garage's S3 API is plain HTTP, so clients connect with `etcd-s3-insecure` / `s3ForcePathStyle`. Binding on `:9000` with `s3_region = "us-east-1"` matches k3s's default `--etcd-s3-region`, so the Ansible etcd config needs no endpoint/region overrides.
+
+### Initialize the cluster + per-consumer keys
+
+A one-time single-node layout, then a dedicated bucket and least-privilege key per consumer:
+
+```bash
+docker exec -ti garage /garage status                               # copy the node ID
+docker exec -ti garage /garage layout assign -z nas -c 10G <NODE_ID>
+docker exec -ti garage /garage layout apply --version 1
+
+# One bucket + scoped key per consumer (example: etcd snapshots)
+docker exec -ti garage /garage bucket create etcd-snapshots
+docker exec -ti garage /garage key create etcd-backup               # copy the Key ID (GK…) and Secret
+docker exec -ti garage /garage bucket allow --read --write etcd-snapshots --key etcd-backup
+```
+
+Repeat the bucket/key/allow trio for `velero` (and any other consumer) so each gets its own credentials.
+
+### Off-node etcd snapshots (k3s-native)
+
+k3s uploads scheduled etcd snapshots straight to Garage — no extra tooling. It's codified in `homelab-ansible` (`site.yml` renders `/etc/rancher/k3s/config.yaml`); the access/secret key live in that repo's SOPS file as `etcd_s3_access_key` / `etcd_s3_secret_key`:
+
+```yaml
+etcd-snapshot-schedule-cron: "0 */12 * * *"
+etcd-snapshot-retention: 10
+etcd-s3: true
+etcd-s3-endpoint: "10.0.20.50:9000"
+etcd-s3-insecure: true          # Garage serves plain HTTP on :9000
+etcd-s3-bucket: "etcd-snapshots"
+etcd-s3-access-key: "<from SOPS>"
+etcd-s3-secret-key: "<from SOPS>"
+```
+
+k3s keeps **both** copies — local (`file://`) and off-node (`s3://`) — with retention applied to each. The save succeeds locally even if the S3 upload fails, so confirm the off-node copy explicitly:
+
+```bash
+sudo k3s etcd-snapshot save
+sudo k3s etcd-snapshot list                               # expect an s3://etcd-snapshots/… row
+docker exec -ti garage /garage bucket info etcd-snapshots # expect Objects ≥ 1
+```
+
+This is the primary off-node etcd path; the Restic `--tag etcd` job below is a secondary copy of the local snapshot directory.
+
+## Velero for k8s-native PVC backup
+
+Velero with the restic backend snapshots PVC contents and stores them in the Garage store above, in a dedicated `velero` bucket.
 
 ### Create the Velero credentials file
 
 ```bash
 # On your machine (wherever you'll run the helm commands)
-cat > minio-creds <<EOF
+cat > velero-creds <<EOF
 [default]
-aws_access_key_id = <USER>
-aws_secret_access_key = <STRONG_PASSWORD>
+aws_access_key_id = <GARAGE_VELERO_KEY_ID>
+aws_secret_access_key = <GARAGE_VELERO_SECRET>
 EOF
 ```
 
@@ -161,12 +232,12 @@ configuration:
   backupStorageLocation:
     - name: default
       provider: aws       # use 'aws' provider for any S3-compatible target
-      bucket: homelab
+      bucket: velero
       default: true
       config:
-        region: minio
-        s3Url: http://10.0.20.50:9000  # NAS (R2 static-IP table)
-        s3ForcePathStyle: "true"
+        region: us-east-1               # matches Garage's s3_region
+        s3Url: http://10.0.20.50:9000   # NAS (R2 static-IP table)
+        s3ForcePathStyle: "true"        # Garage uses path-style addressing
 
 deployNodeAgent: true       # replaces deployRestic; needed for PVC-content backups
 
@@ -182,7 +253,7 @@ helm upgrade --install velero vmware-tanzu/velero \
   --version <X.Y.Z> \
   --namespace velero --create-namespace \
   --values velero-values.yaml \
-  --set-file credentials.secretContents.cloud=./minio-creds
+  --set-file credentials.secretContents.cloud=./velero-creds
 
 # Verify
 velero backup-location get
@@ -194,7 +265,7 @@ velero backup create homelab-$(date +%Y%m%d)
 Pin `--version` to a current release listed on [vmware-tanzu/helm-charts](https://github.com/vmware-tanzu/helm-charts/tree/main/charts/velero).
 
 !!! tip "Off-site backup target"
-    If you don't want to run MinIO on the NAS, Velero supports any S3-compatible target (Backblaze B2, Wasabi, Cloudflare R2) for off-site storage. R2's free tier is generous for homelab volumes — point the same Velero config at R2 and you get cloud-hosted backups for free.
+    Velero (and the etcd S3 upload) can point at any S3-compatible target, not just the NAS — Backblaze B2, Wasabi, or Cloudflare R2 for off-site storage. R2's free tier is generous for homelab volumes — point the same config at R2 and you get cloud-hosted backups for free.
 
 !!! warning "Off-site backup is still a TODO"
     Local backups protect against disk failure but NOT fire/theft/flood. Options: friend's house with Tailscale + Restic, cycled external drives, second location you control. Schedule a calendar reminder within 3 months.
@@ -327,6 +398,13 @@ Once a month, restore latest snapshot to a temp directory and verify the DB open
 
     ```bash
     systemctl list-timers | grep homelab-backup
+    ```
+
+- [ ] Off-node etcd snapshot present in Garage:
+
+    ```bash
+    docker exec -ti garage /garage bucket info etcd-snapshots
+    # Expected: Objects ≥ 1
     ```
 
 - [ ] Velero backup completed (if installed):
