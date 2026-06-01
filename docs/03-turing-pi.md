@@ -137,7 +137,7 @@ What you actually need from the UPS is not the runtime, it is the USB or network
 
 - UPS connects to one host (typically the NAS, since it runs 24/7) via USB. That host runs `nut-server` in `upsd` mode and exposes the UPS status over the network.
 - Every cluster node runs `nut-client` in `upsmon` mode, talking to the NAS `upsd`. When `upsd` reports `LOW_BATTERY`, all clients run their configured shutdown command.
-- Order matters: workers shut down first, then control plane, then NAS last (so NFS stays mounted until the cluster is fully drained).
+- Order matters, and it mirrors the planned shutdown below: the NFS-*client* nodes (the plain workers **and** the control plane) shut down first, then the cluster's NFS *server* (topaz), then the standalone NAS — which hosts `upsd` — last. NFS must stay mounted until every client is down, or a client can hang on a stale handle mid-shutdown.
 
 ```bash
 # On NAS (UPS master)
@@ -155,6 +155,61 @@ sudo apt install nut-client
     Test the shutdown flow by unplugging the UPS from the wall (not the equipment from the UPS). You want to see the cascade actually happen before a real outage proves your config wrong.
 
 This is a maturity layer — skip it for the first cluster build, add it once everything else is working. But add it before you store anything you care about losing.
+
+## Planned Shutdown & Startup
+
+The UPS handles the *unplanned* case. This is the *planned* one — powering the cluster down for an office move, electrical work, or a long absence. The ordering is the same one the NUT cascade automates, and it exists for one reason: **etcd lives only on ruby, and topaz is the NFS server behind the `nfs-storage` StorageClass.** If a node still holding an NFS mount loses its server mid-shutdown it can hang on a stale handle — and a hung shutdown on ruby, your single etcd node, is the one way a planned power-down turns into the hard reset you were trying to avoid.
+
+The rule that keeps you safe: **every NFS client shuts down before the NFS server.** The clients are amethyst, emerald, *and* ruby; the server is topaz. So topaz goes last — after the control plane, not alongside the other workers.
+
+### Shutdown
+
+!!! tip "Snapshot etcd first"
+    A planned shutdown is the cheapest time to capture a clean etcd snapshot, and ruby is your only etcd node.
+
+    ```bash
+    ssh dietpi@10.0.20.10 'sudo k3s etcd-snapshot save'
+    ```
+
+Shut the nodes down over SSH — the dropped connection is expected. `shutdown` stops the k3s systemd unit, which tears down the containerd shims, so no `kubectl drain` is needed: draining only reshuffles pods onto nodes that are also going down.
+
+First the three NFS *clients* (their order relative to each other doesn't matter):
+
+```bash
+ssh dietpi@10.0.20.13 'sudo shutdown -h now'   # amethyst — worker
+ssh dietpi@10.0.20.11 'sudo shutdown -h now'   # emerald  — worker
+ssh dietpi@10.0.20.10 'sudo shutdown -h now'   # ruby     — control plane / etcd
+```
+
+!!! warning "Wait for the clients to fully halt before topaz"
+    Issuing the commands in sequence is **not** the same as the nodes halting in sequence. Confirm amethyst, emerald, **and** ruby have stopped responding to ping before you shut down topaz. Kubelet's NFS mounts are `hard` mounts, so if topaz's `nfsd` stops while ruby is still unmounting, ruby blocks indefinitely on the stale handle — and that hang on your single etcd node is exactly the failure this ordering exists to prevent.
+
+Then the NFS *server*:
+
+```bash
+ssh dietpi@10.0.20.12 'sudo shutdown -h now'   # topaz — NFS server, LAST
+```
+
+The standalone NAS is not part of k3s and has no ordering dependency on the cluster — shut it down through its own interface whenever it suits you.
+
+!!! warning "The BMC does not gracefully shut down nodes"
+    `tpi power off` and the front **power** button cut the slot's power rail. The CM4 has no ACPI soft-off, and nothing on the DietPi side listens for a BMC shutdown signal, so from the running OS's point of view this is identical to pulling the plug. Always run `sudo shutdown` on the OS first, wait for the node to actually halt (pings stop, ~30–60 s), and only then use `tpi power off` if you want the idle slots fully de-powered. The **reset** button power-cycles every slot at once — it reboots the cluster rather than shutting it down, so it is never the tool for this.
+
+### Startup
+
+Reverse the dependency order: storage before its clients, control plane before workers.
+
+1. Power the board on — `tpi power on -n <node>` per slot, or press `Key1`.
+2. Bring up **topaz first**, so NFS is serving before anything tries to mount it.
+3. Then **ruby**, and wait for the control plane to report `Ready`:
+
+    ```bash
+    ssh dietpi@10.0.20.10 'sudo k3s kubectl get nodes'
+    ```
+
+4. Then the remaining workers, **emerald** and **amethyst**.
+
+Once all four nodes are `Ready`, ArgoCD reconciles the workloads back on its own — give it a few minutes and confirm pods settle rather than restarting anything by hand.
 
 ## Verification
 
