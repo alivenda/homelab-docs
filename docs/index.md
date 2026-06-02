@@ -9,11 +9,11 @@ A runbook guide for building a 4-node k3s cluster on a Turing Pi 2, learning Dev
 - Turing Pi 2 cluster board (mini-ITX) + 4× Raspberry Pi CM4 with 8 GB RAM
 - Ubiquiti UDM rackmount for VLANs, firewall, DHCP
 - UGREEN DXP6800 Pro NAS (x86, 8 GB DDR5) for bulk media and Immich
-- Raspberry Pi 4 (dedicated) for Home Assistant OS
+- Raspberry Pi 5 (4 GB, dedicated) for Home Assistant OS
 - 2× Raspberry Pi Zero 2 W for AdGuard Home (primary + secondary DNS)
 - Cloudflare-registered domain (~$10/yr)
 
-You can substitute hardware, but commands are written against this exact build.
+You can substitute hardware, but commands are written against this exact build. Full parts list (PSU, SSD, UPS, and the rest) is in [Runbook 0](00-prerequisites.md).
 
 ## What you end up with
 
@@ -62,7 +62,7 @@ R19 ntfy                ← push notifications for the whole stack
  ├─→ R13 Nextcloud       (cluster — Postgres)
  ├─→ R14 Paperless-ngx   (cluster — Postgres + Redis)
  ├─→ R15 Immich          (NAS-Docker — not on k3s, see runbook for why)
- ├─→ R16 Home Assistant  (dedicated Pi 4)
+ ├─→ R16 Home Assistant  (dedicated Pi 5)
  ├─→ R20 Homepage        (cluster — config-heavy dashboard)
  ├─→ R21 Arr Stack       (cluster — 6 services + hardlinks; NAS after 16 GB)
  ├─→ R22 BookStack       (cluster — MariaDB)
@@ -84,8 +84,8 @@ R19 ntfy                ← push notifications for the whole stack
 - When a runbook gives you a `docker-compose.yml`, check the `Runs On` header. NAS-hosted services use compose; cluster-hosted services use Helm + manifests committed to `homelab-manifests` so ArgoCD manages them.
 - The most common ordering confusion is Tailscale (R2 Step 3 needs ruby from R3) and ArgoCD (R5 Step 8 needs port-forward to access before R6 is up). Both are flagged where they appear.
 
-!!! tip "Bookmark Runbook 0"
-    When you hit a "wait, when am I supposed to do X" moment three weeks in, the dependency map in R0 answers it without scrolling the whole guide.
+!!! tip "Bookmark this page"
+    When you hit a "wait, when am I supposed to do X" moment three weeks in, the dependency map above answers it without scrolling the whole guide.
 
 ## Version
 
