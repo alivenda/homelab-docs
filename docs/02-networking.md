@@ -28,7 +28,7 @@ This table is the authoritative source for every later runbook (Terraform `unifi
 
 - DHCP lease: 86400s (1 day)
 - IPv6: disabled on both WAN and LAN (see Step 1 note)
-- IGMP snooping: **on** (switch-level, see Step 1d) — required for mDNS reflector to forward multicast cleanly across VLANs
+- IGMP snooping: **on** (on the UDM's built-in switch, see Step 1d) — required for mDNS reflector to forward multicast cleanly across VLANs
 - UDM upstream DNS: `1.1.1.1` (Cloudflare) — migrate to dedicated Pi-hole appliance later (see Step 3d)
 - MetalLB pool: `10.0.20.200–.250` (reserved within Lab VLAN, outside DHCP)
 
@@ -45,7 +45,6 @@ Within the static range of each VLAN. Cluster nodes get their static IP from `di
 | Device | VLAN | IP | Assignment |
 |---|---|---|---|
 | UDM | default | `10.0.0.1` | UDM default |
-| UniFi switch | default | `10.0.0.2` | UDM DHCP reservation |
 | UniFi AP | default | `10.0.0.3` | UDM DHCP reservation |
 | Turing Pi 2 BMC | lab | `10.0.20.4` | UDM DHCP reservation |
 | ruby (k3s control plane, Tailscale subnet router) | lab | `10.0.20.10` | dietpi.txt static |
@@ -71,7 +70,6 @@ flowchart TB
     INET([Internet]) --> UDM["UDM — 10.0.0.1<br/>L3 router · Zone-Based Firewall"]
 
     subgraph DEFAULT["Default LAN · 10.0.0.0/24 · mDNS off"]
-        SW["UniFi switch · .2"]
         AP["UniFi AP · .3"]
     end
 
@@ -100,17 +98,18 @@ flowchart TB
     UDM --> LAB
     UDM --> IOT
 
-    TAILNET([Tailscale tailnet]) -.->|"advertises Default + Trusted + Lab<br/>(10.0.0.0/24, 10.0.10.0/24, 10.0.20.0/24)<br/>IoT intentionally NOT advertised"| RUBY
-    TAILNET -.->|failover| EMERALD
+    REMOTE([Remote devices · off-network<br/>phone · laptop]) -.->|Tailscale| TAILNET([Tailscale tailnet])
+    RUBY -.->|"advertises Default + Trusted + Lab<br/>(10.0.0.0/24, 10.0.10.0/24, 10.0.20.0/24)<br/>IoT intentionally NOT advertised"| TAILNET
+    EMERALD -.->|failover| TAILNET
 ```
 
-*Solid arrows are UDM's L3 routing between VLANs — every inter-VLAN hop is subject to the Policy Engine zone matrix (Step 3), with Lab unable to initiate to any other zone. Dotted lines are Tailscale subnet routing (ruby primary, emerald failover). mDNS reflector spans Trusted, Lab, and IoT; see [VLAN Architecture](#vlan-architecture) for the per-zone rationale.*
+*Solid arrows are UDM's L3 routing between VLANs — every inter-VLAN hop is subject to the Policy Engine zone matrix (Step 3), with Lab unable to initiate to any other zone. Dotted lines are Tailscale: off-network devices reach the LAN through the tailnet, with ruby (primary) and emerald (failover) advertising the Default/Trusted/Lab subnets into it. mDNS reflector spans Trusted, Lab, and IoT; see [VLAN Architecture](#vlan-architecture) for the per-zone rationale.*
 
 ## VLAN Architecture
 
 Each VLAN has a distinct trust level and a deliberate reason for existing:
 
-- **Default LAN — `10.0.0.0/24`:** infrastructure management plane. UDM, switch, AP all live here. Treat as semi-trusted; you do not want random devices landing on it.
+- **Default LAN — `10.0.0.0/24`:** infrastructure management plane. UDM and AP live here. Treat as semi-trusted; you do not want random devices landing on it.
 - **VLAN 10 — Trusted (`10.0.10.0/24`):** your personal devices. Phones, laptops, home desktop. mDNS is on so casting/AirPlay/Bonjour to the IoT VLAN works without you switching networks.
 - **VLAN 20 — Lab (`10.0.20.0/24`):** the k3s cluster and NAS. Wired only, no SSID. mDNS is **on** because NAS hosts user-facing services (Plex, Immich, AirPlay receivers) that need to be discoverable from phones on Trusted and the Apple TV on IoT. Blast radius if a workload escapes the cluster is bounded by the zone matrix (Lab cannot initiate to any other VLAN).
 - **VLAN 30 — IoT (`10.0.30.0/24`):** smart home gear including the Apple TV. mDNS is on so phones on Trusted can discover the Apple TV for AirPlay, and the Apple TV can discover Plex on the NAS. Internet egress allowed (most IoT needs cloud services) but no inbound from anywhere except specific Home Assistant / Plex flows.
@@ -127,7 +126,7 @@ In UniFi Network → **Settings → Networks**, create one network per VLAN row 
 3. **DHCP Mode:** DHCP Server. Set **DHCP Range** to the values from the table (Lab uses `.100–.199`, others use `.100–.250`).
 4. **DHCP DNS Server:** Auto (UDM). UDM forwards to upstream — set the upstream in Step 1a below.
 5. **Multicast DNS:** **on** for Trusted, IoT, and Lab; **off** for Default. If your UniFi Network application is 8.x or later, the **Custom** mode is preferred over Auto — Custom lets you whitelist specific service types (AirPlay, HomeKit, Matter) rather than retransmitting every announcement, which is quieter on the wire and easier to debug. Auto is fine if Custom isn't available.
-6. **IGMP Snooping:** configured at the switch in Step 1d (not per-VLAN here).
+6. **IGMP Snooping:** configured on the UDM in Step 1d (not per-VLAN here).
 7. **IPv6 Interface Type:** None (disable).
 
 ### Step 1a: UDM upstream DNS
@@ -145,11 +144,11 @@ UDM Settings → **Internet → Primary Connection → IPv6**: set to **Disabled
 !!! warning "IPv6 has two settings — both matter"
     The per-VLAN IPv6 toggle (Step 1, item 7) only stops UDM from handing IPv6 to LAN clients. It does **not** stop UDM from accepting an IPv6 prefix from your ISP. Without disabling at WAN, clients could still be reachable over IPv6 via SLAAC even though you "disabled IPv6 on the LAN."
 
-### Step 1d: Enable IGMP snooping on the switch
+### Step 1d: Enable IGMP snooping on the UDM
 
-UniFi → **UniFi Devices → [your switch] → Settings → Services → IGMP Snooping** → toggle on.
+UniFi → **UniFi Devices → your UDM → Settings → Services → IGMP Snooping** → toggle on.
 
-This is a switch-level setting, not per-VLAN. Without IGMP snooping, the switch floods all multicast traffic (including mDNS announcements and the actual AirPlay/Chromecast streams) to every port in the VLAN — wasted bandwidth and an easy way to confuse other multicast-using devices. With snooping on, the switch tracks which ports have devices that joined a multicast group and only forwards to those ports.
+This is a device-level setting on the UDM's built-in switch, not per-VLAN. Without IGMP snooping, the switch floods all multicast traffic (including mDNS announcements and the actual AirPlay/Chromecast streams) to every port in the VLAN — wasted bandwidth and an easy way to confuse other multicast-using devices. With snooping on, the switch tracks which ports have devices that joined a multicast group and only forwards to those ports.
 
 !!! note "Why this matters with mDNS reflector enabled"
     The mDNS reflector multiplies multicast traffic across the three VLANs you've enabled it on. IGMP snooping is what keeps that traffic targeted instead of broadcast-flooding the whole switch. Enable mDNS reflector without IGMP snooping and you'll see strange symptoms — slow IoT discovery, dropped AirPlay sessions, sometimes whole switch-CPU spikes.
@@ -173,13 +172,13 @@ For each SSID: select the matching network from the **Network** dropdown, set a 
 
 Every wired device needs its switch port assigned to the right network. By default, switch ports are on the Default LAN — meaning a desktop you cable up will land on `10.0.0.0/24` regardless of which VLAN you intended.
 
-UniFi → **UniFi Devices → [your switch] → Ports**. For each relevant port click into it and set **Native VLAN / Network** to the right VLAN:
+UniFi → **UniFi Devices → your UDM → Ports**. For each relevant port click into it and set **Native VLAN / Network** to the right VLAN:
 
 | Port use | Native network |
 |---|---|
 | Home desktop | Trusted (VLAN 10) |
 | ruby, emerald, topaz, amethyst (Turing Pi 2 ethernet) | Lab (VLAN 20) |
-| UDM uplink, AP uplink, downstream switches | Default (or a trunk allowing all VLANs) |
+| AP uplink (and any future downstream switch) | Default (or a trunk allowing all VLANs) |
 
 !!! note "Access vs trunk ports"
     A port set to a single Native network is in **access mode** — it carries one untagged VLAN. Use this for endpoint devices (desktop, cube node, IoT device).
@@ -225,8 +224,8 @@ When you create the custom zones in Step 3a, UniFi defaults their outbound to **
 
 | Override policy | Action | Source | Destination | Why |
 |---|---|---|---|---|
-| `internal-to-trusted-allow` | Allow | Internal (Any) | Trusted (Any) | UDM/AP/switch firmware push flows initiate from the management plane out to Trusted devices |
-| `trusted-to-internal-allow` | Allow | Trusted (Any) | Internal (Any) | Daily-driver desktop admins the switch, AP, and UDM management UI on Default LAN |
+| `internal-to-trusted-allow` | Allow | Internal (Any) | Trusted (Any) | UDM/AP firmware push flows initiate from the management plane out to Trusted devices |
+| `trusted-to-internal-allow` | Allow | Trusted (Any) | Internal (Any) | Daily-driver desktop admins the AP and UDM management UI on Default LAN |
 | `trusted-to-iot-allow` | Allow | Trusted (Any) | IoT (Any) | AirPlay/Cast/HomeKit control from desktop and phones reach Apple TV; dynamic ports make whole-zone Allow simpler than enumeration |
 
 For each: UniFi → **Policy Engine → Create Policy**. Source Zone = source, Destination Zone = destination, both `Any`. Protocol = `All`. Action = `Allow`. Leave Source Port, Destination Port, and Connection State at their `Any`/`All` defaults. Save.
@@ -243,7 +242,7 @@ Target end-state matrix (after Steps 3b and 3c are both applied):
 
 Intra-zone (a zone to itself) is L2-switched within the VLAN — it never traverses UDM's firewall, regardless of what the cell displays. Cells marked `Block*` stay Block at the matrix level; the narrow service-specific exceptions are added in Step 3c.
 
-The asymmetry around Internal is deliberate: Trusted reaches Internal (so you can admin the switch, AP, and Turing Pi BMC from your desktop), but Lab and IoT cannot (cluster workloads and smart bulbs have no business reaching the management plane).
+The asymmetry around Internal is deliberate: Trusted reaches Internal (so you can admin the AP and Turing Pi BMC from your desktop), but Lab and IoT cannot (cluster workloads and smart bulbs have no business reaching the management plane).
 
 !!! note "Why these three and not others"
     The other matrix cells (Internal→Lab, Internal→IoT, IoT→Trusted, etc.) all want Block in the target state. UniFi already defaults them to Block for new custom zones, so no override policy is needed — the built-in default does the job.
@@ -457,7 +456,7 @@ Tailscale is easier (NAT traversal handled, no port forward needed). WireGuard o
 - [ ] Four networks visible in UniFi: Default, Trusted, Lab, IoT — each with the correct subnet and DHCP range from the Network Plan
 - [ ] DHCP exclude range `10.0.20.200–.250` configured on Lab
 - [ ] mDNS enabled on Trusted, IoT, and Lab; disabled on Default
-- [ ] IGMP snooping enabled at the switch (Step 1d)
+- [ ] IGMP snooping enabled on the UDM (Step 1d)
 - [ ] IPv6 disabled on both WAN and every VLAN
 - [ ] SSIDs `home` (Trusted) and `home-iot` (IoT) created and assigned
 - [ ] Wired ports for home desktop and all four cluster nodes set to the right Native VLAN
