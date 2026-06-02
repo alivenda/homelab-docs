@@ -1,6 +1,6 @@
 # Runbook 0: Prerequisites and Mental Model
 
-Read this before Runbook 1. It tells you what to buy, what accounts to create, and how the 16 runbooks fit together. You can skip it if you already have a homelab — none of the later runbooks reference Runbook 0 content as a hard dependency.
+Read this before Runbook 1 — it covers what you need to **have and understand** before you start: the hardware to buy, the accounts to create, and the platform realities (ARM64 images, namespace conventions, resource budget) that shape every later runbook. For the big picture — how the runbooks fit together and what you end up with — see the [Home overview](index.md). You can skip this runbook if you already run a homelab; none of the later runbooks reference it as a hard dependency.
 
 ## Hardware Shopping List
 
@@ -9,9 +9,11 @@ This guide is written against a specific build. You can substitute (an x86 mini-
 - Turing Pi 2 cluster board (mini-ITX)
 - 4× Raspberry Pi CM4 modules with 8 GB RAM and WiFi — 2× with 32 GB eMMC (ruby (Node 1), emerald (Node 2)), 2× with 16 GB eMMC (topaz (Node 3), amethyst (Node 4))
 - 1× SATA III SSD (any size 250 GB+) for cluster NFS storage — connected to topaz (Node 3)
-- ATX or PicoPSU power supply (24-pin), **minimum 200 W** — the cluster pulls 30–60 W under load, so any modern ATX PSU is overkill but cheapest
+- PicoPSU (24-pin), **120 W** — the cluster pulls 30–60 W under load, so 120 W leaves comfortable headroom while staying tiny and silent. A standard ATX PSU works too, but it's bulky and runs inefficiently at this low draw.
 - Ubiquiti UDM-Pro or UDM-SE for VLANs, firewall, DHCP
 - UGREEN DXP6800 Pro NAS (or any NAS that runs Docker) for bulk media + Immich + offsite-friendly bulk storage
+- 1× Raspberry Pi 5 (4 GB) for Home Assistant OS — a dedicated host, kept off the cluster so the smart-home hub survives cluster reboots and upgrades (R16). 4 GB is the right size (HA's own reference spec); only go 8 GB if you'll run Frigate NVR or long-retention history.
+- 2× Raspberry Pi Zero 2 W for AdGuard Home (primary + secondary DNS) — run natively rather than on k3s so DNS stays up independently of the cluster (R17)
 - Domain name registered through Cloudflare (~$10/yr for `.com` / `.net` / etc.)
 - Optional: UPS — recommended once you start storing real data on the cluster ([sizing in R3](03-turing-pi.md#power-ups-nut-for-graceful-shutdown))
 
@@ -25,53 +27,6 @@ Create these before starting Runbook 1. All free tiers are sufficient.
 - **Docker Hub** (optional) — for pulling public images without rate limits
 - **A bootstrap password manager** (1Password, Bitwarden Cloud, KeePassXC) — you will replace this with self-hosted Vaultwarden at Runbook 7, but you need somewhere to store PATs and API tokens during the bootstrap weeks
 
-## Dependency Map
-
-The guide is split into **Foundation → Infrastructure → Apps**. Infrastructure is the recommended linear path: each runbook unblocks the next. Apps (R13–R16) only hard-depend on R6 (Traefik) — the order shown is convenience, not requirement.
-
-```
-─── Foundation ──────────────────────────────────────────────
-R0 Prerequisites + Mental Model
- ↓
-R1 Git / GitOps foundation (sops, pre-commit, 5 repos)
-
-─── Infrastructure (platform + operator tooling) ────────────
-R2 UDM VLANs                  ← Tailscale step deferred until R3 done
- ↓
-R3 Flash DietPi to 4× CM4     ← step 5 superseded by R4 Ansible
- ↓
-R4 Ansible: nodes, NFS, k3s install (replaces R3 step 5)
- ↓
-R5 k3s bring-up: MetalLB, NFS storage class, ArgoCD, Sealed Secrets
- ↓
-R6 Traefik HTTPS (DNS-01 via Cloudflare)
- ↓
-R7 Vaultwarden                ← cred store; becomes the password manager for every later runbook
- ↓
-R8 Terraform (Cloudflare DNS + UniFi IaC; retroactive)
- ↓
-R9 Prometheus + Grafana + Loki
- ↓
-R10 Restic + Velero backups
- ↓
-R11 Forgejo                   ← self-hosted Git host
- ↓
-R12 Woodpecker CI/CD          ← build → push → bump manifest
-
-─── Apps (user-facing services) ─────────────────────────────
- ├─→ R13 Nextcloud       (cluster)
- ├─→ R14 Paperless-ngx   (cluster)
- ├─→ R15 Immich          (NAS-Docker)
- └─→ R16 Home Assistant  (NAS-Docker)
-```
-
-## How to Use This Guide
-
-- Read each runbook fully before starting it. Several runbooks reference "come back to this step after Runbook N" patterns — don't get stuck mid-step.
-- Treat the `Depends On` header as the prerequisite check. If a runbook says `Depends On: Runbook 5`, do not start it until R5's Verification section passes.
-- When a runbook gives you a `docker-compose.yml`, check the `Runs On` header carefully. NAS-hosted services use compose; cluster-hosted services use Helm charts or k8s manifests committed to `homelab-manifests` so ArgoCD manages them.
-- If you get stuck on the order, re-read the dependency map above. The most common confusion is Tailscale (R2 Step 3) requiring ruby (Node 1) from R3 first, and ArgoCD (R5 Step 8) needing `kubectl port-forward` to access before R6 is up.
-
 ## Namespace Strategy
 
 k3s isn't a single shared bucket — every workload lives in a namespace. Set conventions now so you can `grep` your cluster meaningfully a year in:
@@ -83,10 +38,6 @@ k3s isn't a single shared bucket — every workload lives in a namespace. Set co
 
 !!! tip
     Run `kubectl get ns` periodically and prune anything you don't recognize. A messy namespace list is the canary for sloppy GitOps — every namespace should map to either a system component or an Application in `homelab-manifests/`.
-
-## End State
-
-When you finish all 16 runbooks you will have: a 4-node k3s cluster on your desk; HTTPS reverse-proxied internal services at `*.yourdomain.com`; self-hosted password vault, photo library, file sync, document archive, and smart-home hub; a GitOps loop where pushing to `homelab-manifests` triggers a cluster reconcile; monitoring with Prometheus / Grafana / Loki; nightly Restic backups; and a CI/CD pipeline that builds container images and bumps deployments via Git.
 
 ## Reality of ARM64 Homelabs
 
@@ -122,7 +73,6 @@ Four CM4 modules give you roughly 32 GB total RAM (8 GB each). After k3s overhea
 | Sealed Secrets controller | 50–100 Mi | <0.05 vCPU | One per cluster |
 | Woodpecker server | 100–200 Mi | <0.1 vCPU | Excludes runner build load |
 | Woodpecker runner | 200 Mi idle, 1–2 Gi build | 1+ vCPU during build | Spike during pipelines |
-| Immich (NAS-side) | 2–4 Gi | 1–2 vCPU + GPU helpful | Not on cluster by design |
 
 !!! tip
     Pi cluster memory pressure surprises people. Add resource requests + limits to every workload you deploy so the scheduler can refuse to pack a node into OOM territory. Without limits, one runaway pod can wedge a whole node.
