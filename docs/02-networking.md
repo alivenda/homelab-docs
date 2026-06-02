@@ -1,6 +1,6 @@
 # Runbook 2: Network Segmentation and VPN
 
-VLAN plan, firewall, and remote access via Tailscale. Sets up the network model that every later runbook assumes (cluster nodes on Lab VLAN, MetalLB pool reserved, mDNS scoped, Tailscale subnet routing).
+VLAN plan, firewall, and remote access via Tailscale. Sets up the network model that every later runbook assumes (cluster nodes on Lab VLAN, MetalLB pool reserved, global mDNS reflector, Tailscale subnet routing).
 
 | | |
 |---|---|
@@ -17,18 +17,19 @@ VLAN plan, firewall, and remote access via Tailscale. Sets up the network model 
 
 This table is the authoritative source for every later runbook (Terraform `unifi_network` resources, Ansible inventory IPs, MetalLB pool config). Change it here first, propagate everywhere else.
 
-| VLAN | Name | ID | Subnet | Gateway | Static range | DHCP range | mDNS |
-|---|---|---|---|---|---|---|---|
-| (untagged) | default | — | `10.0.0.0/24` | `10.0.0.1` | `.2–.99` | `.100–.250` | off |
-| 10 | trusted | 10 | `10.0.10.0/24` | `10.0.10.1` | `.10–.99` | `.100–.250` | **on** |
-| 20 | lab | 20 | `10.0.20.0/24` | `10.0.20.1` | `.10–.99` | `.100–.199` | **on** |
-| 30 | iot | 30 | `10.0.30.0/24` | `10.0.30.1` | `.10–.99` | `.100–.250` | **on** |
+| VLAN | Name | ID | Subnet | Gateway | Static range | DHCP range |
+|---|---|---|---|---|---|---|
+| (untagged) | default | — | `10.0.0.0/24` | `10.0.0.1` | `.2–.99` | `.100–.250` |
+| 10 | trusted | 10 | `10.0.10.0/24` | `10.0.10.1` | `.10–.99` | `.100–.250` |
+| 20 | lab | 20 | `10.0.20.0/24` | `10.0.20.1` | `.10–.99` | `.100–.199` |
+| 30 | iot | 30 | `10.0.30.0/24` | `10.0.30.1` | `.10–.99` | `.100–.250` |
 
 **Globals**
 
 - DHCP lease: 86400s (1 day)
 - IPv6: disabled on both WAN and LAN (see Step 1 note)
 - IGMP snooping: **on** (on the UDM's built-in switch, see Step 1d) — required for mDNS reflector to forward multicast cleanly across VLANs
+- Multicast DNS (mDNS): **global gateway reflector set to Auto** — the UDM retransmits common mDNS (AirPlay, Cast, HomeKit, Bonjour) across **all** VLANs; it is not a per-network toggle. Custom mode (whitelist services, scope to chosen VLANs) is the hardening option — see Step 1e
 - UDM upstream DNS: `1.1.1.1` (Cloudflare) — migrate to dedicated Pi-hole appliance later (see Step 3d)
 - MetalLB pool: `10.0.20.200–.250` (reserved within Lab VLAN, outside DHCP)
 
@@ -67,18 +68,18 @@ Lab VLAN is wired only — no SSID.
 
 ```mermaid
 flowchart TB
-    INET([Internet]) --> UDM["UDM — 10.0.0.1<br/>L3 router · Zone-Based Firewall"]
+    INET([Internet]) --> UDM["UDM — 10.0.0.1<br/>L3 router · Zone-Based Firewall<br/>mDNS reflector · Auto (all VLANs)"]
 
-    subgraph DEFAULT["Default LAN · 10.0.0.0/24 · mDNS off"]
+    subgraph DEFAULT["Default LAN · 10.0.0.0/24"]
         AP["UniFi AP · .3"]
     end
 
-    subgraph TRUSTED["VLAN 10 · Trusted · 10.0.10.0/24 · mDNS on"]
+    subgraph TRUSTED["VLAN 10 · Trusted · 10.0.10.0/24"]
         DESK["Home desktop"]
         PHONES["Phones / laptops · SSID home"]
     end
 
-    subgraph LAB["VLAN 20 · Lab · 10.0.20.0/24 · wired-only · mDNS on"]
+    subgraph LAB["VLAN 20 · Lab · 10.0.20.0/24 · wired-only"]
         BMC["TP2 BMC · .4"]
         RUBY["ruby · .10<br/>k3s control-plane + etcd<br/>Tailscale subnet router"]
         EMERALD["emerald · .11<br/>k3s worker<br/>Tailscale router · failover"]
@@ -88,7 +89,7 @@ flowchart TB
         METALLB["MetalLB pool · .200–.250<br/>Traefik VIP · .200"]
     end
 
-    subgraph IOT["VLAN 30 · IoT · 10.0.30.0/24 · mDNS on"]
+    subgraph IOT["VLAN 30 · IoT · 10.0.30.0/24"]
         ATV["Apple TV · .10 · SSID home-iot"]
         SMART["Smart-home devices"]
     end
@@ -103,19 +104,19 @@ flowchart TB
     EMERALD -.->|failover| TAILNET
 ```
 
-*Solid arrows are UDM's L3 routing between VLANs — every inter-VLAN hop is subject to the Policy Engine zone matrix (Step 3), with Lab unable to initiate to any other zone. Dotted lines are Tailscale: off-network devices reach the LAN through the tailnet, with ruby (primary) and emerald (failover) advertising the Default/Trusted/Lab subnets into it. mDNS reflector spans Trusted, Lab, and IoT; see [VLAN Architecture](#vlan-architecture) for the per-zone rationale.*
+*Solid arrows are UDM's L3 routing between VLANs — every inter-VLAN hop is subject to the Policy Engine zone matrix (Step 3), with Lab unable to initiate to any other zone. Dotted lines are Tailscale: off-network devices reach the LAN through the tailnet, with ruby (primary) and emerald (failover) advertising the Default/Trusted/Lab subnets into it. The UDM's mDNS reflector (Auto) retransmits across all VLANs; see [VLAN Architecture](#vlan-architecture) for the per-zone rationale.*
 
 ## VLAN Architecture
 
 Each VLAN has a distinct trust level and a deliberate reason for existing:
 
 - **Default LAN — `10.0.0.0/24`:** infrastructure management plane. UDM and AP live here. Treat as semi-trusted; you do not want random devices landing on it.
-- **VLAN 10 — Trusted (`10.0.10.0/24`):** your personal devices. Phones, laptops, home desktop. mDNS is on so casting/AirPlay/Bonjour to the IoT VLAN works without you switching networks.
-- **VLAN 20 — Lab (`10.0.20.0/24`):** the k3s cluster and NAS. Wired only, no SSID. mDNS is **on** because NAS hosts user-facing services (Plex, Immich, AirPlay receivers) that need to be discoverable from phones on Trusted and the Apple TV on IoT. Blast radius if a workload escapes the cluster is bounded by the zone matrix (Lab cannot initiate to any other VLAN).
-- **VLAN 30 — IoT (`10.0.30.0/24`):** smart home gear including the Apple TV. mDNS is on so phones on Trusted can discover the Apple TV for AirPlay, and the Apple TV can discover Plex on the NAS. Internet egress allowed (most IoT needs cloud services) but no inbound from anywhere except specific Home Assistant / Plex flows.
+- **VLAN 10 — Trusted (`10.0.10.0/24`):** your personal devices. Phones, laptops, home desktop. The global mDNS reflector lets them discover AirPlay/Cast/Bonjour services on IoT and Lab without switching networks.
+- **VLAN 20 — Lab (`10.0.20.0/24`):** the k3s cluster and NAS. Wired only, no SSID. The NAS hosts user-facing services (Plex, Immich, AirPlay receivers); the global mDNS reflector makes them discoverable from phones on Trusted and the Apple TV on IoT. Blast radius if a workload escapes the cluster is bounded by the zone matrix (Lab cannot initiate to any other VLAN).
+- **VLAN 30 — IoT (`10.0.30.0/24`):** smart home gear including the Apple TV. The global mDNS reflector lets phones on Trusted discover the Apple TV for AirPlay, and lets the Apple TV discover Plex on the NAS. Internet egress allowed (most IoT needs cloud services) but no inbound from anywhere except specific Home Assistant / Plex flows.
 
 !!! note "Why Apple TV is on IoT and not Trusted"
-    Apple TV is a closed-firmware appliance that talks to Apple's cloud services. Putting it on Trusted would let it reach your personal devices unnecessarily. Putting it on IoT with mDNS reflector enabled is the Ubiquiti-recommended pattern: segmentation preserved, AirPlay still works because mDNS announcements flow between Trusted, IoT, and Lab.
+    Apple TV is a closed-firmware appliance that talks to Apple's cloud services. Putting it on Trusted would let it reach your personal devices unnecessarily. Putting it on IoT with the mDNS reflector enabled is the Ubiquiti-recommended pattern: segmentation preserved, AirPlay still works because the reflector relays mDNS announcements across VLANs.
 
 ## Step 1: Create VLANs on UDM
 
@@ -125,7 +126,7 @@ In UniFi Network → **Settings → Networks**, create one network per VLAN row 
 2. **Gateway/Subnet:** matches the table.
 3. **DHCP Mode:** DHCP Server. Set **DHCP Range** to the values from the table (Lab uses `.100–.199`, others use `.100–.250`).
 4. **DHCP DNS Server:** Auto (UDM). UDM forwards to upstream — set the upstream in Step 1a below.
-5. **Multicast DNS:** **on** for Trusted, IoT, and Lab; **off** for Default. If your UniFi Network application is 8.x or later, the **Custom** mode is preferred over Auto — Custom lets you whitelist specific service types (AirPlay, HomeKit, Matter) rather than retransmitting every announcement, which is quieter on the wire and easier to debug. Auto is fine if Custom isn't available.
+5. **Multicast DNS:** leave the per-network field at its default — on this controller mDNS reflection is **not** a per-network toggle but a single global gateway setting, configured in **Step 1e** below.
 6. **IGMP Snooping:** configured on the UDM in Step 1d (not per-VLAN here).
 7. **IPv6 Interface Type:** None (disable).
 
@@ -151,7 +152,16 @@ UniFi → **UniFi Devices → your UDM → Settings → Services → IGMP Snoopi
 This is a device-level setting on the UDM's built-in switch, not per-VLAN. Without IGMP snooping, the switch floods all multicast traffic (including mDNS announcements and the actual AirPlay/Chromecast streams) to every port in the VLAN — wasted bandwidth and an easy way to confuse other multicast-using devices. With snooping on, the switch tracks which ports have devices that joined a multicast group and only forwards to those ports.
 
 !!! note "Why this matters with mDNS reflector enabled"
-    The mDNS reflector multiplies multicast traffic across the three VLANs you've enabled it on. IGMP snooping is what keeps that traffic targeted instead of broadcast-flooding the whole switch. Enable mDNS reflector without IGMP snooping and you'll see strange symptoms — slow IoT discovery, dropped AirPlay sessions, sometimes whole switch-CPU spikes.
+    The mDNS reflector (Auto) multiplies multicast traffic across every VLAN it reflects to. IGMP snooping is what keeps that traffic targeted instead of broadcast-flooding the whole switch. Enable mDNS reflector without IGMP snooping and you'll see strange symptoms — slow IoT discovery, dropped AirPlay sessions, sometimes whole switch-CPU spikes.
+
+### Step 1e: Enable the global Multicast DNS proxy
+
+mDNS reflection is a single gateway-level setting, not per-network. UniFi → **Settings → Networks → Global Network Settings → Multicast DNS** (UI labels vary by Network app version; on a UDM it lives under the gateway/global network settings, not on an individual network). Set the mode to **Auto**.
+
+**Auto** retransmits common mDNS service announcements (AirPlay, Chromecast, HomeKit, Bonjour) across **all** VLANs, so phones on Trusted and the Apple TV on IoT can discover Plex/AirPlay receivers on the NAS in Lab. Because Auto reflects everywhere, the Default management VLAN sees the announcements too — harmless here, but the reason Custom exists.
+
+!!! note "Custom mode — the hardening option"
+    **Custom** lets you whitelist specific service types (AirPlay, HomeKit, Matter) and scope each to chosen source/destination VLANs, instead of reflecting everything to everywhere. It's quieter on the wire, easier to audit, and keeps mDNS off VLANs that don't need it (e.g. Default). Auto is the simpler default and what this build runs today; switch to Custom when you want tighter control.
 
 ## Step 2: Connect devices to VLANs
 
@@ -455,7 +465,7 @@ Tailscale is easier (NAT traversal handled, no port forward needed). WireGuard o
 
 - [ ] Four networks visible in UniFi: Default, Trusted, Lab, IoT — each with the correct subnet and DHCP range from the Network Plan
 - [ ] DHCP exclude range `10.0.20.200–.250` configured on Lab
-- [ ] mDNS enabled on Trusted, IoT, and Lab; disabled on Default
+- [ ] Global Multicast DNS proxy set to **Auto** (Step 1e)
 - [ ] IGMP snooping enabled on the UDM (Step 1d)
 - [ ] IPv6 disabled on both WAN and every VLAN
 - [ ] SSIDs `home` (Trusted) and `home-iot` (IoT) created and assigned
