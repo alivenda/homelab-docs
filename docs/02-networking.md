@@ -52,6 +52,8 @@ Within the static range of each VLAN. Cluster nodes get their static IP from `di
 | emerald (Tailscale subnet router failover) | lab | `10.0.20.11` | dietpi.txt static |
 | topaz | lab | `10.0.20.12` | dietpi.txt static |
 | amethyst | lab | `10.0.20.13` | dietpi.txt static |
+| slate (Mac mini — Proxmox host for Home Assistant) | lab | `10.0.20.20` | static (set at Proxmox install) |
+| Home Assistant OS (VM on slate) | lab | `10.0.20.21` | UDM DHCP reservation |
 | UGREEN DXP6800 Pro NAS | lab | `10.0.20.50` | UDM DHCP reservation |
 | Apple TV | iot | `10.0.30.10` | UDM DHCP reservation |
 
