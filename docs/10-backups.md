@@ -270,6 +270,96 @@ Pin `--version` to a current release listed on [vmware-tanzu/helm-charts](https:
 !!! warning "Off-site backup is still a TODO"
     Local backups protect against disk failure but NOT fire/theft/flood. Options: friend's house with Tailscale + Restic, cycled external drives, second location you control. Schedule a calendar reminder within 3 months.
 
+## Home Assistant backups → Garage
+
+Home Assistant runs off-cluster — an HAOS VM on **slate** (`10.0.20.21`, see [Runbook 16](16-home-assistant.md)). Its native backups are local; getting them off-box to Garage is done by **pulling from the NAS with rclone**, not by an in-HA S3 integration.
+
+!!! note "Why pull from the NAS instead of an HA S3 backup-agent integration"
+    Home Assistant's S3-compatible backup-agent integrations are `botocore`-based, and on current HA they break on an `aiobotocore`↔`botocore` version skew (the integration's newer `aiobotocore` passes an argument the bundled `botocore` doesn't accept). Decoupling — HA writes local backups, the NAS ships them to Garage — sidesteps HA's Python entirely and survives HA core updates, which is the better DR posture regardless.
+
+### Garage consumer (bucket + key)
+
+Same trio as the other consumers:
+
+```bash
+docker exec -ti garage /garage bucket create ha-backups
+docker exec -ti garage /garage key create ha-backup                  # copy the Key ID (GK…) and Secret
+docker exec -ti garage /garage bucket allow --read --write ha-backups --key ha-backup
+```
+
+### Home Assistant side
+
+1. Install the official **Samba share** add-on; set a username + password and scope **Allowed Hosts** to the Lab VLAN (`10.0.20.0/24`) — only it should reach the shares (this exposes `/config` too). HA's `/backup` is then readable as the `backup` share.
+2. Settings → System → **Backups** → automatic backup: daily, keep 7. These write to `/backup`.
+3. **Store the backup encryption key in Vaultwarden** (and on paper), alongside the age key. HA encrypts every backup; without the key the Garage copy is unrecoverable.
+
+### NAS side (rclone pull + schedule)
+
+`/etc/rclone/rclone.conf` (root-owned, `chmod 600`) — obscure the Samba password with `docker run --rm rclone/rclone obscure '<password>'`:
+
+```ini
+[hasmb]
+type = smb
+host = 10.0.20.21
+user = <ha-samba-user>
+pass = <obscured>
+
+[garage]
+type = s3
+provider = Other
+endpoint = http://10.0.20.50:9000
+region = us-east-1          # must match garage.toml's s3_region
+access_key_id = GK…
+secret_access_key = <secret>
+force_path_style = true     # Garage requires path-style
+```
+
+Test the connection, then copy:
+
+```bash
+docker run --rm --user root -v /etc/rclone:/config/rclone rclone/rclone lsd hasmb:           # lists shares → SMB auth works
+docker run --rm --user root -v /etc/rclone:/config/rclone rclone/rclone copy hasmb:backup garage:ha-backups -v
+docker exec -ti garage /garage bucket info ha-backups                                        # Objects ≥ 1
+```
+
+Automate on the NAS with a systemd timer — copy new backups in, then prune Garage to a rolling 30-day window:
+
+`/etc/systemd/system/ha-backup-sync.service`:
+
+```ini
+[Unit]
+Description=Sync Home Assistant backups to Garage
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker run --rm --user root -v /etc/rclone:/config/rclone rclone/rclone copy hasmb:backup garage:ha-backups -v
+ExecStart=/usr/bin/docker run --rm --user root -v /etc/rclone:/config/rclone rclone/rclone delete garage:ha-backups --min-age 30d
+```
+
+`/etc/systemd/system/ha-backup-sync.timer`:
+
+```ini
+[Unit]
+Description=Daily HA backup sync to Garage
+
+[Timer]
+OnCalendar=*-*-* 05:30:00      # after HA's automatic-backup window
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+systemctl daemon-reload && systemctl enable --now ha-backup-sync.timer
+systemctl list-timers ha-backup-sync.timer     # confirm a NEXT run
+```
+
+!!! warning "Copy, never sync — and mind UGOS updates"
+    Use `rclone copy` (plus the age-based `delete`), never `rclone sync`: `sync` mirrors deletions, so if HA's `/backup` is ever empty (reinstall, disk loss) it would wipe the Garage copy too. And because the NAS runs **UGOS Pro** (an appliance OS), these host units live outside Ansible's reach — a major UGOS update can reset them, so this section is the recovery reference.
+
 ## Restic Setup
 
 Restic backs up filesystem-level data: DB dumps, config files, k3s server manifests. Run this **on a host with access to the cluster databases** — typically ruby (where `kubectl` works) and the NAS (where mount happens).
