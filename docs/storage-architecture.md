@@ -1,0 +1,138 @@
+# Storage & Data Architecture
+
+Where every kind of data lives, and why. This is the **decision record** behind the
+storage choices the runbooks and the [App Catalog](apps-catalog.md) assume — read it
+once and a per-app storage line never reads as arbitrary again.
+
+!!! note "Source of truth is the manifest"
+    The deployed StorageClasses live in `homelab-manifests/infrastructure/`. This page
+    is the *rationale and the rules*; it deliberately doesn't restate YAML.
+
+## The one-paragraph version
+
+The cluster nodes are ARM CM4s with eMMC plus a single shared SATA SSD — strong at
+running many small app pods, weak at database I/O. So data is split by **what it is**,
+not by which app owns it: bulk and flat files on NFS, embedded SQLite on node-local
+disk, real relational databases on x86 hardware (the NAS), caches in memory. Durability
+everywhere is **backups to Garage S3, not redundancy** — there is one real disk, by
+design (the storage SPOF is mitigated by backups, see [Backups & DR](10-backups.md)).
+
+## Why this isn't "just use the default StorageClass"
+
+Two hardware facts drive every choice below:
+
+1. **SQLite corrupts on NFS.** [sqlite.org/howtocorrupt](https://www.sqlite.org/howtocorrupt.html)
+   §2.1: *"This is especially true of network filesystems and NFS in particular… database
+   corruption might result."* A large share of self-hosted apps embed SQLite (Uptime Kuma,
+   linkding, Actual Budget, the Arr stack, Forgejo, Vaultwarden, …) and several have no
+   other backend. They **cannot** sit on `nfs-storage`.
+2. **The CM4s are the wrong place for a database.** PostgreSQL does sustained, fsync'd
+   writes; the nodes have only eMMC (slow, write-endurance-limited, *and the boot medium*)
+   plus the one SATA SSD on topaz that already serves NFS. Real relational databases belong
+   on x86 hardware with a proper disk.
+
+## The four storage tiers
+
+| Tier | Backing | Where | Use it for |
+|---|---|---|---|
+| **Bulk / flat / RWX** | topaz SATA SSD over NFS | `nfs-storage` (default class) | Media, Nextcloud *files*, document blobs, config dirs — anything that isn't a live database |
+| **Embedded DB (node-local)** | each node's local disk | `local-path` (standalone provisioner) | SQLite app data — node-pinned, POSIX-correct |
+| **Relational DB** | NAS (x86), Docker | Postgres / MariaDB server on the NAS | Nextcloud, Paperless, Reactive Resume, BookStack, … |
+| **Cache (ephemeral)** | node memory | in-cluster Redis/Valkey pod | Caches for Paperless, Reactive Resume — not a system of record, no durable PVC |
+
+!!! warning "Implementation status (2026-06)"
+    - `nfs-storage` — **live** (`infrastructure/nfs-provisioner`).
+    - `local-path` standalone provisioner — **not yet deployed.** k3s was installed with
+      `--disable local-storage`, so the built-in `local-path` class does **not** exist;
+      SQLite apps have nowhere correct to bind until the standalone provisioner ships
+      (see [below](#the-local-path-tier)).
+    - NAS relational DB — **not yet built.** Today only Immich's Postgres runs on the NAS
+      (R15). The shared server below is the planned target for the other relational apps.
+
+## How to decompose one app
+
+A stateful app is rarely "one volume." Split it by data type and send each part to its tier:
+
+- **App pods** → the cluster (their job; the CM4s are good at this).
+- **Embedded SQLite** → `local-path` + `strategy: Recreate`.
+- **Relational DB** (Postgres/MariaDB) → the NAS database server.
+- **Bulk files** (uploads, documents, media) → `nfs-storage`.
+- **Cache** (Redis/Valkey) → an ephemeral in-cluster pod, no durable PVC.
+
+> **Worked example — Nextcloud:** PHP/app pods on the cluster, *files* on `nfs-storage`,
+> *database* on the NAS Postgres, Redis as an ephemeral cache pod. Four parts, four homes.
+
+## The local-path tier
+
+k3s ships Rancher's local-path provisioner and marks its class the cluster **default**,
+re-applying that annotation on **every restart** — which fights a custom default like
+`nfs-storage`. So the cluster disables it (`--disable local-storage` in
+`homelab-ansible/site.yml`) and hands "default" cleanly to `nfs-storage`.
+
+The fix for SQLite apps is **not** to undo that disable — it's to run a **separate,
+non-default** [rancher/local-path-provisioner](https://github.com/rancher/local-path-provisioner)
+as its own ArgoCD app. Because it's *our* manifest, not k3s's bundled one, k3s never
+touches it or re-marks defaults, so it coexists with `nfs-storage`. SQLite apps opt in
+with `storageClassName: local-path` + `strategy: Recreate` (the volume is RWO and pins to
+a single node). velero's node-agent (filesystem/kopia backup) captures these volumes —
+that's their durability, replacing the redundancy NFS can't provide here.
+
+Embedded SQLite databases are tiny, so node eMMC is an acceptable medium. Spread SQLite
+apps across the workers — the 32 GB-eMMC nodes (ruby/emerald) have the most room — and keep
+write-heavy ones off the control plane.
+
+## Relational databases — on the NAS, not the cluster
+
+The relational apps (Nextcloud, Paperless, Reactive Resume → PostgreSQL; BookStack →
+MariaDB) get a **shared database server on the NAS** — the same x86 Docker host that already
+runs Immich's Postgres (R15), so this extends an established pattern rather than inventing one.
+
+Shape of the layer:
+
+- **One PostgreSQL container** on the NAS (`10.0.20.50`, Lab VLAN) with a **database + role
+  per app** — not one Postgres per app.
+- **One MariaDB container** for the MySQL-only apps (BookStack; optionally Ghost, Monica).
+- Cluster apps connect over the Lab VLAN via `DATABASE_URL`, credentials from a `SealedSecret`.
+- **Backups:** nightly `pg_dump` / `mysqldump` per database to Garage S3 (R10). Move to
+  pgBackRest / WAL archiving later if you want point-in-time recovery.
+- **Access:** restrict `pg_hba` / the NAS firewall to the cluster node range; it stays on the
+  trusted Lab VLAN, never exposed.
+
+!!! tip "Caches stay in-cluster"
+    Redis/Valkey for Paperless and Reactive Resume is a **cache**, not a system of record.
+    Run it as an ordinary in-cluster pod with no durable volume — there's nothing to back up
+    and no reason to send it to the NAS.
+
+### Why not CloudNativePG (in-cluster Postgres)?
+
+[CloudNativePG](https://cloudnative-pg.io/) is genuinely good and **fully self-hosted** —
+Apache-2.0, a CNCF Sandbox project, ships official `arm64` images, and backs up to *your own*
+Garage S3 (no cloud account, no subscription; "cloud-native" means *Kubernetes-native*). It's
+shelved here for a **hardware** reason, not a values one: its headline feature is **HA
+PostgreSQL across 3+ replicas with independent per-node storage**, and this cluster has a single
+shared SSD (a storage SPOF by design) and write-limited eMMC. You'd run it single-instance on the
+wrong disk — paying operator complexity for the one capability the hardware can't provide.
+Revisit CNPG only if the nodes ever gain per-node NVMe.
+
+## Durability model
+
+One real disk means durability is **backups, not redundancy** — applied consistently per tier:
+
+| Data | Backed up by | Destination |
+|---|---|---|
+| Cluster objects (etcd) | k3s etcd snapshots | local + Garage S3 |
+| `nfs-storage` + `local-path` PVCs | velero node-agent (filesystem) | Garage S3 |
+| NAS relational DBs | `pg_dump` / `mysqldump` (or pgBackRest) | Garage S3 |
+
+## Open cleanup items
+
+These predate this record and should be reconciled to it as each app is touched:
+
+- **The App Catalog points most SQLite apps at `nfs-storage`** — only Uptime Kuma is correct.
+  Migrate each to `local-path` + `Recreate` when it's deployed.
+- **Forgejo is live on SQLite over `nfs-storage`** (`infrastructure/forgejo/values.yaml`).
+  Single-replica and lightly used, so it's a *latent* risk (NFS lock state on a reschedule),
+  not active corruption — migrate it to `local-path` once the provisioner is live, snapshotting
+  first.
+- **Runbooks R13/R14/R22/R25 assume cluster-hosted databases** — revise their DB sections to the
+  NAS server above when each app is deployed.
