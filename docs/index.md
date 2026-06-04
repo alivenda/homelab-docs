@@ -9,7 +9,7 @@ A runbook guide for building a 4-node k3s cluster on a Turing Pi 2, learning Dev
 - Turing Pi 2 cluster board (mini-ITX) + 4× Raspberry Pi CM4 with 8 GB RAM
 - Ubiquiti UDM rackmount for VLANs, firewall, DHCP
 - UGREEN DXP6800 Pro NAS (x86, 8 GB DDR5) for bulk media and Immich
-- Raspberry Pi 5 (4 GB, dedicated) for Home Assistant OS
+- slate — repurposed Late-2014 Mac mini (16 GB RAM, 256 GB SSD), Proxmox host running Home Assistant OS in a VM (2 vCPU, 4 GB)
 - 2× Raspberry Pi Zero 2 W for AdGuard Home (primary + secondary DNS)
 - Cloudflare-registered domain (~$10/yr)
 
@@ -62,7 +62,7 @@ R19 ntfy                ← push notifications for the whole stack
  ├─→ R13 Nextcloud       (cluster — Postgres)
  ├─→ R14 Paperless-ngx   (cluster — Postgres + Redis)
  ├─→ R15 Immich          (NAS-Docker — not on k3s, see runbook for why)
- ├─→ R16 Home Assistant  (dedicated Pi 5)
+ ├─→ R16 Home Assistant  (slate — Mac mini / Proxmox VM)
  ├─→ R20 Homepage        (cluster — config-heavy dashboard)
  ├─→ R21 Arr Stack       (cluster — 6 services + hardlinks; NAS after 16 GB)
  ├─→ R22 BookStack       (cluster — MariaDB)

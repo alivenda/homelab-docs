@@ -1,6 +1,6 @@
 # Personal Cloud Stack — Complete Service Guide
 
-A comprehensive review of every awesome-selfhosted category mapped against your specific hardware, existing stack, and day-to-day needs. Written against the Turing Pi 2 cluster, UGREEN DXP6800 Pro NAS, dedicated Home Assistant Pi 5, and 2× Pi Zero 2 W DNS nodes.
+A comprehensive review of every awesome-selfhosted category mapped against your specific hardware, existing stack, and day-to-day needs. Written against the Turing Pi 2 cluster, UGREEN DXP6800 Pro NAS, slate (a Late-2014 Mac mini running Home Assistant OS as a Proxmox VM), and 2× Pi Zero 2 W DNS nodes.
 
 ---
 
@@ -10,7 +10,7 @@ A comprehensive review of every awesome-selfhosted category mapped against your 
 |----------|-------|-----------------|
 | **Cluster (4× CM4)** | ARM64, 32 GB total RAM, 1 TB NFS | Traefik, ArgoCD, Prometheus/Grafana/Loki, Vaultwarden, Nextcloud, Paperless-ngx, Forgejo, Woodpecker |
 | **NAS (DXP6800 Pro)** | x86-64, **8 GB RAM** (expandable) | Plex, Immich |
-| **Home Assistant node (Pi 5)** | ARM64, 4 GB RAM, dedicated | Home Assistant OS |
+| **Home Assistant node (slate — Mac mini)** | x86-64, 16 GB RAM / 256 GB SSD, Proxmox | Home Assistant OS (VM: 2 vCPU, 4 GB) |
 | **DNS nodes (2× Pi Zero 2 W)** | ARM64, 512 MB RAM each | AdGuard Home (primary + secondary) |
 
 > **NAS RAM is a meaningful constraint.** At 8 GB, Plex + Immich can consume 2.5–6 GB under load, leaving 2–5.5 GB headroom. Enough to run the Arr stack locally (if you prefer), but not enough for Ollama without a RAM upgrade. The DXP6800 Pro accepts standard DDR5 SO-DIMMs — upgrading to 16 GB (~$35–50) opens up AI workloads and makes the NAS more comfortable overall. This doc marks services that require the upgrade `⚠️ NAS RAM upgrade recommended`.
@@ -55,7 +55,7 @@ Headroom is comfortable. OCR (Paperless) and CI builds (Woodpecker) are still th
 | File sync + Calendar + Contacts | Nextcloud ✅ | R13; also covers Notes app, Bookmarks app, Collabora |
 | Document archive | Paperless-ngx ✅ | R14 |
 | Photo/video library | Immich ✅ | R15 (NAS) |
-| Smart home hub | Home Assistant ✅ | R16 (dedicated Pi 5, Home Assistant OS) |
+| Smart home hub | Home Assistant ✅ | R16 (slate — Mac mini / Proxmox VM, Home Assistant OS) |
 | Password manager + TOTP | Vaultwarden ✅ | R7; also generates 2FA codes natively — no separate app needed. If you want strict separation between passwords and 2FA, [2FAuth](https://2fauth.app) is the self-hosted option. |
 | Media streaming | Plex ✅ | NAS |
 | Music streaming | Plex ✅ | NAS — Plex Media Server serves audio; Plexamp is the client player, not a separate daemon |
