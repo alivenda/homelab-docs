@@ -51,13 +51,16 @@ Save the plaintext to Vaultwarden as well. The controller's signing key is itsel
 
 ## Step 3 — Storage
 
+See **[Storage & Data Architecture](storage-architecture.md)** for the full rationale and the per-tier rules; the short version:
+
 | Use | StorageClass | Notes |
 |---|---|---|
-| Most apps | `nfs-storage` | Survives the pod rescheduling to another node. |
-| SQLite apps | `local-path` | k3s built-in, node-local. **Required** for anything on SQLite — NFS doesn't do POSIX file locking reliably and *will corrupt the DB*. Pair with `strategy: Recreate` (a local-path volume mounts on one node only). |
+| Most apps (bulk / flat files) | `nfs-storage` | Default class; survives the pod rescheduling to another node. |
+| SQLite apps | `local-path` | Node-local, from the **standalone** local-path provisioner (k3s's built-in is disabled). **Required** for anything on SQLite — NFS doesn't do POSIX file locking reliably and *will corrupt the DB*. Pair with `strategy: Recreate` (the volume mounts on one node only). |
+| Relational DB (Postgres/MariaDB) | — | Not a PVC — the app connects to the shared database server on the NAS. See the architecture doc. |
 
-!!! warning "`nfs-storage` isn't live yet"
-    The `nfs-storage` StorageClass depends on the topaz SSD + NFS export, which is not up yet. Until it is, only `local-path` apps can run. See [Backups & DR](10-backups.md).
+!!! warning "`local-path` needs the standalone provisioner"
+    k3s was installed with `--disable local-storage`, so the built-in `local-path` class does **not** exist. Until the standalone provisioner ships, SQLite apps have nowhere correct to bind — see [Storage & Data Architecture](storage-architecture.md#the-local-path-tier). `nfs-storage` is live.
 
 ## Step 4 — Routing (HTTPRoute)
 

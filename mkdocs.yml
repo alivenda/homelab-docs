@@ -90,6 +90,7 @@ nav:
       - Runbook 8 — Terraform: 08-terraform.md
       - Runbook 9 — Observability: 09-observability.md
       - Runbook 10 — Backups: 10-backups.md
+      - Storage & Data Architecture: storage-architecture.md
       - Runbook 11 — Forgejo: 11-forgejo.md
       - Runbook 12 — CI/CD: 12-cicd.md
       - Runbook 17 — AdGuard Home: 17-adguard-home.md
