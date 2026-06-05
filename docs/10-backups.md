@@ -208,7 +208,7 @@ This is the primary off-node etcd path; the Restic `--tag etcd` job below is a s
 
 ## Velero for k8s-native PVC backup
 
-Velero with the restic backend snapshots PVC contents and stores them in the Garage store above, in a dedicated `velero` bucket.
+Velero's filesystem backup (the **node-agent**, using the kopia uploader — the default since Velero 1.10) snapshots PVC contents and stores them in the Garage store above, in a dedicated `velero` bucket.
 
 ### Create the Velero credentials file
 

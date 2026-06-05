@@ -176,7 +176,7 @@ Uptime monitoring with status pages and ntfy alerts.
 | Workload | raw manifests — `louislam/uptime-kuma:2` |
 | Namespace / hostname | `uptime-kuma` / `status.yourdomain.com` |
 | Service port | 3001 |
-| Storage | **`local-path`, 1 Gi** (see gotcha) |
+| Storage | **`local-path`, 2 Gi** (see gotcha) |
 | Secret keys | none (ntfy credentials entered in the UI) |
 | Auth | Authelia ForwardAuth (no built-in SSO) |
 
