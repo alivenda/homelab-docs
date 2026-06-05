@@ -42,9 +42,10 @@ Two hardware facts drive every choice below:
 
 !!! warning "Implementation status (2026-06)"
     - `nfs-storage` — **live** (`infrastructure/nfs-provisioner`).
-    - `local-path` standalone provisioner — **not yet deployed.** k3s was installed with
-      `--disable local-storage`, so the built-in `local-path` class does **not** exist;
-      SQLite apps have nowhere correct to bind until the standalone provisioner ships
+    - `local-path` standalone provisioner — **live** (`infrastructure/local-path-provisioner`).
+      k3s was installed with `--disable local-storage`, so the built-in class is gone; this
+      separate provisioner gives SQLite apps a correct home. Uptime Kuma is the first app on
+      it, and a backup→restore drill confirmed its volumes round-trip through velero
       (see [below](#the-local-path-tier)).
     - NAS relational DB — **not yet built.** Today only Immich's Postgres runs on the NAS
       (R15). The shared server below is the planned target for the other relational apps.
@@ -76,6 +77,15 @@ touches it or re-marks defaults, so it coexists with `nfs-storage`. SQLite apps 
 with `storageClassName: local-path` + `strategy: Recreate` (the volume is RWO and pins to
 a single node). velero's node-agent (filesystem/kopia backup) captures these volumes —
 that's their durability, replacing the redundancy NFS can't provide here.
+
+!!! danger "The tier only works with `defaultVolumeType: local`"
+    velero's filesystem backup **cannot read `hostPath` volumes** — only `local` ones
+    ([velero docs](https://velero.io/docs/main/file-system-backup/)). The provisioner
+    defaults to `hostPath`, so the StorageClass **must** set the annotation
+    `defaultVolumeType: local`. Without it, every backup of a SQLite DB here finishes
+    `Completed` having captured **zero** bytes — a silent, total loss of durability that
+    looks healthy. This was caught by a restore drill, not in theory; the gate is a
+    non-empty `PodVolumeBackup`, never a `Completed` status.
 
 Embedded SQLite databases are tiny, so node eMMC is an acceptable medium. Spread SQLite
 apps across the workers — the 32 GB-eMMC nodes (ruby/emerald) have the most room — and keep
@@ -123,6 +133,9 @@ One real disk means durability is **backups, not redundancy** — applied consis
 | Cluster objects (etcd) | k3s etcd snapshots | local + Garage S3 |
 | `nfs-storage` + `local-path` PVCs | velero node-agent (filesystem) | Garage S3 |
 | NAS relational DBs | `pg_dump` / `mysqldump` (or pgBackRest) | Garage S3 |
+
+`local-path` is only velero-backable because its StorageClass sets `defaultVolumeType: local`
+— see the [danger note above](#the-local-path-tier). `hostPath` volumes are silently skipped.
 
 ## Open cleanup items
 
