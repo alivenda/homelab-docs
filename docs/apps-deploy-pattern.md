@@ -59,8 +59,8 @@ See **[Storage & Data Architecture](storage-architecture.md)** for the full rati
 | SQLite apps | `local-path` | Node-local, from the **standalone** local-path provisioner (k3s's built-in is disabled). **Required** for anything on SQLite — NFS doesn't do POSIX file locking reliably and *will corrupt the DB*. Pair with `strategy: Recreate` (the volume mounts on one node only). |
 | Relational DB (Postgres/MariaDB) | — | Not a PVC — the app connects to the shared database server on the NAS. See the architecture doc. |
 
-!!! warning "`local-path` needs the standalone provisioner"
-    k3s was installed with `--disable local-storage`, so the built-in `local-path` class does **not** exist. Until the standalone provisioner ships, SQLite apps have nowhere correct to bind — see [Storage & Data Architecture](storage-architecture.md#the-local-path-tier). `nfs-storage` is live.
+!!! warning "`local-path` is a standalone provisioner, not k3s's built-in"
+    k3s runs with `--disable local-storage`, so the built-in `local-path` class doesn't exist; a separate standalone provisioner supplies this class instead — **live** since 2026-06. Its StorageClass **must** set `defaultVolumeType: local`, or velero silently backs up nothing — see [Storage & Data Architecture](storage-architecture.md#the-local-path-tier).
 
 ## Step 4 — Routing (HTTPRoute)
 
