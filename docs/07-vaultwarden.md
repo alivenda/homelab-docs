@@ -1,23 +1,23 @@
 # Runbook 7: Vaultwarden
 
-Lightweight self-hosted Bitwarden-compatible server. First service runbook after Traefik — smallest dependency footprint of anything in this guide (only Traefik), and gives you a self-hosted password manager to use for every later runbook's credentials instead of pasting them into 1Password / Bitwarden Cloud.
+Lightweight self-hosted Bitwarden-compatible server. First service runbook after Traefik — smallest dependency footprint of anything in this guide, and the first **stateful** app, so it's where we work the [GitOps deploy pattern](apps-deploy-pattern.md) end to end and meet the SQLite storage rules for real. Once it's up you have a self-hosted password manager to hold every later runbook's credentials instead of pasting them into a cloud vault.
 
 | | |
 |---|---|
-| **Difficulty** | Beginner |
-| **Time Estimate** | 30 minutes |
-| **Runs On** | Any node (fine on amethyst) |
-| **Depends On** | Runbook 6 (HTTPS required) |
+| **Difficulty** | Beginner (the GitOps pattern, walked slowly) |
+| **Time Estimate** | 45 minutes |
+| **Runs On** | `amethyst` (pinned via `nodeSelector` — see Step 2) |
+| **Depends On** | Runbook 6 (HTTPS), plus the cluster baseline this guide stands up before any app: ArgoCD, the Sealed Secrets controller, and the standalone `local-path` provisioner |
 
-Deploy Vaultwarden via the well-maintained community Helm chart instead of docker-compose. NFS-backed persistence, ArgoCD visibility, a single HTTPRoute on the shared Gateway.
+This runbook follows the [GitOps deploy pattern](apps-deploy-pattern.md) — nothing here is applied imperatively; every object is committed to `homelab-manifests` and ArgoCD reconciles it. What's *specific* to Vaultwarden, and worth slowing down for, is the **SQLite storage model**. Get that wrong and the vault silently runs on ephemeral disk — wiped on every restart.
 
 ## Step 1: Seal the admin token
 
+The `/admin` panel is gated by a single token. It's a secret, so it goes in a `SealedSecret` (safe to commit) rather than inline in `values.yaml`:
+
 ```bash
 VW_ADMIN_TOKEN=$(openssl rand -base64 48)
-echo "Vaultwarden admin token: $VW_ADMIN_TOKEN"   # save to Vaultwarden... your bootstrap one
-
-kubectl create namespace vaultwarden
+echo "Vaultwarden admin token: $VW_ADMIN_TOKEN"   # save to your bootstrap password manager
 
 kubectl create secret generic vaultwarden-admin \
   --namespace vaultwarden \
@@ -26,47 +26,70 @@ kubectl create secret generic vaultwarden-admin \
   | kubeseal --controller-name=sealed-secrets-controller \
              --controller-namespace=sealed-secrets \
              --format yaml \
-  > vaultwarden-admin-sealed.yaml
-
-# Commit to homelab-manifests/apps/vaultwarden/
+  > apps/vaultwarden/manifests/sealed-admin-token.yaml
 ```
 
-## Step 2: Install via Helm
+`--dry-run=client` means the plaintext Secret is only ever built in memory and piped to `kubeseal` — it never touches the cluster or the disk. The output is a `SealedSecret` that decrypts, in-cluster, to a Secret named `vaultwarden-admin` (key `admin-token`); `values.yaml` references it by name.
 
-`values.yaml`:
+!!! warning "Save the token now, off-cluster"
+    The token is the only way into `/admin`, and `/admin` is the only way to manage settings without DB access. Save the plaintext to the bootstrap password manager you're migrating *away from* — not this new Vaultwarden, which would be circular. The Sealed Secrets signing key is itself backed up; see [Backups & DR](10-backups.md).
+
+## Step 2: Values — storage is the part everyone gets wrong
+
+`apps/vaultwarden/values.yaml` holds the chart config. The manifest in `homelab-manifests` is the source of truth; the storage block is the part to understand rather than copy blindly:
 
 ```yaml
 domain: https://vault.yourdomain.com
+
 adminToken:
   existingSecret: vaultwarden-admin
   existingSecretKey: admin-token
+
 signupsAllowed: false
-persistence:
-  enabled: true
-  storageClass: nfs-storage
-  size: 2Gi
+
+# Pin the workload type. SQLite (database.type stays "default") already makes the
+# chart render a StatefulSet; stating it stops a future edit from silently flipping
+# it to a Deployment.
+resourceType: StatefulSet
+
+# Pin to the light worker. Keeps the vault off the control plane; local-path's
+# WaitForFirstConsumer then provisions the PV here and the pod always reschedules
+# back to its data.
+nodeSelector:
+  kubernetes.io/hostname: amethyst
+
+# Persistence: the guerzon chart's real schema is storage.data.
+storage:
+  data:
+    name: vaultwarden-data
+    size: 2Gi
+    class: local-path
+    accessMode: ReadWriteOnce
+
+ingress:
+  enabled: false        # routing is a separate HTTPRoute — see Step 3
+
 service:
   type: ClusterIP
 ```
 
-Install:
+Three things make or break this app:
 
-```bash
-helm repo add vaultwarden https://guerzon.github.io/vaultwarden
-helm repo update
-helm upgrade --install vaultwarden vaultwarden/vaultwarden \
-  --version 0.36.4 \
-  --namespace vaultwarden \
-  --values values.yaml
-```
+!!! danger "The schema is `storage.data`, **not** a top-level `persistence:` block"
+    The guerzon chart has no `persistence:` key. If you write one (as older guides do), Helm **silently drops it** and `/data` lands on the ephemeral container layer — a vault wiped on every pod restart, with no error to warn you. Persistence lives under `storage.data` (`name`/`size`/`class`/`accessMode`).
 
-!!! warning
-    Save the admin token immediately. The `/admin` panel is the only way to manage settings without DB access, and the token is the only way in.
+!!! danger "SQLite goes on `local-path`, never `nfs-storage`"
+    Vaultwarden uses SQLite. NFS does not do POSIX file locking reliably and **will corrupt a SQLite DB**. Bind the node-local `local-path` class (see the [storage architecture](storage-architecture.md#the-local-path-tier)). That class is `Retain`, and the StatefulSet renders `persistentVolumeClaimRetentionPolicy: Retain`, so the data survives a PVC/StatefulSet delete.
 
-## Step 3: HTTPRoute
+!!! note "Don't add `strategy: Recreate` here"
+    The general SQLite advice in the [deploy pattern](apps-deploy-pattern.md) pairs `local-path` with `strategy: Recreate` — that's for *Deployment*-based apps. Vaultwarden renders a single-replica **StatefulSet**, which already rolls serially (the old pod terminates before its replacement starts), so it can't double-mount the `ReadWriteOnce` volume. On a StatefulSet, `Recreate` maps to `updateStrategy`, where it's an invalid value.
+
+## Step 3: Routing — an HTTPRoute, in the manifests app { #step-3-httproute }
+
+Vaultwarden configures no TLS of its own; the shared Traefik Gateway terminates it with the wildcard cert. Commit the route to `apps/vaultwarden/manifests/` (Service port `80` → the chart's `vaultwarden` Service):
 
 ```yaml
-# homelab-manifests/apps/vaultwarden/manifests/httproute.yaml
+# apps/vaultwarden/manifests/httproute.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -85,24 +108,55 @@ spec:
           port: 80
 ```
 
-## Step 4: Account creation (signups are off)
+!!! warning "The manifests app must **not** use Server-Side Apply"
+    The HTTPRoute is applied by the `vaultwarden-manifests` Application with client-side apply. `ServerSideApply=true` on an app that manages a Gateway API `HTTPRoute` leaves it permanently `OutOfSync` (Healthy but never reconciled). The Helm chart app keeps SSA; the manifests app does not.
 
-Because we set `signupsAllowed=false` at install, the public `/register` form is disabled. To create your first account, temporarily enable it via Helm upgrade, register, then turn it back off:
+## Step 4: Register the Applications and sync
+
+`bootstrap/vaultwarden.yaml` holds **two** ArgoCD Applications:
+
+- **`vaultwarden`** — the guerzon Helm chart via the multi-source `$values` pattern (`valueFiles: [$values/apps/vaultwarden/values.yaml]`), `ServerSideApply=true`, and `prune: false` so a sync can't drop the StatefulSet/PVC mid-flight.
+- **`vaultwarden-manifests`** — the raw `manifests/` (HTTPRoute + the admin-token SealedSecret), **no SSA**. Both set `CreateNamespace=true` so the `vaultwarden` namespace exists for whichever syncs first.
+
+Commit everything on a branch, open a PR, merge, and let ArgoCD reconcile. The StatefulSet comes up on `amethyst`, the PVC binds on `local-path`.
+
+!!! tip "A brief CrashLoop is expected"
+    If the chart app syncs before the Sealed Secrets controller has decrypted `vaultwarden-admin`, the pod CrashLoops until the Secret exists, then `selfHeal` recovers it. If it's *still* crashing after `kubectl -n vaultwarden get secret vaultwarden-admin` shows the Secret, check the logs.
+
+## Step 5: Create your first account (signups toggle — the GitOps way)
+
+`signupsAllowed: false` disables the public `/register` form. To create your first account, flip it on **through Git** (not `helm --set`, which ArgoCD's `selfHeal` would immediately revert), register, then flip it back:
+
+1. PR: set `signupsAllowed: true` → merge.
+2. Nudge ArgoCD instead of waiting for its poll, and watch the pod roll:
+   ```bash
+   kubectl -n argocd annotate application vaultwarden argocd.argoproj.io/refresh=hard --overwrite
+   kubectl -n vaultwarden rollout status statefulset/vaultwarden
+   ```
+3. Register at `https://vault.yourdomain.com`.
+4. PR: set `signupsAllowed: false` → merge → refresh again. Confirm `/register` no longer offers **Create Account**.
+
+!!! warning "Keep the window short; skip the admin-invite shortcut"
+    While signups are on, anyone who can reach the host can register — stage the flip-back PR before you start so you can merge it the moment you're done. The `/admin` "invite user" path looks like it would avoid the open window, but without SMTP configured it's unreliable on current Vaultwarden (invited users hit *"Registration not allowed or user already exists"*). The toggle is the deterministic path.
+
+## Step 6: Verify the backup actually captures the vault
+
+This is the step that matters most for a password manager, and the one the storage choice makes subtle. Velero's filesystem backup writes **zero bytes** for a `local-path` PVC unless the StorageClass emits `local`-type PVs (`defaultVolumeType: local` — see the [local-path tier](storage-architecture.md#the-local-path-tier)). It still reports `Completed`, so you **gate on bytes, not status**.
+
+Take an on-demand backup of just this namespace and read the byte counters:
 
 ```bash
-# Enable signups
-helm upgrade vaultwarden vaultwarden/vaultwarden -n vaultwarden \
-  --reuse-values --set signupsAllowed=true
+velero backup create vaultwarden-bytes-check \
+  --include-namespaces vaultwarden \
+  --default-volumes-to-fs-backup \
+  --wait
 
-# Visit https://vault.yourdomain.com and register your account.
-
-# Disable signups again
-helm upgrade vaultwarden vaultwarden/vaultwarden -n vaultwarden \
-  --reuse-values --set signupsAllowed=false
+kubectl -n velero get podvolumebackup \
+  -l velero.io/backup-name=vaultwarden-bytes-check \
+  -o custom-columns='VOLUME:.spec.volume,PHASE:.status.phase,TOTAL:.status.progress.totalBytes,DONE:.status.progress.bytesDone'
 ```
 
-!!! tip
-    Vaultwarden requires HTTPS or browser extensions silently refuse to connect. The HTTPRoute above — with TLS terminated by the Gateway's wildcard cert — handles this. If you see "cannot reach server" from the browser extension, verify the cert with `curl -v https://vault.yourdomain.com`.
+A healthy result is a `PodVolumeBackup` for the `vaultwarden-data` volume with `PHASE=Completed` and `TOTAL`/`DONE` clearly non-zero (a populated SQLite DB is hundreds of KB). **No row, or zero bytes, means the volume isn't being read** — recheck the PV's volume type before trusting the backup.
 
 ## Verification
 
@@ -112,7 +166,13 @@ helm upgrade vaultwarden vaultwarden/vaultwarden -n vaultwarden \
     kubectl get pods -n vaultwarden
     ```
 
-- [ ] Browser at `https://vault.yourdomain.com` loads (no cert warning, no "cannot reach server" from extensions).
-- [ ] Bitwarden/Vaultwarden browser extension connects after entering the server URL.
+- [ ] ArgoCD shows both `vaultwarden` and `vaultwarden-manifests` Synced / Healthy.
+- [ ] Browser at `https://vault.yourdomain.com` loads over the wildcard cert (no warning, no "cannot reach server" from extensions).
+- [ ] The Bitwarden/Vaultwarden browser extension connects after entering the server URL.
 - [ ] `/admin` loads with the admin token from the SealedSecret.
-- [ ] Signups remain disabled by default (visit `/register` — should show the disabled message).
+- [ ] Signups are disabled — `/register` shows the disabled message, no **Create Account** button.
+- [ ] Velero `PodVolumeBackup` for `vaultwarden-data` shows **bytes > 0** (Step 6).
+- [ ] Plaintext admin token saved to your bootstrap password manager.
+
+!!! tip "HTTPS is mandatory"
+    Vaultwarden requires HTTPS or browser extensions silently refuse to connect. The HTTPRoute above — TLS terminated by the Gateway's wildcard cert — handles this. If an extension reports "cannot reach server", verify the cert with `curl -v https://vault.yourdomain.com`.
