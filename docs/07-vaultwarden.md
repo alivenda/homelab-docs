@@ -84,7 +84,7 @@ Three things make or break this app:
 !!! note "Don't add `strategy: Recreate` here"
     The general SQLite advice in the [deploy pattern](apps-deploy-pattern.md) pairs `local-path` with `strategy: Recreate` — that's for *Deployment*-based apps. Vaultwarden renders a single-replica **StatefulSet**, which already rolls serially (the old pod terminates before its replacement starts), so it can't double-mount the `ReadWriteOnce` volume. On a StatefulSet, `Recreate` maps to `updateStrategy`, where it's an invalid value.
 
-## Step 3: Routing — an HTTPRoute, in the manifests app
+## Step 3: Routing — an HTTPRoute, in the manifests app { #step-3-httproute }
 
 Vaultwarden configures no TLS of its own; the shared Traefik Gateway terminates it with the wildcard cert. Commit the route to `apps/vaultwarden/manifests/` (Service port `80` → the chart's `vaultwarden` Service):
 
