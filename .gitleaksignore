@@ -1,0 +1,8 @@
+# Gitleaks findings reviewed and accepted as false positives.
+# One entry per line, format: <file>:<rule-id>:<line>
+#
+# The flagged line is a filename — the secret *key name* used in a chart
+# values example (secret.additionalSecrets), not a secret value. Gitleaks'
+# generic-api-key rule fires on it; expected and accepted.
+
+docs/18-authelia.md:generic-api-key:329
