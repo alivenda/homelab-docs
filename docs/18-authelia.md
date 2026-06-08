@@ -237,6 +237,16 @@ kubectl create secret generic authelia-secrets \
   > authelia-secrets-sealed.yaml
 ```
 
+!!! warning "Never regenerate `STORAGE_ENCRYPTION_KEY` after first start"
+    `STORAGE_ENCRYPTION_KEY` encrypts data at rest in Authelia's database. If you
+    re-seal this secret later and let `openssl rand` mint a **new** value, Authelia
+    aborts at startup with `the configured encryption key does not appear to be
+    valid for this database`. When you re-seal for *any* reason — e.g. to fix a
+    different key like the LDAP password — carry the existing
+    `STORAGE_ENCRYPTION_KEY` over verbatim rather than regenerating it. If the
+    database is still empty (no 2FA enrolled yet), the quickest recovery is to
+    delete the Authelia PVC and let it recreate a fresh DB keyed to the new value.
+
 Commit both sealed secrets to `homelab-manifests/apps/authelia/`.
 
 ### Step 6: Install Authelia via Helm
@@ -294,8 +304,11 @@ configMap:
     rules:
       - domain: auth.yourdomain.com
         policy: bypass
+      # two_factor by default (secure-by-default). A two_factor rule is ALSO
+      # what makes Authelia expose 2FA device registration at all — see Step 8.
+      # Relax per-app with a bypass/one_factor rule placed ABOVE this catch-all.
       - domain: "*.yourdomain.com"
-        policy: one_factor
+        policy: two_factor
 
   session:
     cookies:
@@ -314,7 +327,10 @@ configMap:
 
   identity_providers:
     oidc:
-      enabled: true
+      # Keep DISABLED until you add your first OIDC client (see OIDC Client
+      # Setup below). Authelia refuses to start if OIDC is enabled with an empty
+      # clients list. The jwks key below stays wired and ready for that moment.
+      enabled: false
       jwks:
         - key_id: default
           algorithm: RS256
@@ -339,6 +355,15 @@ helm upgrade --install authelia authelia/authelia \
 ```
 
 Pin `--version` to the latest release listed on [charts.authelia.com](https://charts.authelia.com/).
+
+!!! warning "Leave OIDC disabled until the first client exists"
+    The `oidc` block above sets `enabled: false`. Authelia 4.39 aborts at startup
+    if the provider is enabled with an empty `clients` list:
+    `identity_providers: oidc: option 'clients' must have one or more clients
+    configured`. Nothing needs OIDC at bring-up — ForwardAuth covers the
+    login-less apps — so the provider stays off until your first OIDC-integrated
+    app. Flip `enabled: true` in the **same** change that adds the first client
+    (see [OIDC Client Setup](#oidc-client-setup-per-app)).
 
 ### Step 7: HTTPRoute and ForwardAuth Middleware
 
@@ -389,13 +414,41 @@ See [Deploying an App](apps-deploy-pattern.md) for the per-app HTTPRoute + `Exte
 
 ### Step 8: First Login
 
-Open `https://auth.yourdomain.com`. Log in with your personal user account from lldap. You should be prompted to set up TOTP (use Vaultwarden's built-in TOTP generator and save the secret).
+Open `https://auth.yourdomain.com` and log in with your personal lldap user. With a single factor you land on the portal's "Authenticated" screen — Authelia does **not** auto-prompt for TOTP. Enrol it from the settings page: go to **`auth.yourdomain.com/settings/two-factor-authentication`** and click **Add** under **One-Time Password**.
+
+!!! warning "2FA enrolment needs a `two_factor` rule"
+    Authelia only exposes device registration when at least one `access_control`
+    rule uses `two_factor`. With only `bypass`/`one_factor` rules, the settings
+    page reports *"There are no protected applications that require a second factor
+    method"* and refuses to register anything — the catch-all in Step 6 is set to
+    `two_factor` for exactly this reason.
+
+!!! note "Filesystem notifier — read the verification message from disk"
+    Before showing the QR, Authelia "emails" you a link to verify your identity.
+    The filesystem notifier writes it to a file instead of sending mail, so
+    retrieve it from the running pod (find the pod name with
+    `kubectl -n authelia get pods`):
+    ```bash
+    kubectl -n authelia exec <authelia-pod> -- cat /tmp/notification.txt
+    ```
+    Follow the link, then scan the QR with a dedicated TOTP authenticator app
+    (e.g. Ente Auth, Aegis) — keeping the second factor out of the same vault as
+    your passwords. The same notifier applies to any future password-reset message
+    until `notifier.smtp` is configured.
 
 Once logged in, any service whose HTTPRoute attaches an `authelia-forwardauth` middleware (via an `ExtensionRef` filter) will redirect unauthenticated requests to this portal.
 
 ## OIDC Client Setup (Per-App)
 
-Each app that has its own user system gets an OIDC client entry added to the `configMap.identity_providers.oidc.clients` list in `values.yaml`. The general pattern for a confidential client is:
+Each app that has its own user system gets an OIDC client entry added to the `configMap.identity_providers.oidc.clients` list in `values.yaml`.
+
+!!! warning "Enable the provider with your first client"
+    The provider ships disabled (`enabled: false`, Step 6). When you add the
+    **first** client, set `identity_providers.oidc.enabled: true` in the same
+    change — enabling it with an empty `clients` list crashes Authelia, and a
+    populated list with the provider still disabled does nothing.
+
+The general pattern for a confidential client is:
 
 ```yaml
 clients:
@@ -439,6 +492,6 @@ Each app's runbook covers its specific `redirect_uris` and configuration. Do not
     ```
 
 - [ ] `https://auth.yourdomain.com` loads the Authelia login portal.
-- [ ] Log in with your lldap user — session is established, TOTP prompt appears.
+- [ ] Log in with your lldap user — session is established; enrol TOTP at `auth.yourdomain.com/settings/two-factor-authentication`.
 - [ ] `https://lldap.yourdomain.com` redirects to Authelia login before showing the lldap UI.
 - [ ] A service using the ForwardAuth middleware (e.g., Homepage after Runbook 20) redirects to `auth.yourdomain.com` for unauthenticated requests.
