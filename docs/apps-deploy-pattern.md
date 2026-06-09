@@ -93,24 +93,34 @@ Pick one mode per app.
 
 ### OIDC client (the app speaks OIDC to Authelia)
 
-For apps with their own user system (linkding, Mealie, Vikunja, …). The HTTPRoute stays plain — no middleware. Register the client in `homelab-manifests/apps/authelia/values.yaml` under `identity_providers.oidc.clients`, commit, and upgrade Authelia **before** deploying the app:
+For apps with their own user system (Immich, Grafana, Forgejo, Vikunja, …). The HTTPRoute stays plain — no middleware. Register the client in `homelab-manifests/apps/authelia/values.yaml` under `configMap.identity_providers.oidc.clients`, commit, and roll Authelia **before** you configure the app:
 
 ```yaml
-- client_id: <app>
-  client_name: <App>
-  client_secret:
-    value: <HASHED_SECRET>   # authelia crypto hash generate pbkdf2 --variant sha512
+- client_id: 'appname'
+  client_name: 'App Display Name'
+  client_secret: '<PBKDF2_HASH>'   # gitleaks:allow — inline hash, not a secret
+  public: false
+  authorization_policy: 'two_factor'
   redirect_uris:
-    - https://<app>.yourdomain.com/<callback-path>
-  scopes: [openid, profile, email]
-  token_endpoint_auth_method: client_secret_basic
+    - 'https://appname.yourdomain.com/<callback-path>'   # app-specific — some need a trailing slash
+  scopes: ['openid', 'profile', 'email']
+  response_types: ['code']
+  grant_types: ['authorization_code']
+  token_endpoint_auth_method: 'client_secret_post'   # or client_secret_basic — per app
 ```
 
-The callback path is app-specific (the catalog row notes it) — some require a trailing slash.
+`client_secret` is the **pbkdf2 hash inline** — a plain string, *not* a `value:` sub-map. Generate it by exec'ing into the running pod: `kubectl exec -n authelia authelia-0 -- authelia crypto hash generate pbkdf2 --variant sha512 --password '<secret>'`. The hash is irreversible, so committing it is safe (tag the line `# gitleaks:allow`).
+
+!!! note "Where the *plaintext* secret goes — two cases"
+    - **App reads it from its own config** (Immich, Grafana, Forgejo, …): paste the plaintext straight into the app's OAuth settings. **No SealedSecret in the repo** — only the hash (in Authelia's values) and Vaultwarden hold it.
+    - **App reads it from a Kubernetes Secret** (Argo CD references `$argocd-oidc:oidc.clientSecret`): seal the plaintext into a `<app>-oidc` SealedSecret labelled `app.kubernetes.io/part-of: <app>`, then reference it from the app's config.
+
+!!! warning "Group → role mapping keys on the lldap group *cn*"
+    Authelia forwards each lldap group's **cn verbatim** in the `groups` claim. App RBAC must match that exact name — this cluster uses a dedicated **`homelab-admins`** group (created in lldap), **not** lldap's built-in `lldap_admin`. Membership is captured **at login**, so after changing a user's groups they must fully log out and back in. Apps that read groups from the **userinfo endpoint** (e.g. Argo CD's `enableUserInfoGroups`) get them from the `groups` scope alone; apps that read groups from the **ID token** also need `claims_policy: 'default'` on the client.
 
 ### ForwardAuth (Authelia gates the app at the proxy)
 
-For apps with no SSO of their own (Uptime Kuma, …). Define an Authelia ForwardAuth `Middleware` in the app's namespace and reference it from the HTTPRoute with an `ExtensionRef` filter:
+For apps with no SSO of their own, or where you just want a 2FA gate in front (lldap UI, Uptime Kuma, …). Define an Authelia ForwardAuth `Middleware` in the app's namespace and reference it from the HTTPRoute with an `ExtensionRef` filter:
 
 ```yaml
 # middleware.yaml
@@ -136,11 +146,16 @@ spec:
             name: authelia-forwardauth
 ```
 
-!!! warning "Verified mechanism — two things to confirm at first deploy"
-    The `ExtensionRef → Middleware` mechanism is per [Traefik's official Gateway API reference](https://doc.traefik.io/traefik/reference/routing-configuration/kubernetes/gateway-api/). Two caveats:
+The Middleware lives in the **app's own namespace** — an `ExtensionRef` filter can't cross namespaces — but its `address` points at the central Authelia service. The route **fails closed**: if Authelia is down, Traefik returns 5xx rather than serving the app unauthenticated. `status.yourdomain.com` (Uptime Kuma) is gated by the catch-all `*.yourdomain.com → two_factor` policy, so no extra `access_control` rule is needed unless you want to relax it (add a `one_factor`/`bypass` rule *above* the catch-all).
 
-    1. Traefik's **Kubernetes IngressRoute (CRD) provider must be enabled** in Traefik's static config for `ExtensionRef` middlewares to resolve — moving to the Gateway API does *not* remove that requirement.
-    2. The exact Authelia `forward-auth` address and required headers are Authelia-version-specific — confirm against [Authelia's Traefik integration docs](https://www.authelia.com/integration/proxies/traefik/) at deploy time. **No ForwardAuth app is deployed on the cluster yet**, so this block is unverified against a live cluster.
+!!! note "Verified live (lldap UI + Uptime Kuma)"
+    This `ExtensionRef → Middleware` wiring is deployed and working. Two things that make it work, worth re-checking on a major Traefik/Authelia bump:
+
+    1. Traefik's **Kubernetes CRD provider** must be enabled (it is, in this cluster) for `ExtensionRef` middlewares to resolve — moving to the Gateway API does *not* remove that requirement.
+    2. The `forward-auth` address and `authResponseHeaders` are Authelia-version-specific — the values above match Authelia 4.39. Confirm against [Authelia's Traefik integration docs](https://www.authelia.com/integration/proxies/traefik/) on a major bump.
+
+!!! tip "Apps with their own login double-prompt"
+    If the app has its own auth (Uptime Kuma), you'll authenticate twice — Authelia, then the app. After confirming ForwardAuth works, disable the app's built-in login (Uptime Kuma: **Settings → Security → Disable Auth**). Safe because the route fails closed.
 
 ## Step 6 — Register the Application and sync
 
