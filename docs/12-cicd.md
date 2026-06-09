@@ -18,8 +18,14 @@ End-to-end pipeline: push code, auto-build container images, deploy to k3s via G
 
 Save the **Client ID** and **Client Secret** to Vaultwarden.
 
-!!! warning "Webhook delivery from Forgejo to Woodpecker"
-    If Woodpecker runs on the same cluster as Forgejo, you may need to set `ALLOW_LOCALNETWORKS = true` in Forgejo's `app.ini` `[webhook]` section. Otherwise Forgejo refuses to call out to the cluster-internal Woodpecker URL.
+!!! warning "Webhook delivery from Forgejo to Woodpecker (same-cluster)"
+    Forgejo refuses webhooks to private/loopback IPs by default, and
+    `ci.yourdomain.com` resolves to the cluster gateway (a `10.x` address). Setting
+    `ALLOW_LOCALNETWORKS = true` **alone is not enough** — Forgejo still denies the
+    delivery with *"webhook can only call allowed HTTP servers"*. Add your domain to
+    `[webhook] ALLOWED_HOST_LIST` (e.g. `*.yourdomain.com`). And the Forgejo chart
+    updates `app.ini` but does **not** roll the pod on a config change — run
+    `kubectl -n forgejo rollout restart deployment forgejo` for it to take effect.
 
 ## Step 2: Generate the agent secret
 
@@ -44,48 +50,83 @@ kubectl create secret generic woodpecker-secrets \
              --format yaml \
   > woodpecker-secrets-sealed.yaml
 
-# Commit to homelab-manifests/apps/woodpecker/
+# Commit to homelab-manifests/infrastructure/woodpecker/manifests/
 ```
 
-## Step 4: Deploy Woodpecker via Helm
+!!! warning "Verify the seal captured real values"
+    A classic bring-up bug: running `kubeseal` with the `<CLIENT_ID…>` placeholders
+    left in literally — login then fails with *"Client ID not registered"*. After
+    sealing, decode and eyeball the result:
+    ```bash
+    kubectl -n woodpecker get secret woodpecker-secrets \
+      -o jsonpath='{.data.WOODPECKER_FORGEJO_CLIENT}' | base64 -d
+    ```
 
-`values.yaml`:
+## Step 4: Deploy Woodpecker
+
+### Helm values
+
+The chart is an **umbrella** wrapping two subcharts, `server` and `agent`. Every
+value **must** nest under one of them — a top-level key (e.g. `nodeSelector:`) is
+**silently ignored**. `values.yaml`:
 
 ```yaml
 server:
   env:
     WOODPECKER_HOST: https://ci.yourdomain.com
-    WOODPECKER_FORGEJO: "true"
-    WOODPECKER_FORGEJO_URL: https://git.yourdomain.com
     WOODPECKER_OPEN: "false"
     WOODPECKER_ADMIN: yourforgejousername
-  # The chart pulls additional env vars from the named Secret. Make sure
-  # the SealedSecret's keys match the env names exactly:
-  #   WOODPECKER_FORGEJO_CLIENT, WOODPECKER_FORGEJO_SECRET, WOODPECKER_AGENT_SECRET
+    # Forge config lives on the SERVER, never the agent (see warning below).
+    WOODPECKER_FORGEJO: "true"
+    WOODPECKER_FORGEJO_URL: https://git.yourdomain.com
+  # envFrom the sealed secret; its keys match the env names exactly
+  # (WOODPECKER_FORGEJO_CLIENT / _SECRET / _AGENT_SECRET) so no per-key mapping.
   extraSecretNamesForEnvFrom:
     - woodpecker-secrets
+  # Use OUR fixed agent secret, not a chart-minted random one: the random value
+  # regenerates on every ArgoCD resync and breaks the server<->agent handshake.
+  createAgentSecret: false
+  # SQLite on local-path, NOT nfs-storage — SQLite needs POSIX byte-range locking
+  # that NFS doesn't do reliably (corrupts the DB), the same constraint as Forgejo
+  # (R11). The DB is small + reconstructible; pin it to the heavy node and let
+  # Velero back it up.
   persistentVolume:
     enabled: true
-    storageClass: nfs-storage
-  service:
-    type: ClusterIP
+    storageClass: local-path
+    size: 2Gi
+  nodeSelector:
+    workload: heavy            # emerald — keep build spikes off the control plane
 
 agent:
-  env:
-    WOODPECKER_BACKEND: kubernetes
+  replicaCount: 1
+  mapAgentSecret: false        # pair to the server's createAgentSecret: false
   extraSecretNamesForEnvFrom:
     - woodpecker-secrets
-  replicaCount: 2
-
-# Pin to the heavy-workload worker (emerald) — build spikes must not
-# coexist with control-plane pods on ruby. See R0 resource budget + R5 Step 4.
-nodeSelector:
-  workload: heavy
+  env:
+    WOODPECKER_BACKEND: kubernetes
+    WOODPECKER_BACKEND_K8S_NAMESPACE: woodpecker
+    WOODPECKER_BACKEND_K8S_POD_NODE_SELECTOR: '{"workload":"heavy"}'   # JSON string
+    # Per-pipeline scratch workspace on a dedicated non-archiving class (defined in
+    # the GitOps install below) so disposable CI volumes don't accumulate.
+    WOODPECKER_BACKEND_K8S_STORAGE_CLASS: woodpecker-ci-scratch
+    WOODPECKER_BACKEND_K8S_STORAGE_RWX: "true"
+    WOODPECKER_BACKEND_K8S_VOLUME_SIZE: "1G"
+  nodeSelector:
+    workload: heavy
 ```
 
-When you seal the credentials in Step 3, name the keys to match the Woodpecker env vars (`WOODPECKER_FORGEJO_CLIENT`, `WOODPECKER_FORGEJO_SECRET`, `WOODPECKER_AGENT_SECRET`) so `envFrom` wires them directly — no per-key mapping needed.
+The kubernetes backend's step pods need RBAC in the namespace; the chart creates
+the Role/RoleBinding for you via `agent.serviceAccount.rbac.create` (default `true`).
 
-Install:
+!!! warning "Forge env vars: server only — and FORGEJO vs GITEA"
+    Put `WOODPECKER_FORGEJO*` on the **server**, never the agent — agent-side forge
+    config is a known footgun ([woodpecker-ci/helm#272](https://github.com/woodpecker-ci/helm/issues/272),
+    "forge not configured"). Also: Woodpecker ≥ 2.x ships a dedicated Forgejo
+    provider (`WOODPECKER_FORGEJO_*`); older versions only had `WOODPECKER_GITEA_*`,
+    which still works against Forgejo (same API). On an older chart, swap
+    `FORGEJO` → `GITEA` in the names.
+
+### Manual bootstrap (one-time)
 
 ```bash
 helm repo add woodpecker https://woodpecker-ci.org/
@@ -98,12 +139,68 @@ helm upgrade --install woodpecker woodpecker/woodpecker \
 
 Pin `--version` to a current release listed on [woodpecker-ci/helm](https://github.com/woodpecker-ci/helm).
 
-!!! warning "FORGEJO vs GITEA env var names"
-    Modern Woodpecker (>= 2.x) ships a dedicated Forgejo provider (`WOODPECKER_FORGEJO_*`). Older versions only had `WOODPECKER_GITEA_*` which still works against Forgejo (same API surface). If your chart version is older, swap `FORGEJO` → `GITEA` in the env-var names.
+### GitOps-managed install (recommended)
+
+Commit two ArgoCD `Application`s, exactly as Forgejo does (R11 Step 3): the chart
+Application via the multi-source `$values` pattern, plus a second Application for
+the raw manifests (HTTPRoute, the sealed secret, the scratch StorageClass).
+
+```yaml
+# bootstrap/woodpecker.yaml (chart Application — abridged)
+metadata:
+  annotations:
+    # server AND agent are StatefulSets with volumeClaimTemplates; the apiserver
+    # defaults them -> a phantom permanent-OutOfSync diff under the normal differ.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+spec:
+  sources:
+    - repoURL: https://woodpecker-ci.org/
+      chart: woodpecker
+      targetRevision: 3.6.4           # pin a version; don't track latest
+      helm:
+        releaseName: woodpecker       # MUST be `woodpecker`: the agent's default
+        valueFiles:                   # server address and the HTTPRoute backend
+          - $values/infrastructure/woodpecker/values.yaml   # both derive woodpecker-server
+    - repoURL: https://github.com/<you>/homelab-manifests.git
+      targetRevision: HEAD
+      ref: values
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+```
+
+The second `woodpecker-manifests` Application points at
+`infrastructure/woodpecker/manifests/` — give it `CreateNamespace=true` but **not**
+`ServerSideApply` (the same Gateway-API HTTPRoute trap as Forgejo). One of those
+manifests is the scratch StorageClass the agent points at. The default
+`nfs-storage` class archives every deleted PVC (a safety net for real app data) —
+wrong for disposable per-pipeline scratch, which would otherwise pile up unbounded.
+A dedicated class with `archiveOnDelete: "false"` (same provisioner) makes it
+genuinely disposable:
+
+```yaml
+# manifests/ci-scratch-storageclass.yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: woodpecker-ci-scratch
+provisioner: cluster.local/nfs-provisioner-nfs-subdir-external-provisioner  # match nfs-storage
+parameters:
+  archiveOnDelete: "false"
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+```
+
+!!! note "Applications register individually"
+    If your cluster runs the app-of-apps `root.yaml` it picks these up
+    automatically. Adopting ArgoCD incrementally (dormant `root.yaml`)? Apply
+    once: `kubectl apply -f bootstrap/woodpecker.yaml`.
 
 ## Step 5: HTTPRoute
 
-Standard HTTPRoute for `ci.yourdomain.com`. Same shape as [Vaultwarden Step 3](07-vaultwarden.md#step-3-httproute) — change the backend service to `woodpecker-server`, port `8000`.
+Standard HTTPRoute for `ci.yourdomain.com`. Same shape as [Vaultwarden Step 3](07-vaultwarden.md#step-3-httproute) — change the backend service to `woodpecker-server`, port `80` (the server subchart's Service port; the `woodpecker-server` name comes from the mandatory `woodpecker` release name).
 
 ## Step 6: Why kubernetes backend (not docker)
 
@@ -113,6 +210,44 @@ Standard HTTPRoute for `ci.yourdomain.com`. Same shape as [Vaultwarden Step 3](0
 
 !!! warning "Pipeline images must be ARM64"
     All pipeline images must be ARM64-compatible. Most official images publish arm64 builds — verify third-party plugins. See [Reality of ARM64 Homelabs](00-prerequisites.md#reality-of-arm64-homelabs) for debugging strategy.
+
+## Pre-merge validation gate (kubeconform)
+
+The first pipeline to port is usually the manifest-validation gate — the same
+kubeconform check the repo ran on GitHub Actions, now on Woodpecker so it gates
+AGit PRs (and replaces the GitHub workflow as the single source of CI). Drop
+`.woodpecker.yml` at the repo root:
+
+```yaml
+when:
+  - event: pull_request
+    branch: main
+  - event: push
+    branch: main
+
+steps:
+  kubeconform:
+    image: ghcr.io/yannh/kubeconform:v0.7.0-alpine
+    commands:
+      - |
+        find apps infrastructure bootstrap -name '*.yaml' \
+          ! -name 'values.yaml' \
+          ! -name 'kustomization.yaml' \
+          -print0 | xargs -0 -r kubeconform \
+            -strict -summary -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+```
+
+Two adaptations vs the GitHub Actions version: the **`-alpine`** image tag (the
+plain `kubeconform` image is `scratch` — no shell for Woodpecker's `commands`), and
+`! -name` instead of GNU `find`'s `-not -name` (alpine ships busybox `find`). The
+check validates the **whole tree** every run, so one broken manifest on `main` reds
+every subsequent PR until it's fixed — keep `main` green.
+
+!!! note "AGit PRs do trigger Woodpecker"
+    With the Forgejo webhook delivering (Step 1), an AGit pull request
+    (`git push origin HEAD:refs/for/main -o topic=…`) fires a `pull_request` event
+    and the gate runs **before merge** — no Forgejo Actions runner needed.
 
 ## Sample Pipeline (build → push → bump manifest)
 
@@ -278,6 +413,7 @@ Pin `--version` to a current release listed on [goharbor/harbor-helm](https://gi
 ## Verification
 
 - [ ] `https://ci.yourdomain.com` loads. "Login with Forgejo" redirects to `git.yourdomain.com` and back successfully.
+- [ ] Open an AGit PR touching a manifest — the `kubeconform` gate runs and shows green/red in the Woodpecker UI and on the PR (proves the webhook + `pull_request` event work end-to-end).
 - [ ] Push a test commit to a Forgejo repo containing a `.woodpecker.yml`. Pipeline runs:
 
     ```text
