@@ -498,21 +498,24 @@ The general pattern for a confidential client is:
 
 ```yaml
 clients:
-  - client_id: appname
-    client_name: App Display Name
-    client_secret:
-      value: <HASHED_SECRET>   # Generate: authelia crypto hash generate pbkdf2 --variant sha512
+  - client_id: 'appname'
+    client_name: 'App Display Name'
+    client_secret: '<HASHED_SECRET>'   # inline pbkdf2 hash — a string, NOT a value: sub-map. gitleaks:allow
+    authorization_policy: 'two_factor'
     redirect_uris:
-      - https://appname.yourdomain.com/oauth2/callback   # Varies per app — check app docs
-    scopes: [openid, profile, email, groups]
-    claims_policy: default
-    token_endpoint_auth_method: client_secret_basic
-    grant_types: [authorization_code]
-    response_types: [code]
+      - 'https://appname.yourdomain.com/oauth2/callback'   # Varies per app — check app docs
+    scopes: ['openid', 'profile', 'email', 'groups']
+    claims_policy: 'default'
+    token_endpoint_auth_method: 'client_secret_basic'
+    grant_types: ['authorization_code']
+    response_types: ['code']
 ```
 
-!!! note "claims_policy required for groups"
-    As of Authelia 4.39, group membership is **not** included in the ID token by default. Any client that requests the `groups` scope must also set `claims_policy: default` to reference the claims policy defined in `configMap.identity_providers.oidc.claims_policies`. Without this, apps like Mealie (`OIDC_ADMIN_GROUP`) and Donetick (`admin_groups`) will authenticate users but never recognise their group memberships.
+!!! note "claims_policy required for groups in the ID token"
+    As of Authelia 4.39, group membership is **not** included in the ID token by default. A client that reads groups from the **ID token** must set `claims_policy: default` to reference the claims policy defined in `configMap.identity_providers.oidc.claims_policies` — without it, apps like Mealie (`OIDC_ADMIN_GROUP`) and Donetick (`admin_groups`) authenticate users but never see their groups. Apps that instead read groups from the **userinfo endpoint** (e.g. Argo CD with `enableUserInfoGroups`) get them from the `groups` scope alone and don't need the policy.
+
+!!! warning "Match the lldap group cn, not lldap's internal name"
+    Authelia forwards each lldap group's **cn verbatim** in the `groups` claim. App RBAC that maps a group to a role must use that exact name — this cluster maps a dedicated **`homelab-admins`** group (created in lldap), **not** lldap's built-in `lldap_admin`. Group membership is captured at login, so re-login after any group change. (Argo CD's OIDC bring-up hit exactly this — the first mapping used the wrong group name and every SSO login landed with no permissions.)
 
 !!! warning "Hashed client secrets"
     As of Authelia 4.38, client secrets must be stored as hashes in the config. Generate with:
