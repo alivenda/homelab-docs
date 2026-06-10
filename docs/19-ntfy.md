@@ -142,18 +142,12 @@ Install the ntfy [Android](https://play.google.com/store/apps/details?id=io.heck
 Each service uses *its own* token against *its own* topic:
 
 - **Uptime Kuma**: Settings → Notifications → ntfy — server URL, topic `uptime`, auth method *Bearer token*, paste the `uptime-kuma` token.
-- **Prometheus Alertmanager** (`alertmanager.yml`):
-
-    ```yaml
-    receivers:
-      - name: ntfy
-        webhook_configs:
-          - url: https://ntfy.yourdomain.com/alerts
-            http_config:
-              authorization:
-                type: Bearer
-                credentials: <ALERTMANAGER_TOKEN>
-    ```
+- **Prometheus Alertmanager** — configured in kube-prometheus-stack's values, not
+  by hand; [Runbook 9 Step 4](09-observability.md#step-4-alerting-ntfy) has the full
+  wiring. Two details differ from the other publishers: it uses the **in-cluster**
+  URL (`http://ntfy.ntfy.svc.cluster.local/alerts?template=alertmanager`) so alert
+  delivery survives an ingress/DNS outage, and the token rides in a SealedSecret
+  read via `credentials_file` rather than inline config.
 
 - **Home Assistant** (RESTful notify):
 

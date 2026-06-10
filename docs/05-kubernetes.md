@@ -220,7 +220,7 @@ etcd-snapshot-dir: /var/lib/rancher/k3s/server/db/snapshots
 sudo systemctl restart k3s
 ```
 
-Back up the snapshots directory to your NAS (Runbook 10 picks this up if you add it to the restic include list).
+Get the snapshots off-node too: k3s can upload them straight to the Garage S3 store on the NAS via its built-in `etcd-s3` config — [Runbook 10](10-backups.md#off-node-etcd-snapshots-k3s-native) sets that up (codified in `homelab-ansible`).
 
 ## Step 11: Restore procedure (when ruby dies)
 

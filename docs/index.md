@@ -17,7 +17,7 @@ You can substitute hardware, but commands are written against this exact build. 
 
 ## What you end up with
 
-A 4-node k3s cluster running self-hosted Git (Forgejo), password manager (Vaultwarden), SSO gateway (Authelia), file sync (Nextcloud), photo library (Immich), document archive (Paperless-ngx), smart-home hub (Home Assistant), monitoring (Prometheus / Grafana / Loki), nightly backups (Restic + Velero), and a CI/CD pipeline (Woodpecker) that builds container images and reconciles them via GitOps (ArgoCD watching `homelab-manifests`). Plus a full personal cloud layer covering notes, tasks, finance, media automation, books, recipes, and more.
+A 4-node k3s cluster running self-hosted Git (Forgejo), password manager (Vaultwarden), SSO gateway (Authelia), file sync (Nextcloud), photo library (Immich), document archive (Paperless-ngx), smart-home hub (Home Assistant), monitoring (Prometheus / Grafana / Loki / Alloy), nightly backups (Velero + Garage S3), and a CI/CD pipeline (Woodpecker) that builds container images and reconciles them via GitOps (ArgoCD watching `homelab-manifests`). Plus a full personal cloud layer covering notes, tasks, finance, media automation, books, recipes, and more.
 
 ## How the runbooks fit together
 
@@ -44,7 +44,7 @@ R7 Vaultwarden                 ← cred store for every later runbook
  ↓
 R8 Terraform (Cloudflare DNS + UniFi IaC; retroactive)
  ↓
-R9 Prometheus + Grafana + Loki
+R9 Observability (Prometheus / Grafana / Loki / Alloy)
  ↓
 R10 Backups (Garage S3 + Velero)
  ↓
