@@ -5,259 +5,172 @@ Self-hosted push notifications for the entire homelab stack.
 | | |
 |---|---|
 | **Difficulty** | Beginner |
-| **Time Estimate** | 30–45 minutes |
+| **Time Estimate** | 45–60 minutes |
 | **Runs On** | k3s (cluster) |
-| **Depends On** | Runbook 5 (k3s), Runbook 6 (Traefik) |
+| **Depends On** | Runbook 5 (k3s), Runbook 6 (Traefik), Runbook 8 (Terraform, DNS), [the deploy pattern](apps-deploy-pattern.md) |
 
-ntfy is a pub/sub notification service — services publish messages to named topics and your phone (or any HTTP client) subscribes to receive them. Every other service in this stack can send notifications through it: Woodpecker pipeline results, Restic backup alerts, Prometheus alertmanager, Home Assistant automations, Paperless document ingestion, Uptime Kuma alerts.
+ntfy is a pub/sub notification service — services publish messages to named topics and your phone (or any HTTP client) subscribes to receive them. Every other service in this stack can send notifications through it: Uptime Kuma alerts, Prometheus Alertmanager, CI pipeline results, Home Assistant automations.
 
 The ARM64 image (`binwiederhier/ntfy`) ships official multiarch builds. See the [ntfy self-hosting docs](https://docs.ntfy.sh/install/) and [config reference](https://docs.ntfy.sh/config/) for full reference.
 
-## Step 1: Create the ConfigMap
+## The shape of the deployment
 
-ntfy reads its configuration from `/etc/ntfy/server.yml`. In k3s, deliver this via a ConfigMap.
+ntfy follows the [deploy pattern](apps-deploy-pattern.md) in **raw-manifests mode**: there is no first-party Helm chart, only third-party repackages — an avoidable dependency for a handful of small files (same call as Uptime Kuma). That also means **one** ArgoCD `Application` pointing at `apps/ntfy/manifests/`; with no chart source there is nothing to split a second `-manifests` Application from.
 
-Create `homelab-manifests/apps/ntfy/configmap.yaml`:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ntfy-config
-  namespace: ntfy
-data:
-  server.yml: |
-    base-url: "https://ntfy.yourdomain.com"
-    listen-http: ":80"
-    cache-file: "/var/cache/ntfy/cache.db"
-    cache-duration: "12h"
-    auth-file: "/var/lib/ntfy/user.db"
-    auth-default-access: "deny-all"
-    behind-proxy: true
-    attachment-cache-dir: "/var/cache/ntfy/attachments"
-    attachment-file-size-limit: "15m"
-    attachment-total-size-limit: "1g"
+```text
+apps/ntfy/manifests/
+├── configmap.yaml        # server.yml — including declaratively provisioned users/ACLs
+├── deployment.yaml       # pinned tag, strategy: Recreate, node pin
+├── pvc.yaml              # ntfy-cache + ntfy-data, both local-path
+├── service.yaml          # 80 (http) + 9090 (metrics)
+├── httproute.yaml        # plain route — NO ForwardAuth (see below)
+├── servicemonitor.yaml   # Prometheus scrape via the metrics listener
+└── sealed-tokens.yaml    # SealedSecret: NTFY_AUTH_TOKENS env
 ```
 
-`auth-default-access: deny-all` makes this a private server — every subscriber and publisher must authenticate. This is the correct setting for a homelab instance.
+The workload is a **Deployment with `strategy: Recreate`**, not a StatefulSet: both PVCs are `ReadWriteOnce` on a single node, and explicit PVCs follow the cluster's standard `local-path` pairing (a StatefulSet's `volumeClaimTemplates` also re-introduce an apiserver-defaulting diff that needs Server-Side Diff to silence — avoidable here). **Pin the image tag — never `:latest`.**
 
-## Step 2: Deploy as a StatefulSet
+## Storage: `local-path` ×2
 
-A StatefulSet ensures the cache and auth databases survive pod restarts.
+Both persistent stores are **SQLite**, so both PVCs bind the node-local `local-path` class — *not* `nfs-storage`, which corrupts SQLite (see [Storage & Data Architecture](storage-architecture.md)):
 
-Create `homelab-manifests/apps/ntfy/statefulset.yaml`:
+- `ntfy-cache` (2 Gi) → `/var/cache/ntfy` — `cache.db` (message cache) plus the attachment files
+- `ntfy-data` (1 Gi) → `/var/lib/ntfy` — `user.db` (users/ACLs/tokens)
 
-```yaml
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: ntfy
-  namespace: ntfy
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: ntfy
-  serviceName: ntfy
-  template:
-    metadata:
-      labels:
-        app: ntfy
-    spec:
-      containers:
-        - name: ntfy
-          image: binwiederhier/ntfy:latest
-          args: [serve]
-          ports:
-            - containerPort: 80
-          volumeMounts:
-            - name: config
-              mountPath: /etc/ntfy
-            - name: cache
-              mountPath: /var/cache/ntfy
-            - name: data
-              mountPath: /var/lib/ntfy
-      volumes:
-        - name: config
-          configMap:
-            name: ntfy-config
-  volumeClaimTemplates:
-    - metadata:
-        name: cache
-      spec:
-        accessModes: [ReadWriteOnce]
-        storageClassName: nfs-storage
-        resources:
-          requests:
-            storage: 2Gi
-    - metadata:
-        name: data
-      spec:
-        accessModes: [ReadWriteOnce]
-        storageClassName: nfs-storage
-        resources:
-          requests:
-            storage: 1Gi
-```
+Pin the pod to a light worker node with `nodeSelector: kubernetes.io/hostname` — `local-path` provisions the PVs wherever the pod lands, so the pin also fixes where the data lives.
 
-Create `homelab-manifests/apps/ntfy/service.yaml`:
+## Configuration (`server.yml` via ConfigMap)
 
 ```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: ntfy
-  namespace: ntfy
-spec:
-  selector:
-    app: ntfy
-  ports:
-    - port: 80
-      targetPort: 80
+base-url: "https://ntfy.yourdomain.com"
+listen-http: ":80"
+behind-proxy: true            # trust X-Forwarded-For — Traefik fronts this
+
+# iOS only: APNs can't hold a connection to a self-hosted server, so ntfy
+# forwards poll requests (message IDs only, never content) to ntfy.sh, which
+# fires the Apple push. Omit on an Android-only setup.
+upstream-base-url: "https://ntfy.sh"
+
+cache-file: "/var/cache/ntfy/cache.db"
+cache-duration: "12h"
+attachment-cache-dir: "/var/cache/ntfy/attachments"
+attachment-file-size-limit: "15M"
+attachment-total-size-limit: "1G"
+
+auth-file: "/var/lib/ntfy/user.db"
+auth-default-access: "deny-all"   # private server: all access is explicit
+enable-login: true
+
+# Prometheus metrics on a separate listener; the HTTPRoute only routes :80,
+# so this stays in-cluster (scraped by the ServiceMonitor).
+enable-metrics: true
+metrics-listen-http: ":9090"
 ```
 
-## Step 3: HTTPRoute
+!!! warning "Config changes do not reload"
+    ntfy reads `server.yml` (and its env) **once at process start**, and a ConfigMap sync does not roll the pod. After *any* config change — including user, ACL, or token edits below — run `kubectl -n ntfy rollout restart deployment ntfy`.
 
-Create `homelab-manifests/apps/ntfy/manifests/httproute.yaml`:
+## Users, ACLs, and tokens — provisioned from git
+
+`auth-default-access: deny-all` makes this a private server: every subscriber and publisher authenticates. Instead of imperative `ntfy user add` (state that lives only in `user.db`), declare everything in config so a rebuilt cluster comes back with its auth intact:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: ntfy
-  namespace: ntfy
-spec:
-  parentRefs:
-    - name: traefik
-      namespace: traefik
-      sectionName: websecure
-  hostnames:
-    - ntfy.yourdomain.com
-  rules:
-    - backendRefs:
-        - name: ntfy
-          port: 80
+# in server.yml — bcrypt hashes are one-way and safe to commit
+auth-users:
+  - "<YOUR_USERNAME>:$2a$10$...:admin"        # you — the phone subscriber
+  - "uptime-kuma:$2a$10$...:user"             # one account per publishing service
+  - "alertmanager:$2a$10$...:user"
+  - "home-assistant:$2a$10$...:user"
+
+# write-only + topic-scoped: a leaked publisher credential can spam its own
+# topic but can never read anything
+auth-access:
+  - "uptime-kuma:uptime:wo"
+  - "alertmanager:alerts:wo"
+  - "home-assistant:home:wo"
 ```
 
-!!! note "No Authelia middleware on ntfy"
-    ntfy handles its own authentication via the `auth-file` database. Do not put the Authelia ForwardAuth middleware in front of ntfy — it would break the ntfy Android/iOS apps and HTTP publishing integrations that send auth credentials directly.
-
-Commit all files to `homelab-manifests/apps/ntfy/` and let ArgoCD sync.
-
-## Step 4: Create Users and Topics
-
-Once the pod is running, exec into it to create your admin user and subscribe to topics:
+Generate each hash with the official image (interactive prompt, prints the hash):
 
 ```bash
-kubectl exec -it -n ntfy statefulset/ntfy -- sh
+docker run --rm -it binwiederhier/ntfy:<version> user hash
 ```
 
-Inside the container:
+For your admin user, hash your real password (store it in your password manager first). The service accounts are **token-only** — hash a random throwaway (`openssl rand -base64 18`) and discard it; the token is their real credential.
+
+**Tokens** must be `tk_` + 29 characters (32 total). They are secrets, so they ride in a `SealedSecret` as the `NTFY_AUTH_TOKENS` env var (env beats `server.yml` in ntfy's precedence) consumed via `envFrom` — never in the ConfigMap:
 
 ```bash
-# Create admin user (saves to /var/lib/ntfy/user.db)
-ntfy user add --role=admin <YOUR_USERNAME>
-
-# Verify
-ntfy user list
+kubectl create secret generic ntfy-tokens --namespace ntfy \
+  --from-literal=NTFY_AUTH_TOKENS='uptime-kuma:tk_...,alertmanager:tk_...,home-assistant:tk_...' \
+  --dry-run=client -o yaml \
+  | kubeseal --controller-name=sealed-secrets-controller \
+             --controller-namespace=sealed-secrets \
+             --format yaml > apps/ntfy/manifests/sealed-tokens.yaml
 ```
 
-Exit the shell. Save the credentials to Vaultwarden.
+Save each token to your password manager — you'll paste them into the publishing services later.
 
-## Step 5: Mobile App Setup
+!!! danger "Git owns the provisioned users"
+    Provisioned entries are marked as such in `user.db`: **removing a user from `auth-users` deletes it from the database on the next restart**, and CLI edits to provisioned users get overwritten. Manage them in git only. One consequence worth knowing: a clean pod start (1/1 Running, 0 restarts) is itself a check — ntfy refuses to start on malformed provisioning entries.
 
-Install the [ntfy Android app](https://play.google.com/store/apps/details?id=io.xtph.ntfy) or [iOS app](https://apps.apple.com/app/ntfy/id1625396347).
+## DNS, routing, and (no) SSO
 
-In the app settings:
-1. Add your server: `https://ntfy.yourdomain.com`
-2. Enter your username and password.
-3. Subscribe to a topic, e.g. `homelab-alerts`.
+1. **Publish the hostname** — add `ntfy` to the service list in the Cloudflare Terraform module (Runbook 8) and apply: one A record per service pointing at the Traefik LB IP. The route can't be reached by name until this exists.
+2. **HTTPRoute** per the [deploy pattern](apps-deploy-pattern.md) — plain, on the shared Gateway's `websecure` listener; the wildcard cert terminates at the Gateway.
 
-Test with a curl publish from a cluster node:
-
-```bash
-curl -u username:password \
-  -d "ntfy is working" \
-  https://ntfy.yourdomain.com/homelab-alerts
-```
-
-The notification should arrive on your phone within seconds.
-
-## Integrating Other Services
-
-### Woodpecker CI
-
-In Woodpecker's pipeline YAML:
-
-```yaml
-- name: notify
-  image: plugins/webhook
-  settings:
-    urls: https://ntfy.yourdomain.com/woodpecker
-    content_type: application/json
-    template: |
-      {"topic":"woodpecker","message":"Build {{build.status}}: {{repo.name}} #{{build.number}}"}
-```
-
-Or use the ntfy plugin directly if available for your runner architecture.
-
-### Restic (via backup script)
-
-In your backup script (`homelab-manifests/apps/backups/`), add after a successful or failed backup run:
-
-```bash
-curl -s -u username:password \
-  -H "Title: Restic backup" \
-  -d "Backup of $VOLUME completed" \
-  https://ntfy.yourdomain.com/homelab-alerts
-```
-
-### Prometheus Alertmanager
-
-In `alertmanager.yml`:
-
-```yaml
-receivers:
-  - name: ntfy
-    webhook_configs:
-      - url: https://ntfy.yourdomain.com/homelab-alerts
-        http_config:
-          basic_auth:
-            username: <USERNAME>
-            password: <PASSWORD>
-```
-
-### Home Assistant
-
-In your HA `configuration.yaml` or via the UI:
-
-```yaml
-notify:
-  - name: ntfy
-    platform: rest
-    resource: https://ntfy.yourdomain.com/homelab-alerts
-    method: POST_JSON
-    headers:
-      Authorization: Basic <BASE64_USER_PASS>
-    data:
-      message: "{{ message }}"
-```
+!!! note "No Authelia in front of ntfy"
+    ntfy has **no OIDC support**, and ForwardAuth would break the phone apps and every publishing integration (they authenticate directly against ntfy's own users/tokens). ntfy joins Vaultwarden and Home Assistant on the no-SSO list; its `deny-all` native auth is the gate.
 
 ## Verification
 
-- [ ] ntfy pod Running:
+- [ ] `kubectl get pods -n ntfy` — Running 1/1, 0 restarts (provisioning parsed)
+- [ ] Decode the live token Secret and confirm it holds real `user:tk_...` values, not placeholders:
+  `kubectl -n ntfy get secret ntfy-tokens -o jsonpath='{.data.NTFY_AUTH_TOKENS}' | base64 -d`
+- [ ] `https://ntfy.yourdomain.com` loads the web UI; your admin login works
+- [ ] Anonymous publish rejected: `curl -d test https://ntfy.yourdomain.com/uptime` → 401/403
+- [ ] Token publish arrives on the phone:
+  `curl -H "Authorization: Bearer tk_..." -d "ntfy is live" https://ntfy.yourdomain.com/uptime`
+- [ ] **Backup captured real bytes** — run an on-demand velero backup of the namespace and check `PodVolumeBackup` progress for **non-zero** `totalBytes` on *both* volumes. `Completed` alone proves nothing (see [Backups & DR](10-backups.md)).
 
-    ```bash
-    kubectl get pods -n ntfy
+## Mobile app
+
+Install the ntfy [Android](https://play.google.com/store/apps/details?id=io.heckel.ntfy) or [iOS](https://apps.apple.com/app/ntfy/id1625396347) app. Add your server (`https://ntfy.yourdomain.com`), log in as your admin user, and subscribe to the topics (`uptime`, `alerts`, `ci`, `home`). Per-topic subscriptions mean per-channel notification settings on the phone. iOS delivery depends on `upstream-base-url` being set (above).
+
+## Integrating publishers
+
+Each service uses *its own* token against *its own* topic:
+
+- **Uptime Kuma**: Settings → Notifications → ntfy — server URL, topic `uptime`, auth method *Bearer token*, paste the `uptime-kuma` token.
+- **Prometheus Alertmanager** (`alertmanager.yml`):
+
+    ```yaml
+    receivers:
+      - name: ntfy
+        webhook_configs:
+          - url: https://ntfy.yourdomain.com/alerts
+            http_config:
+              authorization:
+                type: Bearer
+                credentials: <ALERTMANAGER_TOKEN>
     ```
 
-- [ ] `https://ntfy.yourdomain.com` loads the ntfy web UI.
-- [ ] A test notification published via curl arrives on the mobile app.
-- [ ] Unauthenticated publish attempt is rejected (HTTP 401):
+- **Home Assistant** (RESTful notify):
 
-    ```bash
-    curl -d "test" https://ntfy.yourdomain.com/homelab-alerts
-    # Expect: 401 Unauthorized
+    ```yaml
+    notify:
+      - name: ntfy
+        platform: rest
+        resource: https://ntfy.yourdomain.com/home
+        method: POST_JSON
+        headers:
+          Authorization: Bearer <HOME_ASSISTANT_TOKEN>
+        data:
+          message: "{{ message }}"
     ```
 
-- [ ] Credentials saved to Vaultwarden.
+- **CI**: publish from a pipeline step with a plain
+  `curl -H "Authorization: Bearer $NTFY_TOKEN" -d "build failed" https://ntfy.yourdomain.com/ci`
+  (token injected as a CI secret, never committed).
+
+Adding a publisher later = one `auth-users` hash + one `auth-access` line + re-sealing the token Secret with the extra entry, then a rollout restart.
