@@ -62,8 +62,8 @@ Headroom is comfortable. OCR (Paperless) and CI builds (Woodpecker) are still th
 | Git hosting | Forgejo ✅ | R11 |
 | CI/CD | Woodpecker ✅ | R12 |
 | GitOps | ArgoCD ✅ | R5 |
-| Monitoring + metrics | Prometheus + Grafana + Loki ✅ | R9 |
-| Backups | Restic + Velero ✅ | R10 |
+| Monitoring + metrics | Prometheus + Grafana + Loki + Alloy ✅ | R9 |
+| Backups | Velero + Garage ✅ | R10 |
 | Object storage (backup target) | Garage ✅ | R10 — S3 store for etcd snapshots + Velero, runs on the NAS |
 | Secrets management | Sealed Secrets ✅ | Cluster — encrypts secrets committed to Git for ArgoCD |
 | VPN / remote access | Tailscale ✅ | R2 |
@@ -310,7 +310,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Analytics** | ⚪ Skip | No public-facing site |
 | **Archiving / DP** | ✅ Paperless-ngx covers docs; 🟡 ArchiveBox for URLs | ArchiveBox: ~300–500 MB, ARM64 verify |
 | **Automation** | ✅ Home Assistant covers this; 🟡 Node-RED or n8n if you want flow-based automation on top | n8n is ARM64 ✅; Huginn is Ruby/heavy |
-| **Backup** | ✅ Restic + Velero | Redirects to awesome-sysadmin — already solved |
+| **Backup** | ✅ Velero + Garage | Redirects to awesome-sysadmin — already solved |
 | **Blogging** | 🟡 Ghost if you want a public blog | Ghost ARM64 ✅, 300–500 MB. WriteFreely for Fediverse |
 | **Booking / Scheduling** | ⚪ Skip | Personal use only; Cal.com heavy |
 | **Bookmarks** | 🔴 linkding | See Part 3 |
