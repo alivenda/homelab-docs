@@ -7,7 +7,7 @@ Read this before Runbook 1 — it covers what you need to **have and understand*
 This guide is written against a specific build. You can substitute (an x86 mini-PC cluster, a single beefy node, an existing NAS, etc.), but the runbook commands assume this exact hardware:
 
 - Turing Pi 2 cluster board (mini-ITX)
-- 4× Raspberry Pi CM4 modules with 8 GB RAM and WiFi — 2× with 32 GB eMMC (ruby (Node 1), emerald (Node 2)), 2× with 16 GB eMMC (topaz (Node 3), amethyst (Node 4))
+- 4× Raspberry Pi CM4 modules with 8 GB RAM and WiFi — 2× with 32 GB eMMC (ruby (Node 1), topaz (Node 3)), 2× with 16 GB eMMC (emerald (Node 2), amethyst (Node 4))
 - 1× SATA III SSD (any size 250 GB+) for cluster NFS storage — connected to topaz (Node 3)
 - PicoPSU (24-pin), **120 W** — the cluster pulls 30–60 W under load, so 120 W leaves comfortable headroom while staying tiny and silent. A standard ATX PSU works too, but it's bulky and runs inefficiently at this low draw.
 - Ubiquiti UDM-Pro or UDM-SE for VLANs, firewall, DHCP
@@ -78,4 +78,4 @@ Four CM4 modules give you roughly 32 GB total RAM (8 GB each). After k3s overhea
     Pi cluster memory pressure surprises people. Add resource requests + limits to every workload you deploy so the scheduler can refuse to pack a node into OOM territory. Without limits, one runaway pod can wedge a whole node.
 
 !!! warning
-    Paperless OCR and Woodpecker builds are the two workloads most likely to push a node over. Pin them to a 32 GB-eMMC worker that is **not** the control plane — `emerald (Node 2)` in this build. Their spikes should not coexist with control-plane pods on `ruby (Node 1)`.
+    Paperless OCR and Woodpecker builds are the two workloads most likely to push a node over. Pin them to a dedicated worker that is **not** the control plane — `emerald (Node 2)` in this build. Their spikes should not coexist with control-plane pods on `ruby (Node 1)`. The pin is about CPU and memory isolation, not disk: emerald's eMMC is 16 GB, so bulk data (documents, build artifacts) belongs on the NFS tier, not the node disk.

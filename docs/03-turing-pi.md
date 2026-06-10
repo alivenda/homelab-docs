@@ -8,8 +8,8 @@ Initial hardware assembly, firmware update, OS flashing, and network configurati
 |---|---|
 | **Board** | Turing Pi 2 (mini-ITX cluster board) |
 | **Modules** | 4× CM4, all with 8 GB RAM and WiFi |
-| **High-storage nodes** | 2× CM4108032 (8 GB RAM, 32 GB eMMC) — ruby (Node 1), emerald (Node 2) |
-| **Low-storage nodes** | 2× CM4108016 (8 GB RAM, 16 GB eMMC) — topaz (Node 3), amethyst (Node 4) |
+| **High-storage nodes** | 2× CM4108032 (8 GB RAM, 32 GB eMMC) — ruby (Node 1), topaz (Node 3) |
+| **Low-storage nodes** | 2× CM4108016 (8 GB RAM, 16 GB eMMC) — emerald (Node 2), amethyst (Node 4) |
 | **Total Cluster** | 16 cores, 32 GB RAM, 96 GB eMMC combined |
 | **Networking** | Onboard 1 Gbps managed switch, 2× RJ45 (bridged) |
 | **Storage I/O** | 2× SATA III (Node 3), 4× M.2 slots (NOT usable with CM4) |
@@ -23,14 +23,14 @@ Initial hardware assembly, firmware update, OS flashing, and network configurati
 | Node | Hardware | Role |
 |---|---|---|
 | `ruby (Node 1)` (10.0.20.10) | 32 GB eMMC | k3s control plane + worker; image cache |
-| `emerald (Node 2)` (10.0.20.11) | 32 GB eMMC | Worker for heavier apps (databases, Forgejo, Nextcloud) |
-| `topaz (Node 3)` (10.0.20.12) | 16 GB eMMC + SATA SSD | NFS server + light worker (data on SSD) |
-| `amethyst (Node 4)` (10.0.20.13) | 16 GB eMMC | Light worker (Vaultwarden, monitoring agents) |
+| `emerald (Node 2)` (10.0.20.11) | 16 GB eMMC | Worker for CPU-heavy apps (Forgejo, Woodpecker CI) + node-local app state; bulk data on NFS |
+| `topaz (Node 3)` (10.0.20.12) | 32 GB eMMC + SATA SSD | NFS server + monitoring (data on SSD) |
+| `amethyst (Node 4)` (10.0.20.13) | 16 GB eMMC | Light worker; identity layer (Authelia, lldap, Vaultwarden) |
 
 ## Step 1: Hardware Assembly
 
 1. Install CM4 modules onto the Turing Pi 2 adapter boards. Align the sides and notch with the slot, then press vertically until the side arms click into place.
-2. Place the 32 GB modules in slots 1 and 2 (ruby (Node 1), emerald (Node 2)). Place the 16 GB modules in slots 3 and 4 (topaz (Node 3), amethyst (Node 4)).
+2. Place the 32 GB modules in slots 1 and 3 (ruby (Node 1), topaz (Node 3)). Place the 16 GB modules in slots 2 and 4 (emerald (Node 2), amethyst (Node 4)). Verify after first boot with `df -h /` on each node — a swapped pair is invisible until a disk fills.
 3. Attach heatsinks to each CM4 (Waveshare aluminum heatsinks with thermal tape work well).
 4. Insert the adapter boards into the 4 SO-DIMM slots on the Turing Pi 2 board.
 5. Connect a SATA SSD to the onboard SATA connector for topaz (Node 3) (Node 3 slot). Do **not** hot-plug — connect while powered off.

@@ -25,7 +25,7 @@ helm upgrade --install nextcloud nextcloud/nextcloud \
   --set externalDatabase.type=postgresql \
   --set postgresql.enabled=true \
   --set service.type=ClusterIP \
-  --set nodeSelector.storage=large
+  --set nodeSelector.workload=heavy
 ```
 
 Pin `--version` to a current release listed on [nextcloud/helm](https://github.com/nextcloud/helm/tree/main/charts/nextcloud).
