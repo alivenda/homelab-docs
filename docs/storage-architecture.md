@@ -89,9 +89,10 @@ that's their durability, replacing the redundancy NFS can't provide here.
     looks healthy. This was caught by a restore drill, not in theory; the gate is a
     non-empty `PodVolumeBackup`, never a `Completed` status.
 
-Embedded SQLite databases are tiny, so node eMMC is an acceptable medium. Spread SQLite
-apps across the workers — the 32 GB-eMMC nodes (ruby/emerald) have the most room — and keep
-write-heavy ones off the control plane.
+Embedded SQLite databases are tiny, so node eMMC is an acceptable medium even on a 16 GB
+node. SQLite apps pin to the designated app-state node — `emerald (Node 2)`, label
+`app-state: "true"` — rather than chasing the biggest disk: the 32 GB-eMMC nodes are ruby
+(control plane) and topaz (NFS server + monitoring), both better kept free of app state.
 
 ## Relational databases — on the NAS, not the cluster
 

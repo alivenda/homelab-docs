@@ -92,20 +92,22 @@ Verify from your machine: `kubectl get nodes` (should show all 4 nodes Ready).
 
 ## Step 4: Label Nodes by Capacity
 
-ruby is the control plane; the other three are workers. Use labels to express both role and storage capacity for scheduling:
+ruby is the control plane; the other three are workers. Use labels to express role, storage capacity, and app-state placement for scheduling:
 
 ```bash
 # Control plane
 kubectl label nodes ruby node-role.kubernetes.io/control-plane=true storage=large
 
 # Workers
-kubectl label nodes emerald kubernetes.io/role=worker storage=large workload=heavy
-kubectl label nodes topaz kubernetes.io/role=worker storage=small role=nfs
+kubectl label nodes emerald kubernetes.io/role=worker storage=small workload=heavy app-state=true
+kubectl label nodes topaz kubernetes.io/role=worker storage=large role=nfs
 kubectl label nodes amethyst kubernetes.io/role=worker storage=small
 ```
 
-!!! note "`workload=heavy` keeps OCR/build spikes off the control plane"
-    `node-role.kubernetes.io/control-plane=true` on ruby is only a **label**, not a taint — k3s does not taint its server by default, so a `nodeSelector: storage: large` (which matches both ruby and emerald) can still land a pod on ruby. The two spiky workloads R0 warns about — Paperless OCR (R14) and Woodpecker builds (R12) — target `workload=heavy` instead, which is only on emerald. If you'd rather hard-fence ruby, taint it (`kubectl taint nodes ruby node-role.kubernetes.io/control-plane=:NoSchedule`), but that also evicts the lighter app pods this build intentionally runs on ruby.
+In this build the labels are managed declaratively — each host's `node_labels` in the `homelab-ansible` inventory is the source of truth, applied by the `labels` play — so treat the commands above as the imperative reference for what the play does.
+
+!!! note "Three labels, three different jobs"
+    `storage=large/small` records raw eMMC size (32 GB modules are ruby and topaz) and is **not** a placement signal — the two large-disk nodes are the control plane and the NFS/monitoring server, exactly where app data should *not* go. Placement uses the other two labels: `workload=heavy` (emerald-only) takes the spiky workloads R0 warns about — Paperless OCR (R14) and Woodpecker builds (R12) — and `app-state=true` (also emerald-only) marks the designated home for node-local `local-path` app data, so SQLite apps and their PVs land together on one known node. `node-role.kubernetes.io/control-plane=true` on ruby is only a **label**, not a taint — k3s does not taint its server by default. If you'd rather hard-fence ruby, taint it (`kubectl taint nodes ruby node-role.kubernetes.io/control-plane=:NoSchedule`), but that also evicts the lighter app pods this build intentionally runs on ruby.
 
 ## Step 5: Install Helm
 
