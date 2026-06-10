@@ -62,9 +62,11 @@ See **[Storage & Data Architecture](storage-architecture.md)** for the full rati
 !!! warning "`local-path` is a standalone provisioner, not k3s's built-in"
     k3s runs with `--disable local-storage`, so the built-in `local-path` class doesn't exist; a separate standalone provisioner supplies this class instead — **live** since 2026-06. Its StorageClass **must** set `defaultVolumeType: local`, or velero silently backs up nothing — see [Storage & Data Architecture](storage-architecture.md#the-local-path-tier).
 
-## Step 4 — Routing (HTTPRoute)
+## Step 4 — Routing (DNS + HTTPRoute)
 
-Apps attach an `HTTPRoute` to the shared Traefik `Gateway`'s `websecure` listener. **The app configures no TLS** — the Gateway terminates it with the cert-manager `*.yourdomain.com` wildcard, so a route is all you need:
+**First, publish the hostname.** Service names are individual A records — there is no wildcard record: add the subdomain to `var.services` in the Cloudflare Terraform module (Runbook 8) and apply; each entry becomes one A record pointing at the Traefik LB IP. A browser "server not found" on a freshly deployed app is almost always this step missing — the route below can be perfectly healthy and still unreachable by name. If a record was ever hand-created in the dashboard, `tofu import` it into state instead of letting apply mint a duplicate A record.
+
+Then attach an `HTTPRoute` to the shared Traefik `Gateway`'s `websecure` listener. **The app configures no TLS** — the Gateway terminates it with the cert-manager `*.yourdomain.com` wildcard, so a route is all you need:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1

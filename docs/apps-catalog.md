@@ -183,7 +183,7 @@ Uptime monitoring with status pages and ntfy alerts.
 **Gotchas**
 
 - **Do not use `nfs-storage`.** Uptime Kuma uses SQLite, which needs POSIX file locking; NFS doesn't provide it reliably and will corrupt the DB. Use `local-path` with `strategy: Recreate` (the volume mounts on a single node).
-- Notifications: Settings → Notifications → ntfy, server `https://ntfy.yourdomain.com`, topic `homelab-alerts`.
+- Notifications: Settings → Notifications → ntfy, server `https://ntfy.yourdomain.com`, topic `uptime`, auth = *Bearer token* (the `uptime-kuma` publisher token — see Runbook 19; the account is write-only on its own topic).
 
 ## Vikunja
 
