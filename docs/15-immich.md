@@ -40,7 +40,10 @@ docker exec -t immich_postgres pg_dumpall -c -U postgres \
   > immich_backup_$(date +%Y%m%d).sql
 ```
 
-The [R10 backup script](10-backups.md#backup-script) already includes this for routine snapshots.
+Immich's database is deliberately **not** covered by the shared NAS Postgres backup job —
+its bundled Postgres predates the [shared server](27-nas-postgres.md) and stays separate.
+For routine (not just pre-update) protection, schedule this dump plus an rclone push to
+Garage, following the same timer pattern as the other [NAS backup jobs](10-backups.md).
 
 ## Traefik HTTPRoute (optional, for HTTPS on the cluster domain)
 

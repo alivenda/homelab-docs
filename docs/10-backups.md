@@ -20,7 +20,7 @@ The strategy above covers application data (DB dumps) and IaC (manifests). It do
 
 ## Secrets and key-material recovery
 
-This is **step zero of any real disaster recovery**. Restic and Velero restore your *data*; this section restores the ability to *decrypt* it. After rebuilding a machine or the cluster, do this first — nothing else works until it's done.
+This is **step zero of any real disaster recovery**. Velero and the database-dump jobs restore your *data*; this section restores the ability to *decrypt* it. After rebuilding a machine or the cluster, do this first — nothing else works until it's done.
 
 ### The single root of trust
 
@@ -204,7 +204,7 @@ sudo k3s etcd-snapshot list                               # expect an s3://etcd-
 docker exec -ti garage /garage bucket info etcd-snapshots # expect Objects ≥ 1
 ```
 
-This is the primary off-node etcd path; the Restic `--tag etcd` job below is a secondary copy of the local snapshot directory.
+This is the primary off-node etcd path (k3s also keeps local snapshots on ruby).
 
 ## Velero for k8s-native PVC backup
 
@@ -360,99 +360,33 @@ systemctl list-timers ha-backup-sync.timer     # confirm a NEXT run
 !!! warning "Copy, never sync — and mind UGOS updates"
     Use `rclone copy` (plus the age-based `delete`), never `rclone sync`: `sync` mirrors deletions, so if HA's `/backup` is ever empty (reinstall, disk loss) it would wipe the Garage copy too. And because the NAS runs **UGOS Pro** (an appliance OS), these host units live outside Ansible's reach — a major UGOS update can reset them, so this section is the recovery reference.
 
-## Restic Setup
+## Relational database dumps → Garage
 
-Restic backs up filesystem-level data: DB dumps, config files, k3s server manifests. Run this **on a host with access to the cluster databases** — typically ruby (where `kubectl` works) and the NAS (where mount happens).
+The relational database tier lives on the NAS, not the cluster (see the
+[Storage & Data Architecture](storage-architecture.md)), so database backups run **on the
+NAS**, next to the server: nightly per-database `pg_dump -Fc` plus a
+`pg_dumpall --globals-only`, pushed to a dedicated `postgres-backups` Garage bucket by a
+`postgres-backup.timer` (04:30, an hour before the HA sync so the jobs don't contend for
+NAS I/O). The full pipeline — script, units, and the seeded restore drill that gates it —
+is in [Runbook 27](27-nas-postgres.md).
 
-```bash
-# On ruby
-apt install -y restic
-mkdir -p /mnt/backups
-mount -t nfs <NAS_IP>:/volume1/backups /mnt/backups
-export RESTIC_REPOSITORY=/mnt/backups/restic
-export RESTIC_PASSWORD=<STRONG_REPO_PASSWORD>
-restic init
-```
+Two things deliberately have **no** dump job here:
 
-!!! warning
-    Store the `RESTIC_PASSWORD` in Vaultwarden AND on paper in a fireproof safe. If you lose it, all backups are permanently unrecoverable.
-
-## Backup Script
-
-Run on ruby (where `kubectl` works against the cluster). Comment out the lines for services you haven't deployed yet — the `kubectl get pod` guard around each block skips a service whose pod is absent, so commenting out keeps the intent explicit.
-
-!!! warning "Verify the pod names against your charts"
-    The guards below hard-code StatefulSet-style names (`vaultwarden-0`, `nextcloud-postgresql-0`, `paperless-db-0`). If a chart version deploys the DB as a Deployment or under a different release name, the guard silently evaluates false and that database is **skipped without error** — the most dangerous backup failure mode. Confirm each name with `kubectl get pods -n <namespace>` before trusting the script, and prefer a label selector (e.g. `kubectl get pod -n nextcloud -l app.kubernetes.io/name=postgresql -o name`) if your chart's pod names aren't stable.
-
-```bash
-#!/bin/bash
-set -euo pipefail
-export RESTIC_REPOSITORY=/mnt/backups/restic
-export RESTIC_PASSWORD_FILE=/root/.restic-password
-BACKUP_TMP=/tmp/homelab-backup
-mkdir -p "$BACKUP_TMP"
-
-# --- Per-service DB dumps (comment out any you haven't deployed) ---
-
-# Vaultwarden (SQLite)
-if kubectl -n vaultwarden get pod vaultwarden-0 >/dev/null 2>&1; then
-  kubectl exec -n vaultwarden vaultwarden-0 -- \
-    sqlite3 /data/db.sqlite3 ".backup '/tmp/vaultwarden.db'"
-  kubectl cp vaultwarden/vaultwarden-0:/tmp/vaultwarden.db "$BACKUP_TMP/vaultwarden.db"
-fi
-
-# Nextcloud (Postgres)
-if kubectl -n nextcloud get pod nextcloud-postgresql-0 >/dev/null 2>&1; then
-  kubectl exec -n nextcloud nextcloud-postgresql-0 -- \
-    pg_dumpall -U postgres > "$BACKUP_TMP/nextcloud.sql"
-fi
-
-# Paperless (Postgres)
-if kubectl -n paperless get pod paperless-db-0 >/dev/null 2>&1; then
-  kubectl exec -n paperless paperless-db-0 -- \
-    pg_dumpall -U paperless > "$BACKUP_TMP/paperless.sql"
-fi
-
-# Immich (Postgres on NAS via Docker)
-if ssh nas "docker ps -q -f name=immich_postgres" | grep -q .; then
-  ssh nas "docker exec immich_postgres pg_dumpall -U postgres" \
-    > "$BACKUP_TMP/immich.sql"
-fi
-
-# --- Restic snapshot ---
-restic backup "$BACKUP_TMP" --tag databases
-restic backup /var/lib/rancher/k3s/server/manifests --tag manifests
-restic backup /var/lib/rancher/k3s/server/db/snapshots --tag etcd
-restic forget --keep-daily 14 --keep-weekly 8 --keep-monthly 12 --prune
-rm -rf "$BACKUP_TMP"
-restic check
-```
-
-## Schedule via Systemd Timer
-
-`/etc/systemd/system/homelab-backup.timer`:
-
-```ini
-[Unit]
-Description=Daily homelab backup
-
-[Timer]
-OnCalendar=*-*-* 03:00:00
-RandomizedDelaySec=600
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-```
-
-Then enable: `sudo systemctl enable --now homelab-backup.timer`
-
-!!! warning
-    NAS snapshots are NOT backups — they live on the same disk pool. You need snapshots AND restic on a separate target.
+- **Immich** keeps its own dump path — its bundled Postgres on the NAS predates the shared
+  server (Runbook 15).
+- **Embedded-SQLite apps** — their volumes live on `local-path`, which Velero's node-agent
+  already captures above. One data tier, one backup mechanism; no double-coverage.
 
 ## Test Your Restores
 
-Once a month, restore latest snapshot to a temp directory and verify the DB opens.
+A backup that has never been restored is a hypothesis, not a backup. Once a month, restore
+something real and check **content**, not exit codes:
+
+- A Velero `PodVolumeBackup` must show non-zero bytes — `Completed` alone proves nothing
+  (see the [storage architecture](storage-architecture.md#the-local-path-tier) for how that
+  failure mode was caught).
+- A database dump must restore from the **Garage copy** into a scratch database with
+  matching row counts — [Runbook 27](27-nas-postgres.md) has the drill.
 
 !!! tip "Schedule a restore drill"
     The first time you discover backups are corrupt should NOT be when you need them.
@@ -468,27 +402,17 @@ Once a month, restore latest snapshot to a temp directory and verify the DB open
     ```
 
 - [ ] `sops --decrypt` succeeds on a known encrypted file (e.g. `homelab-secrets/sealed-secrets-controller-key.enc.yaml`).
-- [ ] Restic repo has snapshots:
+- [ ] Database backup timer is active on the NAS, and the bucket holds real objects:
 
     ```bash
-    restic -r /mnt/backups/restic snapshots
-    # Expected: at least one row with today's date
+    systemctl list-timers postgres-backup.timer            # a NEXT run is scheduled
+    docker exec -ti garage /garage bucket info postgres-backups
+    # Expected: Objects ≥ 1 with non-trivial sizes
     ```
 
-- [ ] Restore test (do this monthly):
-
-    ```bash
-    restic -r /mnt/backups/restic restore latest \
-      --target /tmp/restore-test --tag databases
-    # Then: sqlite3 /tmp/restore-test/path/to/db.sqlite3 .schema
-    # (or pg_restore for postgres dumps) - just confirm files open
-    ```
-
-- [ ] Backup systemd timer is active:
-
-    ```bash
-    systemctl list-timers | grep homelab-backup
-    ```
+- [ ] Restore test (do this monthly): restore a dump from the Garage copy into a scratch
+  database and compare row counts against the source — the drill in
+  [Runbook 27](27-nas-postgres.md) is the template.
 
 - [ ] Off-node etcd snapshot present in Garage:
 
