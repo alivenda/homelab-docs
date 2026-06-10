@@ -96,6 +96,7 @@ nav:
       - Runbook 17 — AdGuard Home: 17-adguard-home.md
       - Runbook 18 — Authelia + lldap: 18-authelia.md
       - Runbook 19 — ntfy: 19-ntfy.md
+      - Runbook 27 — NAS PostgreSQL: 27-nas-postgres.md
   - Apps:
       - Deploying an App (pattern): apps-deploy-pattern.md
       - App Catalog (simple services): apps-catalog.md

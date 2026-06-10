@@ -46,7 +46,7 @@ R8 Terraform (Cloudflare DNS + UniFi IaC; retroactive)
  ↓
 R9 Prometheus + Grafana + Loki
  ↓
-R10 Restic + Velero backups
+R10 Backups (Garage S3 + Velero)
  ↓
 R11 Forgejo
  ↓
@@ -57,15 +57,17 @@ R17 AdGuard Home        ← DNS ad-blocking (Pi Zero 2 W — not k3s)
 R18 Authelia + lldap    ← SSO + OIDC provider (depends on R6, R7)
  ↓
 R19 ntfy                ← push notifications for the whole stack
+ ↓
+R27 NAS PostgreSQL      ← shared DB server (NAS Docker — not k3s)
 
 ─── Apps · full runbooks (DB / multi-service / special model) ─
- ├─→ R13 Nextcloud       (cluster — Postgres)
- ├─→ R14 Paperless-ngx   (cluster — Postgres + Redis)
+ ├─→ R13 Nextcloud       (cluster — DB on NAS, R27)
+ ├─→ R14 Paperless-ngx   (cluster — DB on NAS R27 + Redis)
  ├─→ R15 Immich          (NAS-Docker — not on k3s, see runbook for why)
  ├─→ R16 Home Assistant  (slate — Mac mini / Proxmox VM)
  ├─→ R20 Homepage        (cluster — config-heavy dashboard)
  ├─→ R21 Arr Stack       (cluster — 6 services + hardlinks; NAS after 16 GB)
- ├─→ R22 BookStack       (cluster — MariaDB)
+ ├─→ R22 BookStack       (cluster — MariaDB on NAS, R27)
  ├─→ R23 Syncthing       (per-device — not k3s)
  ├─→ R24 RustDesk Server (cluster — TCP/UDP relay via MetalLB)
  ├─→ R25 Reactive Resume (cluster — Postgres + Redis + MinIO)

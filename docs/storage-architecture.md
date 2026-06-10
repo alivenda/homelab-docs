@@ -47,8 +47,10 @@ Two hardware facts drive every choice below:
       separate provisioner gives SQLite apps a correct home. Uptime Kuma is the first app on
       it, and a backup→restore drill confirmed its volumes round-trip through velero
       (see [below](#the-local-path-tier)).
-    - NAS relational DB — **not yet built.** Today only Immich's Postgres runs on the NAS
-      (R15). The shared server below is the planned target for the other relational apps.
+    - NAS relational DB — **live** (PostgreSQL 18 on the NAS at `10.0.20.50:5433`, see
+      [Runbook 27](27-nas-postgres.md)); databases are provisioned per app at each app's
+      bring-up. MariaDB stays unbuilt until an app forces it. Immich's own Postgres (R15)
+      predates the shared server and stays separate.
 
 ## How to decompose one app
 
@@ -99,14 +101,20 @@ runs Immich's Postgres (R15), so this extends an established pattern rather than
 
 Shape of the layer:
 
-- **One PostgreSQL container** on the NAS (`10.0.20.50`, Lab VLAN) with a **database + role
-  per app** — not one Postgres per app.
-- **One MariaDB container** for the MySQL-only apps (BookStack; optionally Ghost, Monica).
+- **One PostgreSQL container** on the NAS (`10.0.20.50:5433`, Lab VLAN — port 5433 because
+  UGOS runs its own internal Postgres on loopback 5432) with a **database + role per app** —
+  not one Postgres per app.
+- **One MariaDB container** for the MySQL-only apps (BookStack; optionally Ghost, Monica) —
+  deferred until one of them actually deploys.
 - Cluster apps connect over the Lab VLAN via `DATABASE_URL`, credentials from a `SealedSecret`.
-- **Backups:** nightly `pg_dump` / `mysqldump` per database to Garage S3 (R10). Move to
-  pgBackRest / WAL archiving later if you want point-in-time recovery.
-- **Access:** restrict `pg_hba` / the NAS firewall to the cluster node range; it stays on the
-  trusted Lab VLAN, never exposed.
+- **Backups:** nightly `pg_dump` / `mysqldump` per database to Garage S3 (R10), gated by a
+  seeded restore drill. Move to pgBackRest / WAL archiving later if you want point-in-time
+  recovery.
+- **Access:** `pg_hba` allows each role only its own database, only from the four node IPs
+  (pod egress is SNAT'd to node IPs); no superuser over TCP. It stays on the trusted Lab
+  VLAN, never exposed.
+
+[Runbook 27](27-nas-postgres.md) is the implementation.
 
 !!! tip "Caches stay in-cluster"
     Redis/Valkey for Paperless and Reactive Resume is a **cache**, not a system of record.
