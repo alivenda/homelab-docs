@@ -48,7 +48,7 @@ Online office suite (CODE) — the editing backend for Nextcloud.
 
 | Field | Value |
 |---|---|
-| Workload | raw manifests — `collabora/code` |
+| Workload | raw manifests — `collabora/code` (official image is multi-arch; arm64 runs on the CM4s) |
 | Namespace / hostname | `collabora` / `office.yourdomain.com` |
 | Service port | 9980 |
 | Storage | none (stateless) |
@@ -57,8 +57,11 @@ Online office suite (CODE) — the editing backend for Nextcloud.
 
 **Gotchas**
 
-- **Do not put Authelia/ForwardAuth in front of it.** Nextcloud's server calls Collabora directly (WOPI); an auth challenge breaks document editing. (This is the one app where the route stays unauthenticated.)
-- Pairs with Nextcloud (R13): enable the Nextcloud **Office** app and point it at `https://office.yourdomain.com`. Set Collabora's allowed-host/`aliasgroup` to the Nextcloud hostname.
+- **Do not put Authelia/ForwardAuth in front of it.** Nextcloud's server calls Collabora directly (WOPI), and the browser opens a websocket straight to coolwsd; an auth challenge on either leg breaks document editing. (This is the one app where the route stays unauthenticated.)
+- The compensating control for the open route is the WOPI host pin: `aliasgroup1=https://nextcloud.yourdomain.com:443` — coolwsd rejects WOPI traffic for any other origin. Plus: leave the admin console's `username`/`password` env **unset**, which disables the console entirely (official-docs behaviour) — nothing to brute-force on the open route.
+- The image's entrypoint runs coolwsd with `--use-env-vars`, so config is plain env. Behind the TLS-terminating Gateway the trio is `extra_params=--o:ssl.enable=false --o:ssl.termination=true`, `server_name=office.yourdomain.com` (responses must carry the external hostname or WOPI handshakes fail), and `DONT_GEN_SSL_CERT=1`.
+- Pairs with Nextcloud (R13): enable the Nextcloud **Office** app (richdocuments) and point it at `https://office.yourdomain.com`. Smoke test before touching Nextcloud: `https://office.yourdomain.com/hosting/discovery` must return the WOPI capability XML.
+- Stateless means the backup check **inverts**: the velero gate is the *absence* of any `PodVolumeBackup` for the namespace — if one appears, something grew state that shouldn't exist.
 
 ## Donetick
 
