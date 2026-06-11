@@ -240,9 +240,10 @@ Register the client in `apps/authelia/values.yaml` (per the
 PKCE required, `client_secret_post`), and roll Authelia **before** touching Nextcloud:
 
 ```yaml
-# Nextcloud (user_oidc). Login only — no groups scope, no admin mapping; the
-# sealed local admin stays the admin (and the occ escape hatch). The plaintext
-# secret lives in user_oidc's provider config + Vaultwarden; only the hash here.
+# Nextcloud (user_oidc). Login only — no admin mapping; the sealed local admin
+# stays the admin (and the occ escape hatch). The plaintext secret lives in
+# user_oidc's provider config + Vaultwarden; only the hash here. groups scope
+# required even so — see the warning below.
 - client_id: 'nextcloud'
   client_name: 'Nextcloud'
   client_secret: '<PBKDF2_HASH>'   # gitleaks:allow — pbkdf2 hash, not a secret
@@ -256,6 +257,7 @@ PKCE required, `client_secret_post`), and roll Authelia **before** touching Next
     - 'openid'
     - 'profile'
     - 'email'
+    - 'groups'
   response_types:
     - 'code'
   grant_types:
@@ -264,6 +266,16 @@ PKCE required, `client_secret_post`), and roll Authelia **before** touching Next
   userinfo_signed_response_alg: 'none'
   token_endpoint_auth_method: 'client_secret_post'
 ```
+
+!!! warning "The `groups` scope is load-bearing, even with no group mapping"
+    user_oidc unconditionally requests the `groups` claim through the OIDC `claims`
+    parameter, and Authelia denies any authorization request whose requested claims
+    aren't covered by the client's scopes. The denial surfaces on the Nextcloud side
+    as a thoroughly misleading `access_denied: The requested subject was not the same
+    subject that attempted to authorize the request` — nothing about subjects or
+    sessions is actually wrong. Dropping `groups` to make this client "login-only"
+    (the Immich treatment) is what *causes* that error; Immich gets away with it only
+    because it never sends a `claims` request.
 
 Then install and configure the app — three `occ` one-liners and one config key:
 
