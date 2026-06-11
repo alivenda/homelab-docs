@@ -118,6 +118,24 @@ the SealedSecret, as the `PAPERLESS_SOCIALACCOUNT_PROVIDERS` JSON:
 change one, change both. `PAPERLESS_APPS=allauth.socialaccount.providers.openid_connect`
 (plain env in the Deployment) is what activates the provider at all.
 
+!!! warning "Gate the seal on reading the Secret back"
+    The `secret` field is buried *inside* the JSON blob, and it's the substitution
+    everyone misses when filling in the seal command (ask how we know). The failure
+    is maddeningly indirect: Authelia validates the client and redirect fine, then
+    every token exchange dies `invalid_client` no matter what digest is registered.
+    Before testing login, read the live value back and eyeball the `secret` field:
+
+    ```bash
+    kubectl get secret -n paperless paperless-secrets \
+      -o jsonpath='{.data.PAPERLESS_SOCIALACCOUNT_PROVIDERS}' | base64 -d
+    ```
+
+    Two restart rules while iterating here: Authelia reads its config **at startup
+    only** (a values/ConfigMap sync does *not* roll the StatefulSet — `kubectl
+    rollout restart statefulset -n authelia authelia`), and the same goes for
+    paperless env after a Secret change (`kubectl rollout restart deployment -n
+    paperless paperless`).
+
 !!! warning "Link the admin account after first OIDC login"
     An OIDC login that doesn't match an existing paperless user **creates a new
     user**. Log in once as the local `admin`, then **My Profile → Connected social
