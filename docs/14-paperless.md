@@ -49,6 +49,17 @@ Service, an HTTPRoute — one ArgoCD `Application` in `bootstrap/paperless.yaml`
     does nothing. `PAPERLESS_CONSUMER_POLLING=60` is set in the Deployment; keep it
     when touching env.
 
+!!! danger "A Service named `paperless` poisons `PAPERLESS_PORT`"
+    Kubernetes injects Docker-link-style discovery env
+    (`<SERVICE>_PORT=tcp://<ClusterIP>:<port>`) for every Service in the
+    namespace — so the app's own Service injects
+    `PAPERLESS_PORT=tcp://10.43.x.x:8000`, the exact variable paperless-ngx reads
+    as its webserver port. Granian exits on the non-integer value, the pod loops
+    on its startup probe, and the route serves Traefik's "no available server"
+    503 while everything *around* the pod looks healthy. The Deployment sets
+    `enableServiceLinks: false` — keep it. (Caught live at bring-up: init
+    completed in 56 s, then the webserver died on its first instruction.)
+
 There is deliberately **no nodeSelector**: documents are on NFS, the database is on
 the NAS, the broker is ephemeral — nothing node-local exists to reschedule back to.
 Resource requests steer placement; the 2 Gi memory limit absorbs OCR spikes.
