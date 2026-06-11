@@ -156,5 +156,6 @@ These predate this record and should be reconciled to it as each app is touched:
   Single-replica and lightly used, so it's a *latent* risk (NFS lock state on a reschedule),
   not active corruption — migrate it to `local-path` once the provisioner is live, snapshotting
   first.
-- **Runbooks R13/R14/R22/R25 assume cluster-hosted databases** — revise their DB sections to the
-  NAS server above when each app is deployed.
+- **Runbooks R14/R22/R25 assume cluster-hosted databases** — revise their DB sections to the
+  NAS server above when each app is deployed. (R13 Nextcloud is done — it now documents the
+  four-tier decomposition this page uses as its worked example.)
