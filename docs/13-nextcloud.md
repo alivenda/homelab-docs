@@ -184,7 +184,15 @@ spec:
   hostnames:
     - nextcloud.yourdomain.com
   rules:
-    - backendRefs:
+    - filters:
+        # TLS is the Gateway's job, so HSTS is too — set it at the route, not
+        # in the app. Nextcloud's security checker requires >= 15552000s.
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - name: Strict-Transport-Security
+                value: "max-age=15552000; includeSubDomains"
+      backendRefs:
         - name: nextcloud
           port: 8080
 ```
@@ -336,6 +344,41 @@ sudo docker exec -ti garage /garage bucket info postgres-backups
 
 Object count up by one, with a `nextcloud-<date>.dump` of non-trivial size.
 
+## Step 9: Settle the security check
+
+**Administration → Overview** flags a handful of items on a fresh install. Triage:
+
+- **HSTS** — already handled by the `ResponseHeaderModifier` on the HTTPRoute (Step 4);
+  if it's still flagged, the route filter isn't applying.
+- **Maintenance window** — heavy daily background jobs default to running whenever, i.e.
+  during usage. Pin them to the small hours (the value is the **UTC** start hour of a
+  4-hour window; pick one clear of the 04:00 UTC velero run):
+
+    ```bash
+    kubectl -n nextcloud exec deploy/nextcloud -c nextcloud -- \
+      su -s /bin/sh -c "php occ config:system:set maintenance_window_start --type=integer --value=6" www-data
+    ```
+
+- **Mimetype migrations** — one-time, safe:
+
+    ```bash
+    kubectl -n nextcloud exec deploy/nextcloud -c nextcloud -- \
+      su -s /bin/sh -c "php occ maintenance:repair --include-expensive" www-data
+    ```
+
+- **"Errors in the log"** — read them rather than dismiss them; failed OIDC attempts
+  from bring-up are benign:
+
+    ```bash
+    kubectl -n nextcloud exec deploy/nextcloud -c nextcloud -- \
+      sh -c 'grep "\"level\":3" /var/www/html/data/nextcloud.log | tail -n 3'
+    ```
+
+The remaining info-level items stay as they are, deliberately: **email server** is later
+work (no SMTP in the stack yet), **two-factor enforcement** is Authelia's job in front —
+not Nextcloud's — and **AppAPI / phone region / server ID** are take-it-or-leave-it
+single-instance noise.
+
 ## Verification
 
 - [ ] `kubectl get pods -n nextcloud` — app pod `2/2` Running (Apache + crond sidecar), Valkey Running.
@@ -344,7 +387,7 @@ Object count up by one, with a `nextcloud-<date>.dump` of non-trivial size.
 - [ ] **Login with Authelia** round-trips: 2FA at Authelia, lands back in Nextcloud as your lldap user (human-readable username, not a hash).
 - [ ] Desktop client syncs a file; it appears on a second device/web within a minute.
 - [ ] Admin → Basic settings: mode is *Cron*, *Last job execution* under 5 minutes old.
-- [ ] Admin → Overview security check shows no reverse-proxy or `overwriteprotocol` warnings.
+- [ ] Admin → Overview security check shows no reverse-proxy, `overwriteprotocol`, or HSTS warnings — and the Step 9 items are settled.
 - [ ] Velero `PodVolumeBackup` for the Nextcloud volume shows **bytes > 0** (Step 8).
 - [ ] `nextcloud-<date>.dump` landed in `postgres-backups` after the nightly run.
 - [ ] Admin password, DB password, and OIDC client secret all in Vaultwarden.
