@@ -112,6 +112,7 @@ nav:
       - Runbook 24 — RustDesk Server: 24-rustdesk.md
       - Runbook 25 — Reactive Resume: 25-reactive-resume.md
       - Runbook 26 — Ollama + Open WebUI: 26-ollama.md
+      - Runbook 28 — Vikunja: 28-vikunja.md
   - Version History: version-history.md
 
 extra:

@@ -141,7 +141,7 @@ Two options depending on what you want:
 **Replaces:** Apple Notes, Google Keep, Notion (partially), Obsidian Sync.
 
 ### 🔴 Tasks / To-Do — Vikunja
-**Category:** Task Management | **Run:** 🖥️ Cluster | **RAM:** ~150–200 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](apps-catalog.md#vikunja)
+**Category:** Task Management | **Run:** 🖥️ Cluster | **RAM:** ~150–200 MB | **ARM64:** ✅ Official | **Runbook:** [Runbook 28](28-vikunja.md)
 
 The most complete self-hosted task app: lists, kanban, Gantt, calendar view, teams, labels, due dates, reminders. Has a mobile app and desktop clients. Go binary — very ARM-friendly.
 
