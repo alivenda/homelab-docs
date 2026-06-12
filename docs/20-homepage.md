@@ -23,7 +23,7 @@ Homepage follows the [deploy pattern](apps-deploy-pattern.md) in **raw-manifests
 ```text
 apps/homepage/manifests/
 ├── rbac.yaml         # ServiceAccount + ClusterRole + binding (read-only, narrowed)
-├── configmap.yaml    # the entire dashboard — all eight config files
+├── configmap.yaml    # the entire dashboard — all nine config files
 ├── deployment.yaml   # pinned tag, stateless, no node pin
 ├── service.yaml      # 3000 (http)
 ├── middleware.yaml   # Authelia ForwardAuth (namespace-local copy)
@@ -34,7 +34,7 @@ apps/homepage/manifests/
 
 Homepage's configuration is YAML — it belongs in git, not on a volume. There is **no PVC**:
 
-- All eight config files ride in the ConfigMap.
+- All nine config files ride in the ConfigMap.
 - The only path the image insists on writing (`/app/config/logs`) is an `emptyDir`.
 - Secrets, when widget tokens eventually land, ride a `SealedSecret` as `HOMEPAGE_VAR_*` env — never values in the ConfigMap.
 
@@ -87,7 +87,10 @@ Discovery is **opt-in per route**: nothing appears until an HTTPRoute carries `g
 
 ## Configuration — the ConfigMap is the dashboard
 
-Homepage expects eight files under `/app/config`; **all eight must exist as ConfigMap keys** — `settings.yaml`, `widgets.yaml`, `services.yaml`, `bookmarks.yaml`, `kubernetes.yaml`, `docker.yaml` (`{}` — no Docker socket on k3s), `custom.js`, `custom.css` (empty strings) — because the mounted directory is read-only and the app cannot create missing ones.
+Homepage expects nine files under `/app/config`; **all nine must exist as ConfigMap keys** — `settings.yaml`, `widgets.yaml`, `services.yaml`, `bookmarks.yaml`, `kubernetes.yaml`, `docker.yaml` (`{}` — no Docker socket on k3s), `proxmox.yaml` (`{}` — no Proxmox widgets), `custom.js`, `custom.css` (empty strings) — because the mounted directory is read-only and the app cannot create missing ones.
+
+!!! warning "The required set is the skeleton directory, not the documented list"
+    What "expects" means precisely: at startup Homepage copies any file missing from `/app/config` out of its image's `src/skeleton/` directory. On a read-only mount that copy fails with `EROFS` and the process **exits 1** — *after* the web server has already bound, so the pod flashes Ready, drops, and crash-loops. The deployed v1.13.2 skeleton holds nine files (`proxmox.yaml` is the easy one to miss); on every image bump, diff `src/skeleton/` at the new tag against the ConfigMap keys before rolling.
 
 !!! tip "Whole-dir mount, not subPath"
     Upstream's k8s example mounts each file with `subPath`, which **freezes** the file — kubelet never updates subPath mounts, so every config edit needs a pod restart. Mounting the ConfigMap volume whole at `/app/config` (with the `emptyDir` shadowing `logs/` inside it) keeps kubelet's atomic-symlink update path: an ArgoCD sync reaches the pod within about a minute and shows on page refresh. If an edit doesn't appear: `kubectl -n homepage rollout restart deployment homepage`.
