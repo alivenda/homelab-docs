@@ -1,42 +1,58 @@
 # Runbook 20: Homepage
 
-A self-hosted dashboard for all cluster services, with live widget integrations.
+A services dashboard — one tile per deployed service, behind Authelia.
 
 | | |
 |---|---|
 | **Difficulty** | Beginner |
 | **Time Estimate** | 45–60 minutes |
 | **Runs On** | k3s (cluster) |
-| **Depends On** | Runbook 6 (Traefik), Runbook 18 (Authelia — ForwardAuth) |
+| **Depends On** | Runbook 6 (Traefik), Runbook 8 (Terraform, DNS), Runbook 18 (Authelia — ForwardAuth), [the deploy pattern](apps-deploy-pattern.md) |
 
-Homepage ([gethomepage.dev](https://gethomepage.dev)) is a highly customisable start page. In this stack it aggregates status widgets for every deployed service, is protected by Authelia ForwardAuth (no login page of its own), and uses the Kubernetes downward API to auto-discover service health.
+Homepage ([gethomepage.dev](https://gethomepage.dev)) is a YAML-configured start page. In this stack it serves static tiles and bookmarks for every live service, reads the Kubernetes API for cluster stats, and sits entirely behind Authelia ForwardAuth.
 
-See the [official documentation](https://gethomepage.dev) for full widget and configuration reference.
+The `ghcr.io/gethomepage/homepage` image ships official multiarch builds — **pin a release tag and confirm `arm64` is on the manifest when you bump** (check the ghcr manifest list, not just the release notes). The deployed pin at time of writing is `v1.13.2`.
 
 !!! note "ForwardAuth — not OIDC"
-    Homepage has no login page. It is protected by the Authelia ForwardAuth middleware (see Runbook 18). Do **not** attempt to configure it as an OIDC client.
+    Homepage has no login page and no OIDC support. It is protected by the Authelia ForwardAuth middleware (Runbook 18, same recipe as Uptime Kuma). Do **not** attempt to register it as an OIDC client.
 
-## Step 1: RBAC
+## The shape of the deployment
 
-Homepage queries the Kubernetes API to discover pods, nodes, and HTTPRoutes for its Kubernetes widget. Create a ServiceAccount, ClusterRole, and ClusterRoleBinding.
+Homepage follows the [deploy pattern](apps-deploy-pattern.md) in **raw-manifests mode**: there is no first-party Helm chart — upstream's own docs link an unofficial one, the same avoidable third-party dependency Uptime Kuma and ntfy reject. One ArgoCD `Application` pointing at `apps/homepage/manifests/`:
 
-Create `homelab-manifests/apps/homepage/rbac.yaml`:
+```text
+apps/homepage/manifests/
+├── rbac.yaml         # ServiceAccount + ClusterRole + binding (read-only, narrowed)
+├── configmap.yaml    # the entire dashboard — all eight config files
+├── deployment.yaml   # pinned tag, stateless, no node pin
+├── service.yaml      # 3000 (http)
+├── middleware.yaml   # Authelia ForwardAuth (namespace-local copy)
+└── httproute.yaml    # ExtensionRef → the middleware
+```
+
+## Stateless on purpose
+
+Homepage's configuration is YAML — it belongs in git, not on a volume. There is **no PVC**:
+
+- All eight config files ride in the ConfigMap.
+- The only path the image insists on writing (`/app/config/logs`) is an `emptyDir`.
+- Secrets, when widget tokens eventually land, ride a `SealedSecret` as `HOMEPAGE_VAR_*` env — never values in the ConfigMap.
+
+That buys three things. The Application can run `prune: true` (an accidental manifest drop costs one re-sync, not data). A rebuild is a re-sync — there is nothing to restore. And the velero gate **inverts**: instead of proving bytes were backed up, prove *nothing* is:
+
+```bash
+kubectl get podvolumebackups -n velero \
+  -o custom-columns='NS:.spec.pod.namespace,VOL:.spec.volume,BYTES:.status.progress.totalBytes' \
+  | grep homepage
+```
+
+After the first nightly, every `homepage` row must be an emptyDir at `<none>` bytes — velero's opt-out fs-backup sweeps emptyDirs too, so the noise rows are expected (same as Collabora and Traefik). A row with **real bytes** means a PVC crept in and the statelessness claim is broken.
+
+## RBAC — narrowed from upstream's example
+
+Homepage reads the Kubernetes API for two features: the **kubernetes info widget** (cluster/node CPU + memory, served by k3s's bundled metrics-server) and **route discovery**. Upstream's example ClusterRole also grants `ingresses` (extensions/networking.k8s.io) and `ingressroutes` (traefik.io) — this cluster has no such objects, routing is exclusively Gateway API `HTTPRoute`, so those grants are dropped and the matching discovery paths are switched off in `kubernetes.yaml`:
 
 ```yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: homepage
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: homepage
-  namespace: homepage
-  labels:
-    app: homepage
-automountServiceAccountToken: true
----
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -45,383 +61,185 @@ rules:
   - apiGroups: [""]
     resources: ["namespaces", "pods", "nodes"]
     verbs: ["get", "list"]
-  - apiGroups: ["extensions", "networking.k8s.io"]
-    resources: ["ingresses"]
-    verbs: ["get", "list"]
-  - apiGroups: ["traefik.io"]
-    resources: ["ingressroutes"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes", "gateways"]
     verbs: ["get", "list"]
   - apiGroups: ["metrics.k8s.io"]
     resources: ["nodes", "pods"]
     verbs: ["get", "list"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: homepage
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: homepage
-subjects:
-  - kind: ServiceAccount
-    name: homepage
-    namespace: homepage
 ```
 
-## Step 2: ConfigMap
+Plus a `ServiceAccount` (with `automountServiceAccountToken: true` — the in-pod token is the point) and a `ClusterRoleBinding`.
 
-Homepage reads all configuration from YAML files mounted at `/app/config`. Deliver them via a ConfigMap. Customise the service URLs and icons to match your deployment.
+## Discovery: HTTPRoutes are supported — and opt-in
 
-Create `homelab-manifests/apps/homepage/configmap.yaml`:
+Earlier revisions of this runbook hedged on whether discovery was Ingress-only. Verified against upstream for v1.13.x: **Gateway API HTTPRoute discovery is real**, enabled with `gateway: true`, reading the same `gethomepage.dev/*` annotations as Ingress.
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: homepage
-  namespace: homepage
-data:
-  settings.yaml: |
-    title: Homelab
-    theme: dark
-    color: slate
-    headerStyle: clean
-    target: _self
-    language: en
-    quicklaunch:
-      searchDescriptions: false
-      hideInternetSearch: true
-      hideVisitURL: false
-    layout:
-      Infrastructure:
-        style: row
-        columns: 4
-      Apps:
-        style: row
-        columns: 4
-      Media:
-        style: row
-        columns: 4
-
-  widgets.yaml: |
-    - kubernetes:
-        cluster:
-          show: true
-          cpu: true
-          memory: true
-          showLabel: true
-          label: homelab
-        nodes:
-          show: true
-          cpu: true
-          memory: true
-          showLabel: true
-
-    - datetime:
-        text_size: xl
-        format:
-          dateStyle: long
-          timeStyle: short
-          hourCycle: h23
-
-  services.yaml: |
-    - Infrastructure:
-        - Traefik:
-            href: https://traefik.yourdomain.com
-            description: Reverse proxy
-            icon: traefik.png
-            widget:
-              type: traefik
-              url: https://traefik.yourdomain.com
-
-        - ArgoCD:
-            href: https://argocd.yourdomain.com
-            description: GitOps
-            icon: argocd.png
-
-        - Authelia:
-            href: https://auth.yourdomain.com
-            description: SSO
-            icon: authelia.png
-
-        - Grafana:
-            href: https://grafana.yourdomain.com
-            description: Metrics
-            icon: grafana.png
-            widget:
-              type: grafana
-              url: https://grafana.yourdomain.com
-              username: admin
-              password: "{{HOMEPAGE_VAR_GRAFANA_PASS}}"
-
-        - Prometheus:
-            href: https://prometheus.yourdomain.com
-            description: Alerting
-            icon: prometheus.png
-
-        - Forgejo:
-            href: https://git.yourdomain.com
-            description: Git
-            icon: gitea.png
-            widget:
-              type: gitea
-              url: https://git.yourdomain.com
-              key: "{{HOMEPAGE_VAR_FORGEJO_TOKEN}}"
-
-        - Woodpecker:
-            href: https://ci.yourdomain.com
-            description: CI/CD
-            icon: woodpecker-ci.png
-
-        - Vaultwarden:
-            href: https://vault.yourdomain.com
-            description: Passwords
-            icon: bitwarden.png
-
-    - Apps:
-        - Nextcloud:
-            href: https://cloud.yourdomain.com
-            description: Files
-            icon: nextcloud.png
-            widget:
-              type: nextcloud
-              url: https://cloud.yourdomain.com
-              username: admin
-              password: "{{HOMEPAGE_VAR_NC_PASS}}"
-
-        - Paperless:
-            href: https://paperless.yourdomain.com
-            description: Documents
-            icon: paperless-ngx.png
-            widget:
-              type: paperlessngx
-              url: https://paperless.yourdomain.com
-              key: "{{HOMEPAGE_VAR_PAPERLESS_KEY}}"
-
-        - ntfy:
-            href: https://ntfy.yourdomain.com
-            description: Notifications
-            icon: ntfy.png
-
-        - lldap:
-            href: https://lldap.yourdomain.com
-            description: User directory
-            icon: ldap.png
-
-    - Media:
-        - Immich:
-            href: https://photos.yourdomain.com
-            description: Photos
-            icon: immich.png
-            widget:
-              type: immich
-              url: https://photos.yourdomain.com
-              key: "{{HOMEPAGE_VAR_IMMICH_KEY}}"
-
-  bookmarks.yaml: |
-    - Quick links:
-        - GitHub:
-            - href: https://github.com
-              icon: github.png
-        - Cloudflare:
-            - href: https://dash.cloudflare.com
-              icon: cloudflare.png
-        - UniFi:
-            - href: https://unifi.ui.com
-              icon: unifi.png
-
-  kubernetes.yaml: |
-    mode: cluster
-
-  docker.yaml: |
-    {}
-
-  custom.js: ""
-
-  custom.css: ""
+# kubernetes.yaml
+mode: cluster     # use the in-pod ServiceAccount
+gateway: true     # discover annotated HTTPRoutes
+ingress: false    # no Ingress objects exist — and RBAC doesn't grant them
+traefik: false    # ditto IngressRoutes
 ```
 
-### Protecting sensitive values
+Discovery is **opt-in per route**: nothing appears until an HTTPRoute carries `gethomepage.dev/enabled: "true"` (plus `name`/`group`/`icon`/`description`). The deployed dashboard annotates no routes — every tile is static in `services.yaml`, one PR, no churn across sixteen app manifests. Annotating routes is the forward path if static upkeep gets old: new apps would then tile themselves.
 
-Instead of hardcoding API keys in the ConfigMap, use `HOMEPAGE_VAR_XXX` environment variables so secrets stay out of Git. The ConfigMap references `{{HOMEPAGE_VAR_GRAFANA_PASS}}` etc. — supply the actual values via a SealedSecret in Step 3.
+## Configuration — the ConfigMap is the dashboard
 
-## Step 3: SealedSecret for API Keys
+Homepage expects eight files under `/app/config`; **all eight must exist as ConfigMap keys** — `settings.yaml`, `widgets.yaml`, `services.yaml`, `bookmarks.yaml`, `kubernetes.yaml`, `docker.yaml` (`{}` — no Docker socket on k3s), `custom.js`, `custom.css` (empty strings) — because the mounted directory is read-only and the app cannot create missing ones.
 
-```bash
-kubectl create secret generic homepage-env \
-  --namespace homepage \
-  --from-literal=HOMEPAGE_VAR_GRAFANA_PASS=<grafana_admin_pass> \
-  --from-literal=HOMEPAGE_VAR_NC_PASS=<nextcloud_admin_pass> \
-  --from-literal=HOMEPAGE_VAR_PAPERLESS_KEY=<paperless_api_key> \
-  --from-literal=HOMEPAGE_VAR_FORGEJO_TOKEN=<forgejo_api_token> \
-  --from-literal=HOMEPAGE_VAR_IMMICH_KEY=<immich_api_key> \
-  --dry-run=client -o yaml \
-  | kubeseal --controller-name=sealed-secrets-controller \
-             --controller-namespace=sealed-secrets \
-             --format yaml \
-  > homepage-env-sealed.yaml
-```
+!!! tip "Whole-dir mount, not subPath"
+    Upstream's k8s example mounts each file with `subPath`, which **freezes** the file — kubelet never updates subPath mounts, so every config edit needs a pod restart. Mounting the ConfigMap volume whole at `/app/config` (with the `emptyDir` shadowing `logs/` inside it) keeps kubelet's atomic-symlink update path: an ArgoCD sync reaches the pod within about a minute and shows on page refresh. If an edit doesn't appear: `kubectl -n homepage rollout restart deployment homepage`.
 
-Commit to `homelab-manifests/apps/homepage/`.
-
-## Step 4: Deployment
-
-Create `homelab-manifests/apps/homepage/deployment.yaml`:
+`widgets.yaml` ships two **keyless** info widgets — `kubernetes` (cluster + node CPU/memory via the ServiceAccount) and `datetime`. `services.yaml` is the tile grid, grouped to match `settings.yaml`'s `layout` (group names must match exactly):
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: homepage
-  namespace: homepage
+# services.yaml (abridged — one entry per live service)
+- Apps:
+    - Nextcloud:
+        href: https://nextcloud.yourdomain.com
+        description: Files, calendar, contacts
+        icon: nextcloud.png
+    - Vikunja:
+        href: https://tasks.yourdomain.com
+        description: Tasks & projects
+        icon: vikunja.png
+    # ... Immich, Paperless-ngx, Vaultwarden, Home Assistant, ntfy
+
+- Operations:
+    - ArgoCD:
+        href: https://argocd.yourdomain.com
+        description: GitOps
+        icon: argo-cd.png
+    # ... Grafana, Uptime Kuma, Forgejo, Woodpecker
+
+- Infrastructure:
+    - Traefik:
+        href: https://traefik.yourdomain.com
+        description: Ingress gateway
+        icon: traefik.png
+    # ... Authelia, lldap, Collabora
+```
+
+The source of truth for *which* tiles exist is the cloudflare module's `var.services` plus the [App Catalog](apps-catalog.md) — if a subdomain has an A record, it gets a tile. `bookmarks.yaml` holds the external links (GitHub, Cloudflare dash, UniFi).
+
+Icons resolve against the [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) set by bare filename. **Verify each name exists** (a typo renders a broken image, not an error) — the two non-obvious ones in this stack are `argo-cd.png` (not `argocd`) and `lldap.png` (not `ldap`).
+
+## Deployment
+
+The Deployment is where the gotchas live. Pinned image, default `RollingUpdate`, and **no node pin** — with no volume binding it to a node, the scheduler may place and move it freely; this is the stack's first app where that's true.
+
+```yaml
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: homepage
-  strategy:
-    type: RollingUpdate
   template:
-    metadata:
-      labels:
-        app: homepage
     spec:
       serviceAccountName: homepage
       automountServiceAccountToken: true
+      enableServiceLinks: false        # see below — load-bearing
       securityContext:
         runAsUser: 1000
         runAsGroup: 1000
+        fsGroup: 1000                  # makes the logs emptyDir writable for 1000
         runAsNonRoot: true
       containers:
         - name: homepage
-          image: ghcr.io/gethomepage/homepage:latest
+          image: ghcr.io/gethomepage/homepage:v1.13.2   # pinned — never :latest
           ports:
             - name: http
               containerPort: 3000
           env:
-            - name: POD_IP
+            - name: MY_POD_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
             - name: HOMEPAGE_ALLOWED_HOSTS
-              value: "homepage.yourdomain.com,$(POD_IP)"
-          envFrom:
-            - secretRef:
-                name: homepage-env
-          livenessProbe:
-            httpGet:
-              path: /api/healthcheck
-              port: http
-            initialDelaySeconds: 5
+              value: "homepage.yourdomain.com,$(MY_POD_IP):3000"
           volumeMounts:
             - name: config
               mountPath: /app/config
+              readOnly: true
             - name: logs
               mountPath: /app/config/logs
       volumes:
         - name: config
           configMap:
-            name: homepage
+            name: homepage-config
         - name: logs
           emptyDir: {}
 ```
 
-Create `homelab-manifests/apps/homepage/service.yaml`:
+!!! warning "`enableServiceLinks: false` is load-bearing"
+    The Service is named `homepage`, so kubelet's legacy Docker-link env injection would set `HOMEPAGE_SERVICE_HOST`, `HOMEPAGE_PORT`, … — directly inside the `HOMEPAGE_*` env namespace the app itself reads. Third instance of this collision class in the stack (`PAPERLESS_PORT` and Vikunja's `VIKUNJA_*` service links before it). Any app whose env prefix matches its Service name needs this line.
+
+!!! warning "`HOMEPAGE_ALLOWED_HOSTS` must include the pod IP"
+    The variable is a mandatory Host-header allow-list (requests with any other Host get rejected). Kubelet probes address the **pod IP**, not the public hostname — omit the `$(MY_POD_IP):3000` entry and the pod fails its own health checks and never goes Ready. `MY_POD_IP` must be declared *before* the line that expands it.
+
+Non-root works cleanly: the image ships every file chowned `1000:1000`, and its entrypoint only needs root for the optional `PUID`/`PGID` re-chown path — unset (the default), it skips straight to `exec`. Probes hit `/api/healthcheck` on 3000.
+
+## HTTPRoute + ForwardAuth
+
+The standard recipe from Runbook 18, deployed and proven on Uptime Kuma and lldap: the Traefik `Middleware` is copied into the app's own namespace (an `ExtensionRef` filter cannot cross namespaces), pointing at the central Authelia service; the `HTTPRoute` references it as a filter. Fails closed — if Authelia is down the route 5xx's rather than serving the dashboard unauthenticated.
 
 ```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: homepage
-  namespace: homepage
-spec:
-  selector:
-    app: homepage
-  ports:
-    - port: 3000
-      targetPort: 3000
+rules:
+  - filters:
+      - type: ExtensionRef
+        extensionRef:
+          group: traefik.io
+          kind: Middleware
+          name: authelia-forwardauth
+    backendRefs:
+      - name: homepage
+        port: 3000
 ```
 
-## Step 5: HTTPRoute (with Authelia ForwardAuth)
+The ArgoCD `Application` uses client-side apply — **no `ServerSideApply=true`**: the Gateway controller defaults fields on the HTTPRoute after apply, and under SSA the predicted merge never matches the mutated live object, leaving the app permanently OutOfSync. Same as every other HTTPRoute app in the stack.
 
-Homepage has no built-in auth, so Authelia gates it via ForwardAuth. Under the Gateway API the `Middleware` lives in the app's namespace and the `HTTPRoute` references it with an `ExtensionRef` filter (see [Deploying an App](apps-deploy-pattern.md)). TLS is handled by the Gateway's wildcard cert. Create `homelab-manifests/apps/homepage/httproute.yaml`:
+## Widget API tokens — deferred, deliberately
 
-```yaml
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: authelia-forwardauth
-  namespace: homepage
-spec:
-  forwardAuth:
-    address: http://authelia.authelia.svc.cluster.local:9091/api/authz/forward-auth
-    trustForwardHeader: true
-    authResponseHeaders: [Remote-User, Remote-Groups, Remote-Name, Remote-Email]
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: homepage
-  namespace: homepage
-spec:
-  parentRefs:
-    - name: traefik
-      namespace: traefik
-      sectionName: websecure
-  hostnames:
-    - homepage.yourdomain.com
-  rules:
-    - filters:
-        - type: ExtensionRef
-          extensionRef:
-            group: traefik.io
-            kind: Middleware
-            name: authelia-forwardauth
-      backendRefs:
-        - name: homepage
-          port: 3000
+Homepage can decorate tiles with live per-service stats (Grafana, Forgejo, Paperless-ngx, Nextcloud, Immich, …), each needing an API token. None ship at bring-up, for two reasons:
+
+1. **Don't mint a pile of tokens on day one.** Each is a per-service follow-up, added like ntfy's publisher accounts: one at a time, when wanted.
+2. **Widget requests originate server-side** — from the Homepage pod, with no Authelia session. Pointed at the public URL they'd bounce off ForwardAuth; each widget needs an in-cluster URL (`http://<svc>.<ns>.svc.cluster.local`) or a thought-through bypass, per service.
+
+When one lands, the value rides a `SealedSecret` consumed as env, and the config references it by placeholder — `HOMEPAGE_VAR_XXX` env replaces `{{HOMEPAGE_VAR_XXX}}` in any config file:
+
+```bash
+kubectl create secret generic homepage-env \
+  --namespace homepage \
+  --from-literal=HOMEPAGE_VAR_GRAFANA_KEY=<service-account-token> \
+  --dry-run=client -o yaml \
+  | kubeseal --controller-name=sealed-secrets-controller \
+             --controller-namespace=sealed-secrets --format yaml \
+  > apps/homepage/manifests/sealed-env.yaml
 ```
 
-!!! note "ForwardAuth prerequisites"
-    Per [Deploying an App](apps-deploy-pattern.md): Traefik's Kubernetes IngressRoute CRD provider must stay enabled for `ExtensionRef` middlewares to resolve, and the exact Authelia `forward-auth` address/headers are version-specific. No ForwardAuth app is deployed yet — confirm against Authelia's Traefik integration docs at deploy.
-
-Commit all manifests to `homelab-manifests/apps/homepage/` and let ArgoCD sync.
-
-## Step 6: Add API Tokens
-
-Each widget integration needs an API key from the corresponding service. Retrieve or generate:
+…then add `envFrom: secretRef: homepage-env` to the Deployment.
 
 | Service | Where to get the key |
 |---------|---------------------|
-| Grafana | Profile → API Keys → Add |
+| Grafana | Administration → Service accounts → token |
 | Nextcloud | User Settings → Security → App passwords |
-| Paperless | Admin → API Token |
+| Paperless-ngx | Profile → API Auth Token |
 | Forgejo | User Settings → Applications → Generate Token |
-| Immich | User Settings → API Keys |
-
-Update the SealedSecret with the retrieved values and commit.
-
-## Customisation
-
-- **Icons** — Homepage resolves icon names against the [Dashboard Icons](https://github.com/walkxcode/dashboard-icons) set automatically. Use the icon name without `.png` to get auto-theming, or a full URL for custom icons.
-- **Bookmarks** — Add `bookmarks.yaml` entries to create a pinned link panel alongside services.
-- **Additional widgets** — Homepage has built-in widgets for AdGuard (`type: adguard`), Sonarr, Radarr, qBittorrent, Home Assistant, and many others — add them as you deploy each service in subsequent runbooks.
+| Immich | Account Settings → API Keys |
 
 ## Verification
 
-- [ ] Homepage pod Running:
+- [ ] ArgoCD app `Synced/Healthy`; pod Running:
 
     ```bash
     kubectl get pods -n homepage
     ```
 
-- [ ] `https://homepage.yourdomain.com` redirects to Authelia login for unauthenticated requests.
-- [ ] After login, dashboard loads with the service grid.
-- [ ] Kubernetes widget shows cluster CPU/memory and node list.
-- [ ] Widget integrations that have API keys show live data.
-- [ ] Verify the RBAC grants work (no 403 in pod logs):
+- [ ] `https://homepage.yourdomain.com` redirects unauthenticated requests to Authelia; after login the dashboard renders. Repeat for **both** users.
+- [ ] Spot-check tiles — including the newest services — land on the right URLs.
+- [ ] Kubernetes widget shows live cluster CPU/memory and all four nodes (data, not spinners).
+- [ ] No RBAC 403s in the pod log:
 
     ```bash
-    kubectl logs -n homepage deploy/homepage
+    kubectl logs -n homepage deploy/homepage | grep -i forbidden
     ```
+
+- [ ] **Inverted velero gate** after the first nightly: zero PVC-backed `PodVolumeBackup` rows with real bytes in namespace `homepage` (emptyDir rows at `<none>` are expected noise).
