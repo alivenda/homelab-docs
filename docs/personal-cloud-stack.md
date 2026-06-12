@@ -110,13 +110,12 @@ Self-hosted push notifications for everything: backup alerts, Woodpecker pipelin
 
 These are the services people use every day that currently rely on commercial clouds.
 
-### 🔴 RSS / News Reader — FreshRSS or Miniflux
-**Category:** Feed Readers | **Run:** 🖥️ Cluster | **RAM:** ~100 MB | **ARM64:** ✅ Both official | **Runbook:** [App Catalog](apps-catalog.md#freshrss)
+### 🔴 RSS / News Reader — Miniflux
+**Category:** Feed Readers | **Run:** 🖥️ Cluster | **RAM:** ~50 MB | **ARM64:** ✅ Official | **Runbook:** [Runbook 29](29-miniflux.md)
 
-**FreshRSS** — PHP, feature-rich, mobile-friendly, supports Fever/Google Reader API (works with Reeder, NetNewsWire, etc.)
-**Miniflux** — Go binary, minimal, fast, Fever + Google Reader API, very low RAM.
+**Miniflux** — Go binary, minimal, fast, Fever + Google Reader API (works with Reeder, NetNewsWire, etc.), very low RAM. PostgreSQL-only, so it rides the shared NAS Postgres (R27) and runs fully stateless in-cluster.
 
-Pick Miniflux if you prefer lightweight and fast. Pick FreshRSS if you want more features. Both are excellent.
+Deployed choice. FreshRSS remains the feature-rich alternative if your needs outgrow Miniflux.
 
 **Replaces:** Feedly, Inoreader, Google News.
 
@@ -333,7 +332,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Document Mgmt — Library Systems** | ⚪ Skip | Institutional use |
 | **E-Commerce** | ⚪ Skip | |
 | **Federated Identity / Auth** | 🔴 Authelia | See Part 2 |
-| **Feed Readers** | 🔴 FreshRSS or Miniflux | See Part 3 |
+| **Feed Readers** | 🔴 Miniflux | See Part 3 |
 | **File Transfer — Distributed FS** | ⚪ Skip | NFS already serves the cluster |
 | **File Transfer — Object Storage** | ✅ Garage (already deployed) | Runs on the NAS as the S3 backup target for etcd snapshots + Velero (R10); also available for Nextcloud external storage if needed |
 | **File Transfer — P2P** | ⚪ Skip | |
@@ -434,7 +433,7 @@ If starting fresh, add services in this sequence. AdGuard Home goes on the Pi Ze
 3.  Homepage                  (R20) → visual dashboard of what you're running
 4.  ntfy                      (R19) → notifications for everything that follows
 5.  Uptime Kuma               (R33) → status monitoring for your services
-6.  FreshRSS / Miniflux       (R21) → daily news/RSS replacement
+6.  Miniflux                  (R29) → daily news/RSS replacement
 7.  linkding                  (R22) → bookmark manager
 8.  Actual Budget             (R26) → financial tracking
 9.  Vikunja                   (R24) → task management
@@ -478,7 +477,7 @@ Until then, run the Arr stack on the cluster pointing at NFS — it works fine.
 | 🔴 High | AdGuard Home | ISP/Google DNS |
 | 🔴 High | Authelia | Per-app login friction |
 | 🔴 High | ntfy | Paid notification services |
-| 🔴 High | FreshRSS or Miniflux | Feedly, Google News |
+| 🔴 High | Miniflux | Feedly, Google News |
 | 🔴 High | linkding | Browser cloud bookmarks |
 | 🔴 High | Vikunja | Todoist, TickTick |
 | 🔴 High | Actual Budget | YNAB |

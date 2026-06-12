@@ -2,7 +2,7 @@
 
 These services follow the [app deployment pattern](apps-deploy-pattern.md) exactly — workload (Helm or raw), `SealedSecret`, an `HTTPRoute` on the shared Gateway, and Authelia. Instead of a full runbook each, this page records only the **per-app deltas** that feed the pattern, plus the one or two non-obvious gotchas. The deployed truth for each is `homelab-manifests/apps/<app>/`.
 
-Services with real deployment complexity keep their own runbook: a database (Nextcloud, Paperless, BookStack, Vikunja), multiple components (Arr stack, Reactive Resume), a non-cluster model (Immich, Home Assistant, Syncthing, Ollama), a non-HTTP service (RustDesk), config-heavy reference (Homepage), or auth backbones (Authelia, ntfy).
+Services with real deployment complexity keep their own runbook: a database (Nextcloud, Paperless, BookStack, Vikunja, Miniflux), multiple components (Arr stack, Reactive Resume), a non-cluster model (Immich, Home Assistant, Syncthing, Ollama), a non-HTTP service (RustDesk), config-heavy reference (Homepage), or auth backbones (Authelia, ntfy).
 
 !!! note "All images below are shown as the upstream repo — pin a specific tag"
     The source runbooks used `:latest`; pin an explicit version in the manifest and let Renovate bump it.
@@ -79,24 +79,6 @@ Shared chore and task tracker with OIDC login.
 **Gotchas**
 
 - Donetick needs the OAuth2 endpoints set **explicitly** (authorization / token / userinfo URLs), not just a discovery URL.
-
-## FreshRSS
-
-Self-hosted RSS/Atom feed aggregator with OIDC login.
-
-| Field | Value |
-|---|---|
-| Workload | raw manifests — `freshrss/freshrss` |
-| Namespace / hostname | `freshrss` / `rss.yourdomain.com` |
-| Service port | 80 |
-| Storage | `nfs-storage`, 2 Gi |
-| Secret keys | `OIDC_CLIENT_SECRET`, `OIDC_CLIENT_CRYPTO_KEY` |
-| Auth | OIDC client |
-
-**Gotchas**
-
-- OIDC callback **requires a trailing slash**.
-- Pick the correct authentication method **in the setup wizard** — choosing the wrong mode there can lock you out and is awkward to undo.
 
 ## Kavita
 
