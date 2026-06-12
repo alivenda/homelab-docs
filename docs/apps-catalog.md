@@ -2,7 +2,7 @@
 
 These services follow the [app deployment pattern](apps-deploy-pattern.md) exactly — workload (Helm or raw), `SealedSecret`, an `HTTPRoute` on the shared Gateway, and Authelia. Instead of a full runbook each, this page records only the **per-app deltas** that feed the pattern, plus the one or two non-obvious gotchas. The deployed truth for each is `homelab-manifests/apps/<app>/`.
 
-Services with real deployment complexity keep their own runbook: a database (Nextcloud, Paperless, BookStack), multiple components (Arr stack, Reactive Resume), a non-cluster model (Immich, Home Assistant, Syncthing, Ollama), a non-HTTP service (RustDesk), config-heavy reference (Homepage), or auth backbones (Authelia, ntfy).
+Services with real deployment complexity keep their own runbook: a database (Nextcloud, Paperless, BookStack, Vikunja), multiple components (Arr stack, Reactive Resume), a non-cluster model (Immich, Home Assistant, Syncthing, Ollama), a non-HTTP service (RustDesk), config-heavy reference (Homepage), or auth backbones (Authelia, ntfy).
 
 !!! note "All images below are shown as the upstream repo — pin a specific tag"
     The source runbooks used `:latest`; pin an explicit version in the manifest and let Renovate bump it.
@@ -187,21 +187,3 @@ Uptime monitoring with status pages and ntfy alerts.
 
 - **Do not use `nfs-storage`.** Uptime Kuma uses SQLite, which needs POSIX file locking; NFS doesn't provide it reliably and will corrupt the DB. Use `local-path` with `strategy: Recreate` (the volume mounts on a single node).
 - Notifications: Settings → Notifications → ntfy, server `https://ntfy.yourdomain.com`, topic `uptime`, auth = *Bearer token* (the `uptime-kuma` publisher token — see Runbook 19; the account is write-only on its own topic).
-
-## Vikunja
-
-To-do / task management with lists, labels, and OIDC login.
-
-| Field | Value |
-|---|---|
-| Workload | raw manifests — `vikunja/vikunja` |
-| Namespace / hostname | `vikunja` / `tasks.yourdomain.com` |
-| Service port | 3456 |
-| Storage | `nfs-storage` (files ~1 Gi + data ~2 Gi) |
-| Secret keys | `VIKUNJA_AUTH_OPENID_PROVIDERS_AUTHELIA_CLIENTSECRET` |
-| Auth | OIDC client |
-
-**Gotchas**
-
-- Redirect URI must match Vikunja's format (`…/auth/openid/authelia`, where `authelia` is the provider key).
-- Configure the provider with the Authelia OIDC **discovery** URL plus that provider key.
