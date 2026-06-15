@@ -36,7 +36,7 @@ Homepage's configuration is YAML — it belongs in git, not on a volume. There i
 
 - All nine config files ride in the ConfigMap.
 - The only path the image insists on writing (`/app/config/logs`) is an `emptyDir`.
-- Secrets, when widget tokens eventually land, ride a `SealedSecret` as `HOMEPAGE_VAR_*` env — never values in the ConfigMap.
+- Widget API tokens (the section below) ride a `SealedSecret` as `HOMEPAGE_VAR_*` env — never values in the ConfigMap.
 
 That buys three things. The Application can run `prune: true` (an accidental manifest drop costs one re-sync, not data). A rebuild is a re-sync — there is nothing to restore. And the velero gate **inverts**: instead of proving bytes were backed up, prove *nothing* is:
 
@@ -127,6 +127,9 @@ Homepage expects nine files under `/app/config`; **all nine must exist as Config
 
 The source of truth for *which* tiles exist is the cloudflare module's `var.services` plus the [App Catalog](apps-catalog.md) — if a subdomain has an A record, it gets a tile. `bookmarks.yaml` holds the external links (GitHub, Cloudflare dash, UniFi).
 
+!!! tip "Order widget-bearing tiles first within each group"
+    The `row` layout makes every tile in a row share the tallest tile's height. A widget tile (it carries a stats strip) is taller than a plain tile, so interleaving the two leaves gaps under the plain ones. Put the widget-bearing services at the **top of each group** and the plain tiles after; rows then come out even. Leave a comment saying so — "tidying" the list back into semantic order re-rags the grid.
+
 Icons resolve against the [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) set by bare filename. **Verify each name exists** (a typo renders a broken image, not an error) — the two non-obvious ones in this stack are `argo-cd.png` (not `argocd`) and `lldap.png` (not `ldap`).
 
 ## Deployment
@@ -199,34 +202,82 @@ rules:
 
 The ArgoCD `Application` uses client-side apply — **no `ServerSideApply=true`**: the Gateway controller defaults fields on the HTTPRoute after apply, and under SSA the predicted merge never matches the mutated live object, leaving the app permanently OutOfSync. Same as every other HTTPRoute app in the stack.
 
-## Widget API tokens — deferred, deliberately
+## Widget API tokens — seven live, the rest tile-only
 
-Homepage can decorate tiles with live per-service stats (Grafana, Forgejo, Paperless-ngx, Nextcloud, Immich, …), each needing an API token. None ship at bring-up, for two reasons:
+Homepage can decorate a tile with live per-service stats, each fed by an API token. The dashboard shipped tile-only and grew widgets one at a time — the rule for *whether* a service gets one is **only when a read-only-scopable token buys a stat you'll actually read**. Seven carry a widget today:
 
-1. **Don't mint a pile of tokens on day one.** Each is a per-service follow-up, added like ntfy's publisher accounts: one at a time, when wanted.
-2. **Widget requests originate server-side** — from the Homepage pod, with no Authelia session. Pointed at the public URL they'd bounce off ForwardAuth; each widget needs an in-cluster URL (`http://<svc>.<ns>.svc.cluster.local`) or a thought-through bypass, per service.
+| Widget | In-cluster endpoint | Stat it earns |
+|--------|--------------------|---------------|
+| Nextcloud | *public* URL (see below) | free space, users, files, shares |
+| Immich | `immich-nas.immich.svc:2283` | photo / video counts |
+| Paperless-ngx | `paperless.paperless.svc:8000` | documents, inbox |
+| Forgejo | `forgejo-http.forgejo.svc:3000` | repos, issues, PRs |
+| ArgoCD | `argocd-server.argocd.svc:80` | apps synced / out-of-sync / degraded |
+| Uptime Kuma | `uptime-kuma.uptime-kuma.svc:3001` | up / down (**keyless** — reads a public status page) |
+| ntfy | `ntfy.ntfy.svc` | unread count on the `alerts` topic |
 
-When one lands, the value rides a `SealedSecret` consumed as env, and the config references it by placeholder — `HOMEPAGE_VAR_XXX` env replaces `{{HOMEPAGE_VAR_XXX}}` in any config file:
+The other live services stay **tile-only on purpose** — the stat didn't earn a stored, rotatable credential:
+
+- **Grafana** — stateless here, so its UI users are wiped on every restart; the only durable credential is an *admin* service-account token. Storing admin creds to render a panel count fails the value-vs-blast-radius test.
+- **Home Assistant** — its long-lived access tokens cannot be scoped read-only; a widget token would be full control of the home.
+- **Plex** — the only stat is active-stream count, and streaming is local-only here. No remote value.
+- **Vikunja / Miniflux** — task and unread counts that duplicate what the apps surface themselves; not worth a per-app token.
+
+When in doubt, leave the tile plain.
+
+### Why in-cluster URLs (and Nextcloud's exception)
+
+Widget requests originate **server-side**, from the Homepage pod — which has no Authelia session. Pointed at a public `https://…yourdomain.com` URL they'd bounce off ForwardAuth (302 → login). So each widget targets the **in-cluster Service** (`http://<svc>.<ns>.svc.cluster.local:<port>`), reaching the app behind the proxy.
+
+**Nextcloud** is the exception: its `trusted_domains` rejects any Host but the public name, so its widget keeps the public URL — reachable only because Nextcloud's own check, not Authelia, gates that path.
+
+### The token plumbing
+
+Every token rides one `SealedSecret` (`homepage-widget-tokens`, namespace `homepage`) as a `HOMEPAGE_VAR_*` key; the Deployment pulls the lot in with `envFrom`, and the config references `{{HOMEPAGE_VAR_XXX}}` — Homepage substitutes the env at render.
 
 ```bash
-kubectl create secret generic homepage-env \
+kubectl create secret generic homepage-widget-tokens \
   --namespace homepage \
-  --from-literal=HOMEPAGE_VAR_GRAFANA_KEY=<service-account-token> \
+  --from-literal=HOMEPAGE_VAR_FORGEJO_TOKEN=<token> \
+  --from-literal=HOMEPAGE_VAR_PAPERLESS_TOKEN=<token> \
   --dry-run=client -o yaml \
   | kubeseal --controller-name=sealed-secrets-controller \
              --controller-namespace=sealed-secrets --format yaml \
-  > apps/homepage/manifests/sealed-env.yaml
+  > apps/homepage/manifests/sealed-widget-tokens.yaml
 ```
 
-…then add `envFrom: secretRef: homepage-env` to the Deployment.
-
-| Service | Where to get the key |
-|---------|---------------------|
-| Grafana | Administration → Service accounts → token |
+| Service | Where to get the token |
+|---------|------------------------|
 | Nextcloud | User Settings → Security → App passwords |
 | Paperless-ngx | Profile → API Auth Token |
 | Forgejo | User Settings → Applications → Generate Token |
 | Immich | Account Settings → API Keys |
+| ArgoCD | dedicated `readonly` account — see below |
+| ntfy | read-only `homepage` publisher — see below |
+
+!!! warning "Resealing re-nonces every key"
+    `kubeseal` re-encrypts *all* keys each run, so the whole file changes even when you touched one token — and since the secret carries every widget's token, you must have them all on hand. Store each in the password manager when you mint it. The repo's gitleaks pre-commit hook flags every `encryptedData` blob as a generic API key; clear each with a per-line fingerprint in `.gitleaksignore` rather than weakening the hook.
+
+!!! warning "A reseal needs a rollout restart — a config edit does not"
+    Widget *config* (URLs, fields) lives in the ConfigMap — a whole-dir mount, so it lands on the next page refresh, no restart. Widget *tokens* are env, read once at process start, so after merging a SealedSecret change you must `kubectl -n homepage rollout restart deployment homepage`.
+
+!!! danger "Don't restart into the propagation race"
+    Restarting the consumer *immediately* after merging a SealedSecret change races the sealed-secrets controller: the new pod can start **before** the controller has decrypted and written the plain Secret, so it loads stale creds and the widget 401s. Diagnose by comparing the pod's `startTime` against the Secret's write time (`kubectl get secret … -o jsonpath='{.metadata.managedFields[*].time}'`); the fix is to restart **again** once that write timestamp is in the past — not to reseal. (This bit both the ntfy and homepage rollouts.)
+
+### Two service-specific gotchas
+
+**ArgoCD** has no way to mint a non-expiring API token for `admin` — the built-in `admin` is password-only break-glass by design (asking for one returns `account 'admin' does not have apiKey capability`). Add a dedicated read-only account with the apiKey capability instead:
+
+```yaml
+# argocd-cm
+accounts.readonly: apiKey
+# argocd-rbac-cm  policy.csv
+g, readonly, role:readonly
+```
+
+then mint against `readonly`: with the CLI, `argocd account generate-token --account readonly`; with no CLI, two REST calls — `POST /api/v1/session` (admin creds) for a session JWT, then `POST /api/v1/account/readonly/token`. **Send the bodies as JSON** — curl's `-d` defaults to form-encoding, ArgoCD answers with a non-JSON error, and the outer `jq` chokes; add `-H 'Content-Type: application/json'`.
+
+**ntfy** widgets read the `alerts` topic, so the dashboard gets its own **read-only** publisher: a `homepage` user (bcrypt hash in the configmap — committable) with `homepage:alerts:ro` access, plus a `tk_…` token in the token SealedSecret. ntfy reads users and tokens only at startup, and provisioning a user doesn't change the Deployment spec — so it won't auto-roll; `kubectl -n ntfy rollout restart deployment ntfy` after merge. (See [Runbook 19 — ntfy](19-ntfy.md) for the provisioning model.)
 
 ## Verification
 
@@ -239,6 +290,7 @@ kubectl create secret generic homepage-env \
 - [ ] `https://homepage.yourdomain.com` redirects unauthenticated requests to Authelia; after login the dashboard renders. Repeat for **both** users.
 - [ ] Spot-check tiles — including the newest services — land on the right URLs.
 - [ ] Kubernetes widget shows live cluster CPU/memory and all four nodes (data, not spinners).
+- [ ] All seven service widgets render live numbers, not an error or a spinner — a 401/timeout means a wrong token, the public-vs-in-cluster URL, or the [propagation race](#widget-api-tokens-seven-live-the-rest-tile-only).
 - [ ] No RBAC 403s in the pod log:
 
     ```bash
