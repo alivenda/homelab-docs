@@ -434,7 +434,7 @@ If starting fresh, add services in this sequence. AdGuard Home goes on the Pi Ze
 4.  ntfy                      (R19) → notifications for everything that follows
 5.  Uptime Kuma               (R33) → status monitoring for your services
 6.  Miniflux                  (R29) → daily news/RSS replacement
-7.  linkding                  (R22) → bookmark manager
+7.  linkding              (catalog) → bookmark manager
 8.  Actual Budget             (R26) → financial tracking
 9.  Vikunja                   (R24) → task management
 10. Donetick                  (R25) → recurring chores and habits

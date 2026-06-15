@@ -103,18 +103,22 @@ Bookmark manager with a browser extension and OIDC login.
 
 | Field | Value |
 |---|---|
-| Workload | raw manifests — `sissbruecker/linkding` |
+| Workload | raw manifests — `sissbruecker/linkding` (standard variant) |
 | Namespace / hostname | `linkding` / `bookmarks.yourdomain.com` |
 | Service port | 9090 |
-| Storage | `nfs-storage`, 1 Gi |
+| Storage | `local-path`, 2 Gi — SQLite + favicons/previews under `/etc/linkding/data`; **not** NFS (corrupts SQLite) |
 | Secret keys | `OIDC_RP_CLIENT_SECRET`, `LD_SUPERUSER_PASSWORD` |
 | Auth | OIDC client (own user system — **not** ForwardAuth) |
 
 **Gotchas**
 
-- OIDC callback **requires a trailing slash**: `https://bookmarks.yourdomain.com/oidc/callback/`.
-- Enable OIDC via env (`LD_ENABLE_OIDC=True`, the `OIDC_OP_*` endpoint URLs, `OIDC_USE_PKCE=True`). The `admin` superuser remains as a local-login fallback.
-- For the browser extension, generate an API token in the UI (Profile → API token) after first login.
+- Use the **standard** image variant, not `-plus` — `-plus` bundles Chromium for HTML snapshot archiving, far too heavy for Pi-class nodes.
+- linkding cannot detect a TLS-terminating proxy, so the OIDC `redirect_uri` goes out as `http://` and the provider rejects it ([linkding#1366](https://github.com/sissbruecker/linkding/issues/1366)). No env option exists; mount a one-line settings override (the image ships `bookmarks/settings/custom.py` as a placeholder that `prod.py` star-imports last) via ConfigMap `subPath`: `SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")`.
+- OIDC is mozilla-django-oidc: **no discovery** — set all four `OIDC_OP_*` endpoint URLs explicitly. The callback **requires a trailing slash** (`https://bookmarks.yourdomain.com/oidc/callback/`), PKCE is on by default (S256), and the token request carries the secret in the POST body — the Authelia client needs `token_endpoint_auth_method: 'client_secret_post'`, not `client_secret_basic`.
+- Set `OIDC_USERNAME_CLAIM=preferred_username` — the default (`email`) turns usernames into full email addresses. Accounts auto-create on first login as regular users; the `admin` superuser remains as a local-login fallback (flip `LD_DISABLE_LOGIN_FORM=True` once the round-trip is verified).
+- Setting `HOST_NAME` makes Django's `ALLOWED_HOSTS` strict — kubelet probes to `/health` must then send an explicit `Host:` header.
+- No metrics endpoint — no ServiceMonitor.
+- For the browser extension, generate the API token in the UI (Settings → Integrations) after first login.
 
 ## Mealie
 
