@@ -249,7 +249,7 @@ Privacy-first alternative to Google Timeline. Import your existing Google Locati
 
 
 ### 🟡 Chore + Habit Tracker — Donetick
-**Category:** Miscellaneous / Task Management | **Run:** 🖥️ Cluster | **RAM:** ~100 MB | **ARM64:** Verify with `docker manifest inspect` | **Runbook:** [App Catalog](apps-catalog.md#donetick)
+**Category:** Miscellaneous / Task Management | **Run:** 🖥️ Cluster | **RAM:** ~100 MB | **ARM64:** ✅ (v0.1.75 multi-arch) | **Runbook:** [App Catalog](apps-catalog.md#donetick)
 
 Recurring task scheduler built around "due X days after last completion" rather than fixed calendar dates. Scheduling, family sharing, REST API + webhooks, and a native Home Assistant integration. Lightweight Go binary.
 
