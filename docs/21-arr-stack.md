@@ -1,115 +1,148 @@
 # Runbook 21: Arr Stack
 
-Media automation: Sonarr, Radarr, Lidarr, Prowlarr, Seerr, and qBittorrent.
+Media automation: **Prowlarr** (indexer manager), **Sonarr** (TV), **Radarr**
+(films), **Lidarr** (music), **qBittorrent** behind a **gluetun** VPN, and
+**Seerr** (the request UI). The stack runs on the cluster and feeds **Plex**,
+which runs on the NAS.
 
 | | |
 |---|---|
 | **Difficulty** | Intermediate |
-| **Time Estimate** | 2–3 hours |
-| **Runs On** | k3s (cluster) — see NAS migration note |
-| **Depends On** | Runbook 5 (k3s), Runbook 6 (Traefik), Runbook 18 (Authelia — ForwardAuth) |
+| **Runs On** | k3s (cluster); media + Plex on the NAS |
+| **Depends On** | R5 (k3s), R6 (Traefik Gateway + wildcard TLS), R18 (Authelia — ForwardAuth), R8 (Cloudflare DNS), a VPN provider account |
 
-The arr stack automates downloading and organising TV shows, films, and music. Prowlarr indexes torrent trackers and Usenet indexers in one place; Sonarr/Radarr/Lidarr handle search and post-processing; qBittorrent is the download client; Seerr provides a Plex-integrated request interface. ARM64 ✅ (all LinuxServer.io images ship ARM64). See the [Servarr documentation](https://wiki.servarr.com) for full reference.
+!!! note "Source of truth is the manifest"
+    The deployed state lives in `homelab-manifests/apps/arr/manifests/` and
+    `bootstrap/arr.yaml`. This runbook is the *reasoning and the procedure*; it
+    shows the non-obvious YAML (the VPN sidecar, the NFS PV, the ForwardAuth
+    wiring) but doesn't restate every Deployment. The app's `README.md` is the
+    operational companion.
 
-**Auth mode:** Authelia ForwardAuth protects all arr services — they have no meaningful OIDC support and their API keys are used by integrations, not users.
+## What it is
 
-## Hardlink note — read before deploying
+Prowlarr indexes torrent trackers / Usenet indexers in one place and pushes them
+to the others. Sonarr/Radarr/Lidarr do search, grab, and post-processing.
+qBittorrent downloads. Seerr is the Plex-integrated request portal — the one
+surface non-admin users touch. All LinuxServer.io images ship **arm64** ✅.
 
-The Servarr wiki's strongest recommendation is a **unified `/data` layout** where download client and media library share the same filesystem path. This allows atomic hardlink renames instead of slow copy+delete operations.
-
-**Current state (8 GB NAS RAM):** arr apps run on the cluster via a single NFS mount. Hardlinks require that source and destination live on the same filesystem — since the cluster mounts `/data` over NFS, moves from `/data/downloads` to `/data/media` cross a network boundary and are done as copy+delete. This works but doubles NAS I/O during post-processing.
-
-**After 16 GB NAS RAM upgrade:** move the entire arr stack to NAS Docker Compose with both the download client and Plex sharing the same local filesystem. This enables native hardlinks and eliminates the double-copy. Each app's runbook section notes when this matters.
-
-## Step 1: Shared Infrastructure
-
-All arr apps use the same NFS PVC structure. Create the namespace and the shared volumes first.
-
-Create `homelab-manifests/apps/arr/namespace.yaml`:
-
-```yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: arr
+```
+Seerr ──requests──▶ Sonarr/Radarr/Lidarr ──grab via──▶ Prowlarr ──▶ indexers
+                              │                                │
+                              └────── add to ──▶ qBittorrent ──┘ (through gluetun VPN)
+                                          │
+                       hardlink completed download into the Plex library
+                                          │
+                                        Plex (NAS) ──streams──▶ you
 ```
 
-Create `homelab-manifests/apps/arr/pvcs.yaml`. Each app gets its own config PVC; media paths are shared via NFS:
+**Auth:** Authelia **ForwardAuth** protects every arr UI — they have no
+meaningful SSO and their API keys are for integrations, not users. Seerr is the
+exception: it has its own Plex login and stays unauthenticated.
 
-```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: sonarr-config
-  namespace: arr
-spec:
-  accessModes: [ReadWriteOnce]
-  storageClassName: nfs-storage
-  resources:
-    requests:
-      storage: 1Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: radarr-config
-  namespace: arr
-spec:
-  accessModes: [ReadWriteOnce]
-  storageClassName: nfs-storage
-  resources:
-    requests:
-      storage: 1Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: lidarr-config
-  namespace: arr
-spec:
-  accessModes: [ReadWriteOnce]
-  storageClassName: nfs-storage
-  resources:
-    requests:
-      storage: 1Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: prowlarr-config
-  namespace: arr
-spec:
-  accessModes: [ReadWriteOnce]
-  storageClassName: nfs-storage
-  resources:
-    requests:
-      storage: 1Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: qbittorrent-config
-  namespace: arr
-spec:
-  accessModes: [ReadWriteOnce]
-  storageClassName: nfs-storage
-  resources:
-    requests:
-      storage: 1Gi
+## Architecture decisions (read before deploying)
+
+This runbook was rewritten against the live deployment; earlier revisions had
+several traps now corrected.
+
+### Storage — `/config` and `/data` go to different tiers
+
+The single most important decision. Each app has **two** kinds of state:
+
+- **`/config` (SQLite) → `local-path`.** Every Servarr app and Seerr keeps an
+  embedded SQLite DB in `/config` (`sonarr.db`, `radarr.db`, …, Seerr's
+  `db/db.sqlite3`). **SQLite corrupts on NFS** — the
+  [Servarr wiki FAQ](https://wiki.servarr.com/sonarr/faq) is explicit: *"a common
+  cause of database corruption is putting the database on a network share… the
+  AppData folder must be on local storage."* So `/config` uses the node-local
+  `local-path` class, pinned to the app-state node (emerald) with
+  `nodeSelector: app-state=true` + `strategy: Recreate`. **An earlier revision
+  put every `/config` on `nfs-storage` — that was wrong** and is the same trap
+  documented for linkding / Actual Budget / Donetick. See
+  [Storage & Data Architecture](storage-architecture.md).
+- **`/data` (downloads + media) → one RWX NFS export on the NAS.** Bulk media is
+  TB-scale and Plex reads it locally on the NAS, so the media library lives on
+  the NAS 6-bay array, exported over NFS to the cluster — **not** on the topaz
+  `nfs-storage` SSD. It's a *static* `PersistentVolume` (`pv-data.yaml`) bound
+  1:1 to its PVC by `claimRef`, distinct from the dynamic `nfs-storage` class.
+
+### Hardlinks need one filesystem
+
+The Servarr wiki's strongest recommendation is a **unified `/data` layout**:
+downloads and the library under a single root so completed grabs are *hardlinked*
+into place (a second directory entry for the same inode — instant, no bytes
+copied, keeps seeding) instead of copy+delete. That requires `downloads/` and
+`media/` to be **siblings on one filesystem**, so they share one NFS export and
+each app mounts it at `/data`:
+
+```
+/data/
+├── downloads/      ← qBittorrent
+└── media/
+    ├── tv/         ← Sonarr
+    ├── movies/     ← Radarr
+    └── music/      ← Lidarr
 ```
 
-### NFS volume for data
+NFS supports `link()`, so hardlinks work across this export with the apps on the
+cluster and Plex on the NAS reading the same files locally. (A future move of the
+whole stack to NAS-side Docker would make hardlinks node-local with no NFS hop —
+an optimisation, not a requirement; see the end of this runbook.)
 
-All arr apps and the download client mount a **single NFS export** as `/data`. Downloads land under `/data/downloads/` and the media library lives under `/data/media/`. Sharing one filesystem root is what makes hardlinks possible — on the cluster the files are still copied (NFS boundary), but when you migrate to NAS Docker after the RAM upgrade, both qBittorrent and Plex will use the same local filesystem and the hardlinks work natively.
+### Download client routes through a VPN
 
-Create the NAS directory layout first (SSH into the NAS):
+qBittorrent runs with a **gluetun** sidecar in the same pod. gluetun brings up a
+WireGuard/OpenVPN tunnel and a kill-switch; both containers share the pod network
+namespace, so **all** of qBittorrent's traffic exits via the VPN and nothing
+leaks to the home WAN IP if the tunnel drops. This replaces R21's original
+no-VPN qBittorrent.
 
-```bash
-mkdir -p /volume1/data/downloads/{movies,tv,music}
-mkdir -p /volume1/data/media/{movies,tv,music}
-```
+### Manifests + Application layout
 
-Create `homelab-manifests/apps/arr/pv-data.yaml`:
+Raw manifests in `apps/arr/manifests/` (one `Deployment`+`Service` per app, the
+shared PVCs, the NFS PV, the `Middleware`, the `HTTPRoute`s, the gluetun
+`SealedSecret`), driven by a single ArgoCD `Application` (`bootstrap/arr.yaml`)
+with `prune: false` and **no ServerSideApply** (the Gateway controller mutates
+the HTTPRoutes post-apply → SSA causes permanent OutOfSync). This replaces the
+old loose `apps/arr/*.yaml`.
+
+### Pinned, arm64 images
+
+`:latest` is never used. Verified multi-arch tags at the 2026-06 bring-up:
+
+| Component | Image |
+|---|---|
+| Prowlarr | `lscr.io/linuxserver/prowlarr:version-2.4.0.5397` |
+| Sonarr | `lscr.io/linuxserver/sonarr:version-4.0.17.2952` |
+| Radarr | `lscr.io/linuxserver/radarr:version-6.2.1.10461` |
+| Lidarr | `lscr.io/linuxserver/lidarr:version-3.1.0.4875` |
+| qBittorrent | `lscr.io/linuxserver/qbittorrent:version-5.2.2_v2.0.13` |
+| Seerr | `seerr/seerr:v3.3.0` |
+| gluetun | `qmcgaw/gluetun:v3.41.1` |
+
+!!! note "Seerr is real — and the right choice"
+    [Seerr](https://github.com/seerr-team/seerr) (`seerr-team/seerr`) is the
+    **official merge of Overseerr and Jellyseerr**; both predecessors are now
+    deprecated in its favour. It ships arm64, listens on 5055, stores config in
+    `/app/config`. No need to fall back to Jellyseerr.
+
+`TZ=Etc/UTC` everywhere (was Europe/London). All LinuxServer apps take
+`PUID=1000`, `PGID=1000`, `UMASK=022`.
+
+## Step 1 — NAS NFS export (prerequisite)
+
+On the NAS (`10.0.20.50`):
+
+1. Create the unified layout above under one shared folder (e.g.
+   `/volume1/data`), `downloads/` and `media/{tv,movies,music}` as siblings.
+2. Export it over NFS to the four node IPs `10.0.20.10-13` (Lab VLAN),
+   read-write, mapping/allowing **UID/GID 1000** so the apps can write.
+3. Set `spec.nfs.path` in `pv-data.yaml` to the **actual** export path (the
+   committed `/volume1/data` is the documented default — confirm it against your
+   UGOS layout).
+4. In Plex, add libraries from the local paths
+   `/volume1/data/media/{tv,movies,music}`.
+
+The static PV (illustrative — full file in the repo):
 
 ```yaml
 apiVersion: v1
@@ -117,454 +150,134 @@ kind: PersistentVolume
 metadata:
   name: arr-data
 spec:
-  capacity:
-    storage: 2Ti
+  capacity: { storage: 4Ti }     # nominal; NFS enforces no quota here
   accessModes: [ReadWriteMany]
-  nfs:
-    server: <nas-ip>
-    path: /volume1/data
   persistentVolumeReclaimPolicy: Retain
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: arr-data
-  namespace: arr
-spec:
-  accessModes: [ReadWriteMany]
   storageClassName: ""
-  volumeName: arr-data
-  resources:
-    requests:
-      storage: 2Ti
+  mountOptions: [nfsvers=4.1]
+  nfs:
+    server: 10.0.20.50
+    path: /volume1/data          # confirm against the NAS
+  claimRef: { namespace: arr, name: arr-data }
 ```
 
-## Step 2: qBittorrent
+## Step 2 — VPN credentials (gluetun)
 
-Create `homelab-manifests/apps/arr/qbittorrent.yaml`:
+qBittorrent's traffic is useless (and unsafe) without the tunnel, so the
+`gluetun-secrets` SealedSecret is a hard prerequisite. Until it's resealed with
+real values the qbittorrent pod stays Pending. Capture values into shell vars and
+seal (WireGuard example; adjust per provider):
+
+```fish
+set GLUETUN_PROVIDER 'your-provider'           # mullvad, protonvpn, pia, …
+set GLUETUN_WG_KEY   'your-wireguard-private-key'
+set GLUETUN_WG_ADDR  'your-wireguard-address'  # e.g. 10.2.0.2/32
+set GLUETUN_COUNTRY  'Netherlands'
+
+kubectl create secret generic gluetun-secrets --namespace arr \
+  --from-literal=VPN_SERVICE_PROVIDER="$GLUETUN_PROVIDER" \
+  --from-literal=VPN_TYPE=wireguard \
+  --from-literal=WIREGUARD_PRIVATE_KEY="$GLUETUN_WG_KEY" \
+  --from-literal=WIREGUARD_ADDRESSES="$GLUETUN_WG_ADDR" \
+  --from-literal=SERVER_COUNTRIES="$GLUETUN_COUNTRY" \
+  --dry-run=client -o yaml \
+  | kubeseal --controller-name=sealed-secrets-controller \
+             --controller-namespace=sealed-secrets --format yaml \
+  > apps/arr/manifests/gluetun-sealed.yaml
+```
+
+OpenVPN providers use `VPN_TYPE=openvpn` + `OPENVPN_USER`/`OPENVPN_PASSWORD`. For
+inbound peer connectivity add `VPN_PORT_FORWARDING=on` (PIA/ProtonVPN). Save the
+plaintext to Vaultwarden; add the gitleaks fingerprints to `.gitleaksignore`.
+
+### The sidecar networking gotcha
+
+gluetun blocks everything by default and owns the pod netns, so the qBittorrent
+WebUI is unreachable unless you punch two holes:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: qbittorrent
-  namespace: arr
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: qbittorrent
-  template:
-    metadata:
-      labels:
-        app: qbittorrent
-    spec:
-      containers:
-        - name: qbittorrent
-          image: lscr.io/linuxserver/qbittorrent:latest
-          ports:
-            - containerPort: 8080
-            - containerPort: 6881
-            - containerPort: 6881
-              protocol: UDP
-          env:
-            - name: PUID
-              value: "1000"
-            - name: PGID
-              value: "1000"
-            - name: TZ
-              value: Europe/London
-            - name: WEBUI_PORT
-              value: "8080"
-          volumeMounts:
-            - name: config
-              mountPath: /config
-            - name: data
-              mountPath: /data
-      volumes:
-        - name: config
-          persistentVolumeClaim:
-            claimName: qbittorrent-config
-        - name: data
-          persistentVolumeClaim:
-            claimName: arr-data
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: qbittorrent
-  namespace: arr
-spec:
-  selector:
-    app: qbittorrent
-  ports:
-    - name: webui
-      port: 8080
-      targetPort: 8080
+# gluetun container env
+- { name: FIREWALL_INPUT_PORTS,     value: "8080" }                       # WebUI inbound
+- { name: FIREWALL_OUTBOUND_SUBNETS, value: "10.42.0.0/16,10.43.0.0/16" } # pod+svc CIDRs
 ```
 
-## Step 3: Prowlarr
+`FIREWALL_OUTBOUND_SUBNETS` lets Sonarr/Radarr/Lidarr and Traefik reach
+`qbittorrent:8080`; without it the HTTPRoute 502s and download-client tests fail.
+gluetun needs `securityContext.capabilities.add: [NET_ADMIN]` (it creates
+`/dev/net/tun` itself and falls back to wireguard-go — no host device mount or
+kernel module on the CM4s). Its `livenessProbe` runs gluetun's own healthcheck so
+a dead tunnel restarts the sidecar and re-arms the kill-switch.
 
-Create `homelab-manifests/apps/arr/prowlarr.yaml`:
+## Step 3 — Auth (ForwardAuth)
+
+One `authelia-forwardauth` Middleware in the `arr` namespace; each protected
+HTTPRoute references it with an `ExtensionRef` filter (the
+[deploy-pattern recipe](apps-deploy-pattern.md#forwardauth-authelia-gates-the-app-at-the-proxy)).
+The route fails closed. **Seerr's HTTPRoute carries no filter.**
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: prowlarr
-  namespace: arr
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: prowlarr
-  template:
-    metadata:
-      labels:
-        app: prowlarr
-    spec:
-      containers:
-        - name: prowlarr
-          image: lscr.io/linuxserver/prowlarr:latest
-          ports:
-            - containerPort: 9696
-          env:
-            - name: PUID
-              value: "1000"
-            - name: PGID
-              value: "1000"
-            - name: TZ
-              value: Europe/London
-          volumeMounts:
-            - name: config
-              mountPath: /config
-      volumes:
-        - name: config
-          persistentVolumeClaim:
-            claimName: prowlarr-config
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: prowlarr
-  namespace: arr
-spec:
-  selector:
-    app: prowlarr
-  ports:
-    - port: 9696
-      targetPort: 9696
+# every arr route except seerr:
+rules:
+  - filters:
+      - type: ExtensionRef
+        extensionRef: { group: traefik.io, kind: Middleware, name: authelia-forwardauth }
+    backendRefs:
+      - { name: sonarr, port: 8989 }
 ```
 
-## Step 4: Sonarr, Radarr, Lidarr
+## Step 4 — DNS
 
-All three follow the same pattern — the only differences are image name, port, and config PVC. Create `homelab-manifests/apps/arr/sonarr.yaml`:
+Add the subdomains to `var.services` in the Cloudflare module and `tofu apply`
+**before** they'll resolve (one A record each at the Traefik LB):
+`sonarr`, `radarr`, `lidarr`, `prowlarr`, `qbt`, `requests`.
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: sonarr
-  namespace: arr
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: sonarr
-  template:
-    metadata:
-      labels:
-        app: sonarr
-    spec:
-      containers:
-        - name: sonarr
-          image: lscr.io/linuxserver/sonarr:latest
-          ports:
-            - containerPort: 8989
-          env:
-            - name: PUID
-              value: "1000"
-            - name: PGID
-              value: "1000"
-            - name: TZ
-              value: Europe/London
-          volumeMounts:
-            - name: config
-              mountPath: /config
-            - name: data
-              mountPath: /data
-      volumes:
-        - name: config
-          persistentVolumeClaim:
-            claimName: sonarr-config
-        - name: data
-          persistentVolumeClaim:
-            claimName: arr-data
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: sonarr
-  namespace: arr
-spec:
-  selector:
-    app: sonarr
-  ports:
-    - port: 8989
-      targetPort: 8989
-```
+## Step 5 — Deploy
 
-Duplicate the above for **Radarr** (port 7878, image `linuxserver/radarr`, config PVC `radarr-config`) and **Lidarr** (port 8686, image `linuxserver/lidarr`, config PVC `lidarr-config`). All three share the same `arr-data` PVC.
+Commit `apps/arr/` + `bootstrap/arr.yaml` via a branch/PR and let ArgoCD sync.
+The app won't go fully Healthy until Step 1 (NAS export) and Step 2 (gluetun
+secret) are done.
 
-## Step 5: Seerr (Request Interface)
+## Step 6 — First-run wiring
 
-[Seerr](https://github.com/seerr-team/seerr) is the actively maintained successor to Jellyseerr and Overseerr. It integrates with Plex for library awareness and lets users request new content. Create `homelab-manifests/apps/arr/seerr.yaml`:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: seerr
-  namespace: arr
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: seerr
-  template:
-    metadata:
-      labels:
-        app: seerr
-    spec:
-      containers:
-        - name: seerr
-          image: seerr/seerr:latest
-          ports:
-            - containerPort: 5055
-          volumeMounts:
-            - name: config
-              mountPath: /app/config
-      volumes:
-        - name: config
-          persistentVolumeClaim:
-            claimName: seerr-config
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: seerr
-  namespace: arr
-spec:
-  selector:
-    app: seerr
-  ports:
-    - port: 5055
-      targetPort: 5055
-```
-
-Add a `seerr-config` entry to `pvcs.yaml` (1 Gi, nfs-storage).
-
-## Step 6: HTTPRoutes
-
-Create `homelab-manifests/apps/arr/httproutes.yaml`. All arr UIs except Seerr are protected by Authelia ForwardAuth — under the Gateway API the `Middleware` lives in the `arr` namespace and each protected route references it with an `ExtensionRef` filter (see [Deploying an App](apps-deploy-pattern.md)). TLS is handled by the Gateway's wildcard cert.
-
-```yaml
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: authelia-forwardauth
-  namespace: arr
-spec:
-  forwardAuth:
-    address: http://authelia.authelia.svc.cluster.local:9091/api/authz/forward-auth
-    trustForwardHeader: true
-    authResponseHeaders: [Remote-User, Remote-Groups, Remote-Name, Remote-Email]
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: sonarr
-  namespace: arr
-spec:
-  parentRefs:
-    - name: traefik
-      namespace: traefik
-      sectionName: websecure
-  hostnames:
-    - sonarr.yourdomain.com
-  rules:
-    - filters:
-        - type: ExtensionRef
-          extensionRef:
-            group: traefik.io
-            kind: Middleware
-            name: authelia-forwardauth
-      backendRefs:
-        - name: sonarr
-          port: 8989
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: radarr
-  namespace: arr
-spec:
-  parentRefs:
-    - name: traefik
-      namespace: traefik
-      sectionName: websecure
-  hostnames:
-    - radarr.yourdomain.com
-  rules:
-    - filters:
-        - type: ExtensionRef
-          extensionRef:
-            group: traefik.io
-            kind: Middleware
-            name: authelia-forwardauth
-      backendRefs:
-        - name: radarr
-          port: 7878
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: lidarr
-  namespace: arr
-spec:
-  parentRefs:
-    - name: traefik
-      namespace: traefik
-      sectionName: websecure
-  hostnames:
-    - lidarr.yourdomain.com
-  rules:
-    - filters:
-        - type: ExtensionRef
-          extensionRef:
-            group: traefik.io
-            kind: Middleware
-            name: authelia-forwardauth
-      backendRefs:
-        - name: lidarr
-          port: 8686
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: prowlarr
-  namespace: arr
-spec:
-  parentRefs:
-    - name: traefik
-      namespace: traefik
-      sectionName: websecure
-  hostnames:
-    - prowlarr.yourdomain.com
-  rules:
-    - filters:
-        - type: ExtensionRef
-          extensionRef:
-            group: traefik.io
-            kind: Middleware
-            name: authelia-forwardauth
-      backendRefs:
-        - name: prowlarr
-          port: 9696
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: qbittorrent
-  namespace: arr
-spec:
-  parentRefs:
-    - name: traefik
-      namespace: traefik
-      sectionName: websecure
-  hostnames:
-    - qbt.yourdomain.com
-  rules:
-    - filters:
-        - type: ExtensionRef
-          extensionRef:
-            group: traefik.io
-            kind: Middleware
-            name: authelia-forwardauth
-      backendRefs:
-        - name: qbittorrent
-          port: 8080
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: seerr
-  namespace: arr
-spec:
-  parentRefs:
-    - name: traefik
-      namespace: traefik
-      sectionName: websecure
-  hostnames:
-    - request.yourdomain.com
-  rules:
-    - backendRefs:
-        - name: seerr
-          port: 5055
-```
-
-!!! note "Seerr has no Authelia middleware"
-    Seerr has its own login system and is meant to be shared with other users (Plex-authenticated). Leave it without Authelia ForwardAuth so Plex users can access it directly.
-
-Commit all manifests to `homelab-manifests/apps/arr/` and let ArgoCD sync.
-
-## Step 7: Initial Configuration
-
-### qBittorrent
-
-Open `https://qbt.yourdomain.com`. Default credentials are `admin` / `adminadmin`. Change the password immediately in Settings → Web UI. Set download path to `/data/downloads`.
-
-### Prowlarr
-
-Open `https://prowlarr.yourdomain.com`. Go to **Settings → Indexers → Add Indexer** and configure your torrent trackers and Usenet indexers. Then go to **Settings → Apps** and add Sonarr, Radarr, and Lidarr using their cluster-internal URLs:
-
-| App | Internal URL |
-|-----|-------------|
-| Sonarr | `http://sonarr.arr.svc.cluster.local:8989` |
-| Radarr | `http://radarr.arr.svc.cluster.local:7878` |
-| Lidarr | `http://lidarr.arr.svc.cluster.local:8686` |
-
-### Sonarr / Radarr / Lidarr
-
-In each app:
-1. **Settings → Media Management** — set your media root folder to `/data/media/tv` (Sonarr), `/data/media/movies` (Radarr), `/data/media/music` (Lidarr).
-2. **Settings → Download Clients → Add** — add qBittorrent at `http://qbittorrent.arr.svc.cluster.local:8080`.
-3. Prowlarr will automatically push indexer configs once connected.
-
-### Seerr
-
-Open `https://request.yourdomain.com` and follow the setup wizard. Connect your Plex server and the arr apps using their cluster-internal URLs. Plex users can now request content from the Seerr interface.
-
-## NAS migration (after 16 GB RAM upgrade)
-
-Once the NAS has 16 GB RAM, migrate the arr stack off the cluster for native hardlinks:
-
-1. Stop all arr deployments in k3s.
-2. Copy config directories from the NFS PVCs to NAS local storage.
-3. Create a `docker-compose.yml` on the NAS following the Servarr unified `/data` layout.
-4. Delete the k3s deployments and Ingresses (keep the PVCs until the migration is verified).
-5. Expose the NAS arr UIs through Traefik by fronting each with a selector-less `Service` + `EndpointSlice` pointing at the NAS IP, then an `HTTPRoute` (the same pattern Immich uses — see [Deploying an App](apps-deploy-pattern.md)). Re-create the Authelia ForwardAuth `Middleware` in that namespace too.
+1. **qBittorrent password** — the image prints a *random temporary* admin
+   password to its logs on first start:
+   `kubectl -n arr logs deploy/qbittorrent -c qbittorrent | grep -i password`.
+   Log in at `https://qbt.alivenda.dev`, set a permanent one (Settings → Web UI),
+   save to Vaultwarden, set the save path to `/data/downloads`.
+2. **Prowlarr → apps** — Settings → Apps; add each with its in-cluster URL +
+   API key: `http://sonarr.arr.svc.cluster.local:8989`,
+   `http://radarr.arr.svc.cluster.local:7878`,
+   `http://lidarr.arr.svc.cluster.local:8686`.
+3. **Download client** — in each arr app, Settings → Download Clients → add
+   qBittorrent at `http://qbittorrent.arr.svc.cluster.local:8080`.
+4. **Root folders** — Sonarr `/data/media/tv`, Radarr `/data/media/movies`,
+   Lidarr `/data/media/music`; confirm "Use Hardlinks instead of Copy" is on.
+5. **Seerr** — at `https://requests.alivenda.dev` run the wizard, connect Plex
+   and the arr apps (same in-cluster URLs + API keys).
+6. Save every app's API key to Vaultwarden.
 
 ## Verification
 
-- [ ] All arr pods Running:
+- [ ] `kubectl get pods -n arr` — all Running (qbittorrent has 2/2: gluetun + app).
+- [ ] ArgoCD shows `arr` Synced / Healthy.
+- [ ] Each UI serves over the wildcard cert; the five arr UIs **challenge with
+      Authelia** before loading; `requests.alivenda.dev` loads without it.
+- [ ] gluetun's public IP is the VPN's, not home:
+      `kubectl -n arr exec deploy/qbittorrent -c gluetun -- wget -qO- https://ipinfo.io/ip`.
+- [ ] Prowlarr → Settings → Apps shows Sonarr/Radarr/Lidarr **connected**.
+- [ ] A test grab completes and lands (hardlinked) in the right
+      `/data/media/<type>` folder; Plex sees it.
+- [ ] Seerr wizard completes; the Plex library appears in Seerr.
+- [ ] `PodVolumeBackup` for each `config` volume shows **bytes > 0** after the
+      04:00 UTC velero run (not just `Completed`).
+- [ ] All API keys + the qBittorrent password + the VPN config in Vaultwarden.
 
-    ```bash
-    kubectl get pods -n arr
-    ```
+## Optional future — move the stack to the NAS
 
-- [ ] All web UIs accessible and protected by Authelia.
-- [ ] Prowlarr shows connected status in Settings → Apps for Sonarr, Radarr, and Lidarr.
-- [ ] A test download completes and the file appears in the correct media folder.
-- [ ] Seerr setup wizard completes; Plex library appears in Seerr.
-- [ ] All app API keys saved to Vaultwarden.
+If you later run the arr stack in NAS-side Docker (e.g. after a NAS RAM upgrade),
+hardlinks become node-local with no NFS hop. Stop the cluster Deployments, copy
+the `local-path` configs to NAS local storage, recreate the unified `/data`
+layout in a compose file, and front each NAS UI through Traefik with a
+selector-less `Service` + `EndpointSlice` (the Immich pattern), re-creating the
+ForwardAuth `Middleware` in that namespace. Not required — the cluster + NFS
+design above works today.
