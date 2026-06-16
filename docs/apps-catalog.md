@@ -74,20 +74,49 @@ Online office suite (CODE) — the editing backend for Nextcloud.
 
 ## Donetick
 
-Shared chore and task tracker with OIDC login.
+Recurring chores & habits tracker with OIDC login (single Go binary serving the
+React PWA + API). Verified against **v0.1.75** (latest stable; newer tags are
+`v0.1.76-beta.*`), `linux/arm64` confirmed.
 
 | Field | Value |
 |---|---|
-| Workload | raw manifests — `donetick/donetick` |
+| Workload | raw manifests — `donetick/donetick:v0.1.75` |
 | Namespace / hostname | `donetick` / `chores.yourdomain.com` |
 | Service port | 2021 |
-| Storage | `nfs-storage`, 1 Gi |
-| Secret keys | `JWT_SECRET`, OAuth client secret |
-| Auth | OIDC client |
+| Storage | `local-path`, 2 Gi, app-state node — SQLite (**not** `nfs-storage`) |
+| Config | ConfigMap `selfhosted.yaml` subPath-mounted at `/config/selfhosted.yaml` |
+| Secret keys | `DT_JWT_SECRET`, `DT_OAUTH2_CLIENT_SECRET` (env, override the file) |
+| Auth | OIDC client (Authelia), no ForwardAuth |
+| Health | `GET /api/v1/health` (200, unauthenticated) |
 
 **Gotchas**
 
-- Donetick needs the OAuth2 endpoints set **explicitly** (authorization / token / userinfo URLs), not just a discovery URL.
+- **SQLite → `local-path`, not `nfs-storage`** (the old row was wrong): NFS lacks
+  reliable POSIX locking and corrupts SQLite. One file `donetick.db`; the path is
+  set by `DT_SQLITE_PATH` env (read via `os.Getenv`, **not** a YAML key) pointed
+  at the PVC. Normal velero bytes-gate.
+- **Config is a mounted file, not pure env.** Most keys are `DT_*`-overridable
+  (`viper.AutomaticEnv` + `ExperimentalBindStruct`), but `oauth2.scopes` is a
+  YAML list env can't express — so non-secret config lives in a ConfigMap and
+  only the two secrets come from env.
+- **OAuth2 endpoints are explicit** (authorization / token / userinfo URLs), not
+  a discovery URL. Redirect is the *frontend* page `…/auth/oauth2` (no trailing
+  slash). **No PKCE**; token auth = `client_secret_basic`. Username + email both
+  come from the `email` claim, display name from `name` (so `profile` scope is
+  required).
+- **`enableServiceLinks: false`** — the `donetick` Service injects `DONETICK_*`
+  env that overlaps the `DONETICK_*` vars the app reads.
+- **Break-glass = local admin.** `is_user_creation_disabled` closes only the
+  local *sign-up* form; the local *login* stays as the Authelia-down fallback,
+  and OIDC keeps auto-provisioning (the callback never checks the flag). Deploy
+  with it `false`, register one local admin + log in via OIDC, then flip to
+  `true`.
+- **Realtime SSE + websocket** on the same origin (`/api/v1/...`) pass through
+  the one HTTPRoute (Traefik upgrades the socket transparently); don't put
+  ForwardAuth in front — it breaks both login and realtime.
+- Optional OIDC group→role mapping (`admin_groups`/`manager_groups`) reads groups
+  from the **ID token**, so it would need the `groups` scope + an Authelia
+  `claims_policy` — left unused here.
 
 ## Kavita
 
