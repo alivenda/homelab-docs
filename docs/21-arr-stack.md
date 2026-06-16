@@ -1,9 +1,33 @@
 # Runbook 21: Arr Stack
 
+!!! warning "Shelved — not deployed (2026-06-16)"
+    The manifests were written but this stack is **not deployed**, and the
+    bring-up is **shelved**. The library is built mainly from **physical media**
+    — ripped straight into Plex, which handles metadata on its own — and the
+    occasional not-publicly-available title isn't reachable through the
+    **public** torrent indexers this stack depends on. Private trackers (the
+    ratio-enforcing communities where rare content lives) are invite-only and
+    not in use, so a public-torrent automation stack doesn't fit the actual
+    need. The manifests and Terraform DNS PRs were left unmerged; nothing was
+    provisioned.
+
+    This runbook is kept as a **reference**. Revisit it only if the situation
+    changes — joining a private tracker (then enable seeding / port forwarding;
+    note Mullvad dropped port forwarding in 2023, so prefer Proton VPN Plus or
+    another gluetun port-forward provider), or pivoting to **Usenet** (Prowlarr
+    + SABnzbd, no VPN, no seeding).
+
 Media automation: **Prowlarr** (indexer manager), **Sonarr** (TV), **Radarr**
-(films), **Lidarr** (music), **qBittorrent** behind a **gluetun** VPN, and
-**Seerr** (the request UI). The stack runs on the cluster and feeds **Plex**,
-which runs on the NAS.
+(films), **Lidarr** (music), and **qBittorrent** behind a **gluetun** VPN. The
+stack runs on the cluster and feeds **Plex**, which runs on the NAS.
+
+!!! note "No request UI"
+    This stack intentionally omits a request portal (Seerr/Jellyseerr) — content
+    is added directly in the arr apps. A Plex-facing request UI can be added
+    later if wanted: `seerr/seerr` (the maintained Overseerr+Jellyseerr merger,
+    arm64, listens on 5055, SQLite config in `/app/config` → `local-path`) would
+    drop in as another Deployment, with an **unauthenticated** HTTPRoute (it has
+    its own Plex login).
 
 | | |
 |---|---|
@@ -21,12 +45,12 @@ which runs on the NAS.
 ## What it is
 
 Prowlarr indexes torrent trackers / Usenet indexers in one place and pushes them
-to the others. Sonarr/Radarr/Lidarr do search, grab, and post-processing.
-qBittorrent downloads. Seerr is the Plex-integrated request portal — the one
-surface non-admin users touch. All LinuxServer.io images ship **arm64** ✅.
+to the others. Sonarr/Radarr/Lidarr do search, grab, and post-processing, and you
+add content directly in their UIs. qBittorrent downloads. All LinuxServer.io
+images ship **arm64** ✅.
 
 ```
-Seerr ──requests──▶ Sonarr/Radarr/Lidarr ──grab via──▶ Prowlarr ──▶ indexers
+you ──add show/film──▶ Sonarr/Radarr/Lidarr ──grab via──▶ Prowlarr ──▶ indexers
                               │                                │
                               └────── add to ──▶ qBittorrent ──┘ (through gluetun VPN)
                                           │
@@ -36,8 +60,7 @@ Seerr ──requests──▶ Sonarr/Radarr/Lidarr ──grab via──▶ Prowl
 ```
 
 **Auth:** Authelia **ForwardAuth** protects every arr UI — they have no
-meaningful SSO and their API keys are for integrations, not users. Seerr is the
-exception: it has its own Plex login and stays unauthenticated.
+meaningful SSO and their API keys are for integrations, not users.
 
 ## Architecture decisions (read before deploying)
 
@@ -48,9 +71,9 @@ several traps now corrected.
 
 The single most important decision. Each app has **two** kinds of state:
 
-- **`/config` (SQLite) → `local-path`.** Every Servarr app and Seerr keeps an
-  embedded SQLite DB in `/config` (`sonarr.db`, `radarr.db`, …, Seerr's
-  `db/db.sqlite3`). **SQLite corrupts on NFS** — the
+- **`/config` (SQLite) → `local-path`.** Every Servarr app keeps an embedded
+  SQLite DB in `/config` (`sonarr.db`, `radarr.db`, `lidarr.db`, `prowlarr.db`).
+  **SQLite corrupts on NFS** — the
   [Servarr wiki FAQ](https://wiki.servarr.com/sonarr/faq) is explicit: *"a common
   cause of database corruption is putting the database on a network share… the
   AppData folder must be on local storage."* So `/config` uses the node-local
@@ -116,14 +139,7 @@ old loose `apps/arr/*.yaml`.
 | Radarr | `lscr.io/linuxserver/radarr:version-6.2.1.10461` |
 | Lidarr | `lscr.io/linuxserver/lidarr:version-3.1.0.4875` |
 | qBittorrent | `lscr.io/linuxserver/qbittorrent:version-5.2.2_v2.0.13` |
-| Seerr | `seerr/seerr:v3.3.0` |
 | gluetun | `qmcgaw/gluetun:v3.41.1` |
-
-!!! note "Seerr is real — and the right choice"
-    [Seerr](https://github.com/seerr-team/seerr) (`seerr-team/seerr`) is the
-    **official merge of Overseerr and Jellyseerr**; both predecessors are now
-    deprecated in its favour. It ships arm64, listens on 5055, stores config in
-    `/app/config`. No need to fall back to Jellyseerr.
 
 `TZ=Etc/UTC` everywhere (was Europe/London). All LinuxServer apps take
 `PUID=1000`, `PGID=1000`, `UMASK=022`.
@@ -213,10 +229,10 @@ a dead tunnel restarts the sidecar and re-arms the kill-switch.
 One `authelia-forwardauth` Middleware in the `arr` namespace; each protected
 HTTPRoute references it with an `ExtensionRef` filter (the
 [deploy-pattern recipe](apps-deploy-pattern.md#forwardauth-authelia-gates-the-app-at-the-proxy)).
-The route fails closed. **Seerr's HTTPRoute carries no filter.**
+The route fails closed.
 
 ```yaml
-# every arr route except seerr:
+# every arr route:
 rules:
   - filters:
       - type: ExtensionRef
@@ -229,7 +245,7 @@ rules:
 
 Add the subdomains to `var.services` in the Cloudflare module and `tofu apply`
 **before** they'll resolve (one A record each at the Traefik LB):
-`sonarr`, `radarr`, `lidarr`, `prowlarr`, `qbt`, `requests`.
+`sonarr`, `radarr`, `lidarr`, `prowlarr`, `qbt`.
 
 ## Step 5 — Deploy
 
@@ -252,22 +268,19 @@ secret) are done.
    qBittorrent at `http://qbittorrent.arr.svc.cluster.local:8080`.
 4. **Root folders** — Sonarr `/data/media/tv`, Radarr `/data/media/movies`,
    Lidarr `/data/media/music`; confirm "Use Hardlinks instead of Copy" is on.
-5. **Seerr** — at `https://requests.alivenda.dev` run the wizard, connect Plex
-   and the arr apps (same in-cluster URLs + API keys).
-6. Save every app's API key to Vaultwarden.
+5. Save every app's API key to Vaultwarden.
 
 ## Verification
 
 - [ ] `kubectl get pods -n arr` — all Running (qbittorrent has 2/2: gluetun + app).
 - [ ] ArgoCD shows `arr` Synced / Healthy.
-- [ ] Each UI serves over the wildcard cert; the five arr UIs **challenge with
-      Authelia** before loading; `requests.alivenda.dev` loads without it.
+- [ ] Each UI serves over the wildcard cert and **challenges with Authelia**
+      before loading.
 - [ ] gluetun's public IP is the VPN's, not home:
       `kubectl -n arr exec deploy/qbittorrent -c gluetun -- wget -qO- https://ipinfo.io/ip`.
 - [ ] Prowlarr → Settings → Apps shows Sonarr/Radarr/Lidarr **connected**.
 - [ ] A test grab completes and lands (hardlinked) in the right
       `/data/media/<type>` folder; Plex sees it.
-- [ ] Seerr wizard completes; the Plex library appears in Seerr.
 - [ ] `PodVolumeBackup` for each `config` volume shows **bytes > 0** after the
       04:00 UTC velero run (not just `Completed`).
 - [ ] All API keys + the qBittorrent password + the VPN config in Vaultwarden.
