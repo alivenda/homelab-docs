@@ -13,16 +13,25 @@ Personal budgeting (envelope method) with OIDC login.
 
 | Field | Value |
 |---|---|
-| Workload | raw manifests — `actualbudget/actual-server` |
+| Workload | raw manifests — `actualbudget/actual-server` (GitHub repo archived 2025-02-10; server now in the `actualbudget/actual` monorepo, image still published to `actualbudget/actual-server`) |
 | Namespace / hostname | `actual-budget` / `budget.yourdomain.com` |
 | Service port | 5006 |
-| Storage | `nfs-storage`, 1 Gi |
+| Storage | `local-path`, 2 Gi — SQLite (`account.sqlite` + per-budget `db.sqlite` + `server-files`/`user-files`) under `/data`; **not** NFS (corrupts SQLite) |
 | Secret keys | `ACTUAL_OPENID_CLIENT_SECRET` |
-| Auth | OIDC client |
+| Auth | OIDC client (own user system — **not** ForwardAuth) |
 
 **Gotchas**
 
-- OIDC support in Actual is **in preview** — enabled via `ACTUAL_OPENID_*` env, and the config surface can change between releases. Verify against current Actual docs at deploy.
+- OIDC support in Actual is **in preview** — enabled via `ACTUAL_OPENID_*` env, and the config surface can change between releases. Verify against current Actual docs **and the server source** at deploy. Everything below was verified against actual-server **v26.6.0** (`packages/sync-server/src/accounts/openid.ts` + `load-config.js`).
+- Config is **env-only** — no ConfigMap. The server writes its own `/data/config.json`; there is no settings-override file (the linkding contrast).
+- Storage is SQLite, so **local-path, never `nfs-storage`** — the catalog originally listed NFS, which corrupts SQLite. One PVC at `/data` covers the whole data tree.
+- OIDC **supports discovery**: set `ACTUAL_OPENID_DISCOVERY_URL` to the Authelia issuer base (`https://auth.yourdomain.com`); `Issuer.discover()` appends `/.well-known/openid-configuration` (no need to spell out the four endpoints, the linkding contrast).
+- The redirect is **built from `ACTUAL_OPENID_SERVER_HOSTNAME`**, not the request scheme — `https://budget.yourdomain.com/openid/callback` (**no** trailing slash) — so there is no TLS-proxy `http://` redirect bug, and the Authelia `redirect_uris` must match exactly.
+- The authorization request **sends PKCE S256** (`require_pkce: true`), and the token exchange uses `openid-client`'s default **`client_secret_basic`** — not `client_secret_post`.
+- Username = `preferred_username` from the **userinfo** endpoint, so the `profile` scope is required. No group→role mapping → no `groups` scope, no `claims_policy`.
+- The **first user to sign in via OIDC becomes the server owner**. `ACTUAL_USER_CREATION_MODE=manual` (default) means the owner must add every other user in-app (matching username) before they can log in; `login` would auto-provision any Authelia user.
+- **Break-glass — OpenID-only**: the first owner bootstraps through Authelia, so there's no password login, and Actual's preview auth can't run password + OpenID at once — you **can't** add a parallel password (upstream [#5248](https://github.com/actualbudget/actual/issues/5248)). If Authelia is down, flip in-pod with `node /app/src/scripts/reset-password.js` (→ password-only), then `node /app/src/scripts/enable-openid.js` to flip back. `ACTUAL_OPENID_ENFORCE=false` (default) is kept so the flip needs no env change, and it dodges upstream [#6333](https://github.com/actualbudget/actual/issues/6333) (enforce silently ignored when the provider is unreachable at boot).
+- Health probe = `/health` (returns `{status:'UP'}` 200, unauthenticated, no Host header). **No metrics endpoint** — no ServiceMonitor.
 
 ## Audiobookshelf
 
