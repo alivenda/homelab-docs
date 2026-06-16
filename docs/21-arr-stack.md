@@ -1,5 +1,22 @@
 # Runbook 21: Arr Stack
 
+!!! warning "Shelved — not deployed (2026-06-16)"
+    The manifests were written but this stack is **not deployed**, and the
+    bring-up is **shelved**. The library is built mainly from **physical media**
+    — ripped straight into Plex, which handles metadata on its own — and the
+    occasional not-publicly-available title isn't reachable through the
+    **public** torrent indexers this stack depends on. Private trackers (the
+    ratio-enforcing communities where rare content lives) are invite-only and
+    not in use, so a public-torrent automation stack doesn't fit the actual
+    need. The manifests and Terraform DNS PRs were left unmerged; nothing was
+    provisioned.
+
+    This runbook is kept as a **reference**. Revisit it only if the situation
+    changes — joining a private tracker (then enable seeding / port forwarding;
+    note Mullvad dropped port forwarding in 2023, so prefer Proton VPN Plus or
+    another gluetun port-forward provider), or pivoting to **Usenet** (Prowlarr
+    + SABnzbd, no VPN, no seeding).
+
 Media automation: **Prowlarr** (indexer manager), **Sonarr** (TV), **Radarr**
 (films), **Lidarr** (music), and **qBittorrent** behind a **gluetun** VPN. The
 stack runs on the cluster and feeds **Plex**, which runs on the NAS.
