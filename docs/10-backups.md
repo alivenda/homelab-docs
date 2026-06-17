@@ -376,6 +376,89 @@ Two things deliberately have **no** dump job here:
   server (Runbook 15).
 - **Embedded-SQLite apps** — their volumes live on `local-path`, which Velero's node-agent
   already captures above. One data tier, one backup mechanism; no double-coverage.
+  (Audiobookshelf used to be in this set; it moved to the NAS and now has its own job — see
+  below.)
+
+## Audiobookshelf config → Garage
+
+Audiobookshelf [runs as a Docker container on the NAS](apps-catalog.md#audiobookshelf), so —
+unlike the embedded-SQLite apps above — its `/config` database is **not** on `local-path`
+and is **not** covered by Velero. It gets its own NAS-side job, the same shape as the Home
+Assistant one: ABS writes its own consistent backups, the NAS ships them to Garage.
+
+### ABS side (native backups)
+
+In ABS **Settings → Backups**, enable scheduled backups (daily; keep ~7). ABS writes a
+consistent archive to `BACKUP_PATH` (default `/metadata/backups`, i.e.
+`/volume1/docker/audiobookshelf/metadata/backups`) containing the **`/config` database**
+(users, libraries, OIDC config, the mobile-redirect whitelist) plus item/author images from
+`/metadata`. Using ABS's own backup avoids copying a live SQLite file mid-write. The library
+audio itself is **not** included — that's the original media on `/volume1/media`, re-scannable.
+
+### Garage consumer (bucket + key)
+
+```bash
+docker exec -ti garage /garage bucket create audiobookshelf-backups
+docker exec -ti garage /garage key create audiobookshelf-backup       # copy the Key ID (GK…) and Secret
+docker exec -ti garage /garage bucket allow --read --write audiobookshelf-backups --key audiobookshelf-backup
+```
+
+### NAS side (rclone copy + schedule)
+
+Add a remote for the new key to `/etc/rclone/rclone.conf` — same endpoint/region as the
+`[garage]` block in the HA section, different key:
+
+```ini
+[garage-abs]
+type = s3
+provider = Other
+endpoint = http://10.0.20.50:9000
+region = us-east-1
+access_key_id = GK…
+secret_access_key = <secret>
+force_path_style = true
+```
+
+The backups are a local NAS directory, so rclone copies straight off disk (no SMB remote
+like HA needs).
+
+`/etc/systemd/system/audiobookshelf-backup-sync.service`:
+
+```ini
+[Unit]
+Description=Sync Audiobookshelf backups to Garage
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker run --rm --user root -v /etc/rclone:/config/rclone -v /volume1/docker/audiobookshelf/metadata/backups:/abs-backups:ro rclone/rclone copy /abs-backups garage-abs:audiobookshelf-backups -v
+ExecStart=/usr/bin/docker run --rm --user root -v /etc/rclone:/config/rclone rclone/rclone delete garage-abs:audiobookshelf-backups --min-age 30d
+```
+
+`/etc/systemd/system/audiobookshelf-backup-sync.timer`:
+
+```ini
+[Unit]
+Description=Daily Audiobookshelf backup sync to Garage
+
+[Timer]
+OnCalendar=*-*-* 06:00:00      # after ABS's own backup window
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+systemctl daemon-reload && systemctl enable --now audiobookshelf-backup-sync.timer
+systemctl list-timers audiobookshelf-backup-sync.timer
+docker exec -ti garage /garage bucket info audiobookshelf-backups     # Objects ≥ 1 after the first run
+```
+
+Same caveats as the HA job: **`copy` + age-`delete`, never `sync`**, and these host units
+live outside Ansible (UGOS appliance) — a major UGOS update can reset them, so this section
+is the recovery reference.
 
 ## Test Your Restores
 

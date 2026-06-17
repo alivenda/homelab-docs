@@ -186,9 +186,9 @@ This is the automation layer that feeds Plex. Without it, adding new shows/movie
 **Replaces:** Manual downloading, commercial indexer subscriptions, PlexAmp searches that return nothing.
 
 ### 🔴 Audiobook + Podcast Server — Audiobookshelf
-**Category:** Document Mgmt / Audio | **Run:** 🖥️ Cluster or 💾 NAS | **RAM:** ~200–400 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](apps-catalog.md#audiobookshelf)
+**Category:** Document Mgmt / Audio | **Run:** 💾 NAS (Docker) | **RAM:** ~200–400 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](apps-catalog.md#audiobookshelf)
 
-Streams all audio formats, syncs progress across devices, has native iOS/Android apps. Covers both audiobooks and podcasts in one app. Backed by your NFS storage.
+Streams all audio formats, syncs progress across devices, has native iOS/Android apps. Covers both audiobooks and podcasts in one app. Library lives next to it on the NAS media share.
 
 **Replaces:** Audible (audiobooks), Pocket Casts/Overcast (podcasts).
 

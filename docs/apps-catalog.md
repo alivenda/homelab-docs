@@ -36,49 +36,62 @@ Personal budgeting (envelope method) with OIDC login.
 ## Audiobookshelf
 
 Audiobook + podcast server with native iOS/Android apps and a browser player.
-Verified against **v2.35.1** (latest stable GitHub release; the GHCR tag is a
-multi-arch index with `linux/arm64` confirmed — the old "amd64-only" claim is
-stale).
+Verified against **v2.35.1** (latest stable GitHub release). **Runs as a Docker
+container on the NAS — not on the cluster** — next to its library, the same model
+as Immich and Plex. The only thing in `apps/audiobookshelf/` is the k8s glue that
+fronts the NAS container for TLS on the cluster domain.
 
 | Field | Value |
 |---|---|
-| Workload | raw manifests — `ghcr.io/advplyr/audiobookshelf:2.35.1` |
-| Namespace / hostname | `audiobookshelf` / `audiobooks.yourdomain.com` |
+| Workload | **NAS Docker** — `ghcr.io/advplyr/audiobookshelf:2.35.1` (multi-arch; pulls `linux/amd64` on the x86_64 NAS) |
+| k8s footprint | selector-less `Service` + manual `EndpointSlice` → NAS `10.0.20.50:13378`, + `HTTPRoute` (Immich-style) |
+| Namespace / hostname | `audiobookshelf` (glue only) / `audiobooks.yourdomain.com` |
 | Service port | 13378 (image default `PORT=80` is privileged → moved so it runs non-root) |
-| Storage | `/config` (SQLite) + `/metadata` on `local-path` app-state node; library `/audiobooks` + `/podcasts` on a **static NFS PV → NAS** `10.0.20.50` |
+| Storage | `/config` (SQLite) + `/metadata` on the NAS Docker app-data share; library `/audiobooks` + `/podcasts` bind-mounted from `/volume1/media` |
 | Secret keys | none (OIDC client secret entered in the ABS UI — the Immich model) |
 | Auth | ABS-native **OIDC** (Authelia), route unauthenticated — **not** ForwardAuth |
 | Health | `GET /healthcheck` (200) + `GET /ping` (`{"success":true}`), both unauthenticated |
 
 **Gotchas**
 
-- **Not ForwardAuth** (the old row was wrong). The mobile apps + browser player
-  hit ABS's API with bearer tokens; a Authelia browser challenge in front of the
-  API breaks them — same exclusion bucket as Vaultwarden / Home Assistant / ntfy.
-  Use ABS-native OIDC instead and leave the route open. From the Authelia ABS
-  integration guide: PKCE **S256 required** (enable the PKCE toggle in ABS too),
-  `client_secret_basic`, `groups` scope (→ `claims_policy: default`), and **three**
-  redirect URIs — `…/auth/openid/callback`, `…/auth/openid/mobile-redirect`, and
-  the mobile custom scheme **`audiobookshelf://oauth`** (the one that's easy to
-  miss and is what makes the mobile-app login work). ABS uses OIDC discovery.
-- **Three storage tiers, and the SQLite trap.** `/config` holds the live SQLite
-  DB and per the ABS docs "needs to be on the same machine" → `local-path`, **not**
-  `nfs-storage` (NFS corrupts SQLite). `/metadata` (covers/cache/backups, **no
-  live DB**) sits on `local-path` alongside it. The **library** is bulk media on
-  the NAS array over NFS — a *static* PV bound by claimRef, `storageClassName ""`,
-  not the dynamic `nfs-storage` SSD (same split as the arr `/data` export).
+- **Why it's on the NAS, not the cluster.** The cluster build worked end to end
+  *except* the NFS library read: UGOS authorizes NFS by the Shared Folder's
+  **user/group ACL**, not the POSIX mode, so the pod's uid was served **mode 000**
+  even owning the directory at 777. Running ABS next to its data on the NAS removes
+  the friction entirely (bulk media belongs near bulk storage anyway). The
+  trade-off, accepted: the container itself is outside GitOps, exactly like Immich.
+- **k8s fronting only.** A selector-less `Service` + manual `EndpointSlice` point
+  at the NAS (`10.0.20.50:13378`); the existing `HTTPRoute` for
+  `audiobooks.yourdomain.com` (TLS via the Gateway wildcard cert) backs onto it.
+  Identical to `apps/immich`. No Deployment, no PV/PVC, no Helm chart, no
+  SealedSecret.
 - **Runs as root by default with no PUID/PGID** (that's a LinuxServer convention
-  this image lacks). Run it as `securityContext` uid/gid 1000 — required so it can
-  write the `1000:1000`-owned NAS export under NFS `root_squash` — and set
-  `PORT=13378` so a non-root process can bind. `fsGroupChangePolicy: OnRootMismatch`
-  + a pre-owned export root keeps fsGroup from recursively chowning the library.
-- **NAS export is a pre-deploy prerequisite.** Create the export (`audiobooks/` +
-  `podcasts/` subdirs, owned `1000:1000`, RW to node IPs `10.0.20.10-13`) and set
-  the PV's `nfs.path` to match before first sync.
+  this image lacks). In the compose set `user: "<uid>:<gid>"` to the account that
+  owns your `/volume1/media` tree (find it with `id <user>`) so everything ABS
+  writes stays correctly owned. Set `PORT=13378` because a non-root process can't
+  bind `<1024`.
+- **`/config` must be local to ABS, and SQLite hates network shares.** Keep
+  `/config` (the live SQLite DB) and `/metadata` on the NAS's own Docker app-data
+  share — not a network mount. The library bind mount is local NAS storage too
+  (consolidated under `/volume1/media/{audiobooks,podcasts}` alongside
+  books/movies/music/tv), so there's no NFS in the picture anymore.
+- **Not ForwardAuth.** The mobile apps + browser player hit ABS's API with bearer
+  tokens; a Authelia browser challenge in front of the API breaks them — same
+  exclusion bucket as Vaultwarden / Home Assistant / ntfy. Use ABS-native OIDC and
+  leave the route open. From the Authelia ABS integration guide: PKCE **S256
+  required** (enable the PKCE toggle in ABS too), `client_secret_basic`, `groups`
+  scope (→ `claims_policy: default`), and **three** redirect URIs —
+  `…/auth/openid/callback`, `…/auth/openid/mobile-redirect`, and the mobile custom
+  scheme **`audiobookshelf://oauth`** (the one that's easy to miss and is what makes
+  the mobile-app login work). ABS uses OIDC discovery.
+- **Library structure**: `Author/Title/file.m4b` — author folder optional, each
+  book in its own folder; a loose audio file in the root is its own book. Podcasts
+  use a **flat** structure (one folder per podcast, no season subfolders).
 - **Websockets**: progress sync is Socket.IO on `/socket.io/`; Traefik upgrades it
   transparently over the HTTPRoute — nothing to configure.
-- **Backup gate** (normal): `PodVolumeBackup` bytes > 0 for the `config` **and**
-  `metadata` pod-volumes; the NAS library is backed up NAS-side, not by velero.
+- **Backups**: the NAS library and the Docker app-data (`/config` + `/metadata`)
+  are backed up NAS-side, not by velero (there are no cluster PVCs). Make sure
+  `/config` is in the NAS backup set — it holds users, libraries, and OIDC config.
 - **Break-glass** = the local root account created during ABS setup; configure
   OIDC after it and leave Auto-register on so SSO users provision on first login.
 
