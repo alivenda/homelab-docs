@@ -35,21 +35,52 @@ Personal budgeting (envelope method) with OIDC login.
 
 ## Audiobookshelf
 
-Audiobook and podcast server with apps for iOS/Android.
+Audiobook + podcast server with native iOS/Android apps and a browser player.
+Verified against **v2.35.1** (latest stable GitHub release; the GHCR tag is a
+multi-arch index with `linux/arm64` confirmed — the old "amd64-only" claim is
+stale).
 
 | Field | Value |
 |---|---|
-| Workload | raw manifests — `ghcr.io/advplyr/audiobookshelf` |
+| Workload | raw manifests — `ghcr.io/advplyr/audiobookshelf:2.35.1` |
 | Namespace / hostname | `audiobookshelf` / `audiobooks.yourdomain.com` |
-| Service port | 80 |
-| Storage | config/metadata on `nfs-storage` (~5 Gi); **separate large media PVCs** (100–500 Gi) for audiobooks/podcasts |
-| Secret keys | none |
-| Auth | Authelia ForwardAuth (no built-in SSO) |
+| Service port | 13378 (image default `PORT=80` is privileged → moved so it runs non-root) |
+| Storage | `/config` (SQLite) + `/metadata` on `local-path` app-state node; library `/audiobooks` + `/podcasts` on a **static NFS PV → NAS** `10.0.20.50` |
+| Secret keys | none (OIDC client secret entered in the ABS UI — the Immich model) |
+| Auth | ABS-native **OIDC** (Authelia), route unauthenticated — **not** ForwardAuth |
+| Health | `GET /healthcheck` (200) + `GET /ping` (`{"success":true}`), both unauthenticated |
 
 **Gotchas**
 
-- The mobile apps can't complete the Authelia browser login, so ForwardAuth blocks them. Either exempt the API path from ForwardAuth or front only the web UI — confirm the approach when the first ForwardAuth app is deployed.
-- Keep media on its own large PVC, separate from the small config volume.
+- **Not ForwardAuth** (the old row was wrong). The mobile apps + browser player
+  hit ABS's API with bearer tokens; a Authelia browser challenge in front of the
+  API breaks them — same exclusion bucket as Vaultwarden / Home Assistant / ntfy.
+  Use ABS-native OIDC instead and leave the route open. From the Authelia ABS
+  integration guide: PKCE **S256 required** (enable the PKCE toggle in ABS too),
+  `client_secret_basic`, `groups` scope (→ `claims_policy: default`), and **three**
+  redirect URIs — `…/auth/openid/callback`, `…/auth/openid/mobile-redirect`, and
+  the mobile custom scheme **`audiobookshelf://oauth`** (the one that's easy to
+  miss and is what makes the mobile-app login work). ABS uses OIDC discovery.
+- **Three storage tiers, and the SQLite trap.** `/config` holds the live SQLite
+  DB and per the ABS docs "needs to be on the same machine" → `local-path`, **not**
+  `nfs-storage` (NFS corrupts SQLite). `/metadata` (covers/cache/backups, **no
+  live DB**) sits on `local-path` alongside it. The **library** is bulk media on
+  the NAS array over NFS — a *static* PV bound by claimRef, `storageClassName ""`,
+  not the dynamic `nfs-storage` SSD (same split as the arr `/data` export).
+- **Runs as root by default with no PUID/PGID** (that's a LinuxServer convention
+  this image lacks). Run it as `securityContext` uid/gid 1000 — required so it can
+  write the `1000:1000`-owned NAS export under NFS `root_squash` — and set
+  `PORT=13378` so a non-root process can bind. `fsGroupChangePolicy: OnRootMismatch`
+  + a pre-owned export root keeps fsGroup from recursively chowning the library.
+- **NAS export is a pre-deploy prerequisite.** Create the export (`audiobooks/` +
+  `podcasts/` subdirs, owned `1000:1000`, RW to node IPs `10.0.20.10-13`) and set
+  the PV's `nfs.path` to match before first sync.
+- **Websockets**: progress sync is Socket.IO on `/socket.io/`; Traefik upgrades it
+  transparently over the HTTPRoute — nothing to configure.
+- **Backup gate** (normal): `PodVolumeBackup` bytes > 0 for the `config` **and**
+  `metadata` pod-volumes; the NAS library is backed up NAS-side, not by velero.
+- **Break-glass** = the local root account created during ABS setup; configure
+  OIDC after it and leave Auto-register on so SSO users provision on first login.
 
 ## Collabora Online
 
