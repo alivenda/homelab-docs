@@ -370,10 +370,12 @@ NAS**, next to the server: nightly per-database `pg_dump -Fc` plus a
 NAS I/O). The full pipeline — script, units, and the seeded restore drill that gates it —
 is in [Runbook 27](27-nas-postgres.md).
 
-Two things deliberately have **no** dump job here:
+Two things stay out of this shared job, each for its own reason:
 
 - **Immich** keeps its own dump path — its bundled Postgres on the NAS predates the shared
-  server (Runbook 15).
+  server (Runbook 15), and Immich's built-in scheduled backup already dumps the database
+  itself. Getting those dumps **off-box** is a separate job, the same shape as Audiobookshelf
+  — see [Immich database → Garage](#immich-database-garage) below.
 - **Embedded-SQLite apps** — their volumes live on `local-path`, which Velero's node-agent
   already captures above. One data tier, one backup mechanism; no double-coverage.
   (Audiobookshelf used to be in this set; it moved to the NAS and now has its own job — see
@@ -459,6 +461,86 @@ docker exec -ti garage /garage bucket info audiobookshelf-backups     # Objects 
 Same caveats as the HA job: **`copy` + age-`delete`, never `sync`**, and these host units
 live outside Ansible (UGOS appliance) — a major UGOS update can reset them, so this section
 is the recovery reference.
+
+## Immich database → Garage
+
+Immich [runs as Docker on the NAS](15-immich.md) with its **own** bundled Postgres, separate
+from the shared server above. It already backs that database up on a schedule — Immich's
+built-in job writes a version-stamped dump to `${UPLOAD_LOCATION}/backups/` (e.g.
+`/volume1/photos/backups/immich-db-backup-20260617T020000-v2.7.5-pg14.19.sql.gz`) nightly at
+02:00. What that leaves open is **off-box** durability: those dumps land on the same volume as
+the photo library, so one volume failure loses the originals *and* their database together,
+and the [cold-shutdown export](cold-shutdown.md) only sweeps Garage buckets. This job ships
+Immich's own dumps to Garage, the same shape as the Audiobookshelf one.
+
+First confirm Immich's built-in backup is on: **Administration → Settings → Backup Settings →
+Database Backups** (enabled by default). The library/originals themselves are the bulk data on
+`${UPLOAD_LOCATION}` — re-uploadable from your devices, not part of this database job.
+
+### Garage consumer (bucket + key)
+
+```bash
+docker exec -ti garage /garage bucket create immich-backups
+docker exec -ti garage /garage key create immich-backup            # copy the Key ID (GK…) and Secret
+docker exec -ti garage /garage bucket allow --read --write immich-backups --key immich-backup
+```
+
+### NAS side (rclone copy + schedule)
+
+Add a remote for the new key to `/etc/rclone/rclone.conf` — same endpoint/region as the
+`[garage]` block in the HA section, different key:
+
+```ini
+[garage-immich]
+type = s3
+provider = Other
+endpoint = http://10.0.20.50:9000
+region = us-east-1
+access_key_id = GK…
+secret_access_key = <secret>
+force_path_style = true
+```
+
+The dumps are a local NAS directory, so rclone copies straight off disk (no SMB remote like
+HA needs).
+
+`/etc/systemd/system/immich-backup-sync.service`:
+
+```ini
+[Unit]
+Description=Sync Immich database backups to Garage
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker run --rm --user root -v /etc/rclone:/config/rclone -v /volume1/photos/backups:/immich-backups:ro rclone/rclone copy /immich-backups garage-immich:immich-backups -v
+ExecStart=/usr/bin/docker run --rm --user root -v /etc/rclone:/config/rclone rclone/rclone delete garage-immich:immich-backups --min-age 30d
+```
+
+`/etc/systemd/system/immich-backup-sync.timer`:
+
+```ini
+[Unit]
+Description=Daily Immich backup sync to Garage
+
+[Timer]
+OnCalendar=*-*-* 03:00:00      # after Immich's 02:00 database-backup window
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+systemctl daemon-reload && systemctl enable --now immich-backup-sync.timer
+systemctl list-timers immich-backup-sync.timer
+docker exec -ti garage /garage bucket info immich-backups          # Objects ≥ 1 after the first run
+```
+
+Same caveats as the HA and ABS jobs: **`copy` + age-`delete`, never `sync`**, and these host
+units live outside Ansible (UGOS appliance) — a major UGOS update can reset them, so this
+section is the recovery reference.
 
 ## Test Your Restores
 
