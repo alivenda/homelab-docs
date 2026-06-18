@@ -180,8 +180,8 @@ spec:
 
 The second `forgejo-manifests` Application points at `infrastructure/forgejo/manifests/` (HTTPRoute, repos PVC, admin SealedSecret). Give it `CreateNamespace=true` but **not** `ServerSideApply` — SSA plus a Gateway-API HTTPRoute is a permanent-OutOfSync trap.
 
-!!! note "Applications register individually"
-    If your cluster runs the app-of-apps `root.yaml` it picks this up automatically. If you adopt ArgoCD incrementally (dormant `root.yaml`), apply it once: `kubectl apply -f bootstrap/forgejo.yaml`.
+!!! note "Applications register on merge"
+    The app-of-apps `root.yaml` is live, so committing `bootstrap/forgejo.yaml` and merging is enough — root creates the Application on its next sync. No manual `kubectl apply`.
 
 ## Step 4: Routing — HTTPS + Git-over-SSH
 

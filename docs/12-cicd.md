@@ -193,10 +193,10 @@ reclaimPolicy: Delete
 volumeBindingMode: Immediate
 ```
 
-!!! note "Applications register individually"
-    If your cluster runs the app-of-apps `root.yaml` it picks these up
-    automatically. Adopting ArgoCD incrementally (dormant `root.yaml`)? Apply
-    once: `kubectl apply -f bootstrap/woodpecker.yaml`.
+!!! note "Applications register on merge"
+    The app-of-apps `root.yaml` is live, so committing `bootstrap/woodpecker.yaml`
+    and merging is enough — root creates the Applications on its next sync. No
+    manual `kubectl apply`.
 
 ## Step 5: HTTPRoute
 
