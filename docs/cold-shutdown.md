@@ -54,6 +54,23 @@ Take these while everything is still running, in this order (cluster captures fi
     sudo systemctl start postgres-backup.service
     ```
 
+5. **Final NAS app-database syncs to Garage** — Immich and Audiobookshelf each write their own
+   backups on a schedule; these units ship the latest to Garage so the cold-export below picks
+   them up:
+
+    ```bash
+    sudo systemctl start immich-backup-sync.service
+    sudo systemctl start audiobookshelf-backup-sync.service
+    ```
+
+    Immich's own database dump runs nightly at 02:00 — if you're powering down before then,
+    take a fresh one first so the sync has something current to ship:
+
+    ```bash
+    docker exec -t immich_postgres pg_dumpall -c -U postgres \
+      > /volume1/photos/backups/immich_pre-shutdown_$(date +%Y%m%d).sql
+    ```
+
 !!! warning "Powered down, your data and its backups share one box"
     Garage — the backup target for Velero, etcd, the databases, and HA — lives **on the NAS**. For the whole outage the originals and every backup sit in the same chassis: one truck if you're moving, one storage unit if it's going dark for a season. This is exactly the scenario [Runbook 10's off-site TODO](10-backups.md) warns about. Cheap mitigation: sync the critical buckets to an external drive and keep it somewhere else (different bag, different car, different building).
 
@@ -62,13 +79,13 @@ Take these while everything is still running, in this order (cluster captures fi
     ```bash
     # on the NAS
     docker exec garage /garage key create cold-export   # note the GK… ID + secret
-    for b in velero etcd-snapshots postgres-backups ha-backups sealed-secrets-keys; do
+    for b in velero etcd-snapshots postgres-backups ha-backups sealed-secrets-keys immich-backups audiobookshelf-backups; do
       docker exec garage /garage bucket allow --read $b --key cold-export
     done
 
     # point an rclone remote at it (type=s3, provider=Other,
     # endpoint=http://10.0.20.50:9000, region=us-east-1), then per bucket:
-    for b in velero etcd-snapshots postgres-backups ha-backups sealed-secrets-keys; do
+    for b in velero etcd-snapshots postgres-backups ha-backups sealed-secrets-keys immich-backups audiobookshelf-backups; do
       rclone sync coldexport:$b /mnt/usb/cold-shutdown/$b
     done
 
