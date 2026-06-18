@@ -161,7 +161,7 @@ The Middleware lives in the **app's own namespace** — an `ExtensionRef` filter
 
 ## Step 6 — Register the Application and sync
 
-Add the `Application`(s) to `homelab-manifests/bootstrap/` — the chart app via `$values` plus the `-manifests` app, mirroring `vaultwarden.yaml`. Commit via a branch + PR and let ArgoCD sync. For stateful apps set `prune: false` on the chart app so a sync can't drop the StatefulSet/PVC out from under it.
+Add the `Application`(s) to `homelab-manifests/bootstrap/` — the chart app via `$values` plus the `-manifests` app, mirroring `vaultwarden.yaml`. Commit via a branch + PR; on merge the live `root.yaml` app-of-apps creates the Application on its next sync — no manual `kubectl apply`. For stateful apps set `prune: false` on the chart app so a sync can't drop the StatefulSet/PVC out from under it.
 
 ## Verification
 
