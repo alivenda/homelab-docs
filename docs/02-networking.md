@@ -30,7 +30,7 @@ This table is the authoritative source for every later runbook (Terraform `unifi
 - IPv6: disabled on both WAN and LAN (see Step 1 note)
 - IGMP snooping: **on** (on the UDM's built-in switch, see Step 1d) — required for mDNS reflector to forward multicast cleanly across VLANs
 - Multicast DNS (mDNS): **global gateway reflector set to Auto** — the UDM retransmits common mDNS (AirPlay, Cast, HomeKit, Bonjour) across **all** VLANs; it is not a per-network toggle. Custom mode (whitelist services, scope to chosen VLANs) is the hardening option — see Step 1e
-- UDM upstream DNS: `1.1.1.1` (Cloudflare) — migrate to dedicated Pi-hole appliance later (see Step 3d)
+- UDM upstream DNS: `1.1.1.1` (Cloudflare). Client DNS is handed off to a dedicated AdGuard Home appliance (`pyrite`, `10.0.0.20`) — see Step 3d and [Runbook 17](17-adguard-home.md)
 - MetalLB pool: `10.0.20.200–.250` (reserved within Lab VLAN, outside DHCP)
 
 !!! note "Why NAS sits on Lab, not Trusted"
@@ -47,6 +47,8 @@ Within the static range of each VLAN. Cluster nodes get their static IP from `di
 |---|---|---|---|
 | UDM | default | `10.0.0.1` | UDM default |
 | UniFi AP | default | `10.0.0.3` | UDM DHCP reservation |
+| pyrite (AdGuard Home — DNS) | default | `10.0.0.20` | dietpi.txt static |
+| marcasite (AdGuard Home — DNS failover, optional) | default | `10.0.0.21` | dietpi.txt static |
 | Turing Pi 2 BMC | lab | `10.0.20.4` | UDM DHCP reservation |
 | ruby (k3s control plane, Tailscale subnet router) | lab | `10.0.20.10` | dietpi.txt static |
 | emerald (Tailscale subnet router failover) | lab | `10.0.20.11` | dietpi.txt static |
@@ -300,32 +302,41 @@ UniFi auto-generates a matching `(Return)` policy for every Allow rule (it's sta
 
     Add a narrowly-scoped policy then (e.g. `lab-to-hue-bridge`: Lab → `10.0.30.x` of the bridge/controller, TCP `80` and/or `443`). Scope to the specific device IP, not whole IoT zone, to avoid HA being able to reach the printer's web UI or other unrelated IoT devices.
 
-### Step 3d: DNS enforcement (forward-looking)
+### Step 3d: DNS enforcement
 
-This section defines the firewall side of forcing all client DNS through Pi-hole. The actual Pi-hole deployment is deferred until you have hardware for it — see the note below. You can skip this step entirely until then; nothing else in the runbooks depends on it.
+This build runs **AdGuard Home** on a dedicated Pi (`pyrite`, `10.0.0.20` on the Default LAN — see [Runbook 17](17-adguard-home.md)). This step does two firewall jobs around it: let every VLAN *reach* the resolver, then force *all* client DNS through it.
 
-The pattern: drop public-DNS egress from everything except your Pi-hole instances. Without this, a malicious app (or smart device with hard-coded `8.8.8.8`) bypasses Pi-hole's filtering entirely. With it, the only way out for DNS is through your filter.
+**Let each zone reach the resolver.** AdGuard sits in the Internal zone (Default LAN). Trusted already reaches Internal (the `trusted-to-internal-allow` override above), but IoT and Lab are blocked from Internal by default — so clients there would lose DNS the moment you hand them the AdGuard IP. Add one allow policy each, scoping the destination to the resolver IP (not the whole Internal zone):
+
+| Name | From | To | Action | Protocol | Ports |
+|---|---|---|---|---|---|
+| iot-to-dns | IoT | `10.0.0.20` | Allow | TCP, UDP | `53` |
+| lab-to-dns | Lab | `10.0.0.20` | Allow | TCP, UDP | `53` |
+
+`lab-to-dns` is a deliberate, narrow exception to Lab's "initiates to nothing" posture — port 53 to a single IP. If you add the optional secondary (`10.0.0.21`), extend both destinations to cover it. Trusted needs no rule.
+
+**Force all DNS through the filter.** Without this, a malicious app — or a smart device with a hard-coded `8.8.8.8` — bypasses AdGuard entirely. The pattern: drop public-DNS egress from everything *except* the AdGuard appliance.
 
 Create two IP groups (UniFi → **Profiles → IP Groups**):
 
 | Group | Type | Contents |
 |---|---|---|
-| `Pi-Hole DNS Servers` | Address | The IPs of your future Pi-hole instances (e.g., `10.0.0.20`, `10.0.0.21` if Pis live on Default; pick before deploying) |
+| `AdGuard DNS Servers` | Address | `10.0.0.20` (add `10.0.0.21` if you run the secondary) |
 | `Public DNS` | Address | Common public resolvers: `1.1.1.1`, `1.0.0.1`, `8.8.8.8`, `8.8.4.4`, `9.9.9.9`, `149.112.112.112`, `208.67.222.222`, `208.67.220.220` |
 
 Then two Internet-Out policies. **Order matters** — Accept must come before Block:
 
 | # | Name | From | To | Action | Protocol | Ports |
 |---|---|---|---|---|---|---|
-| 1 | dns-pihole-egress-allow | `Pi-Hole DNS Servers` | `Public DNS` + `Any` | Allow | TCP, UDP | `53`, `443` (DoH) |
+| 1 | dns-adguard-egress-allow | `AdGuard DNS Servers` | `Public DNS` + `Any` | Allow | TCP, UDP | `53`, `443` (DoH) |
 | 2 | dns-public-block | Any | `Public DNS` | Block | TCP, UDP | `53` |
 
-Then update each VLAN's DHCP DNS server (UniFi → Networks → [each VLAN] → DHCP) to hand out the Pi-hole IPs instead of Auto. Clients pick up the new DNS at next DHCP renewal (or reboot).
+Then update each VLAN's DHCP DNS server (UniFi → Networks → [each VLAN] → DHCP) to hand out the AdGuard IP instead of Auto. Clients pick up the new DNS at next DHCP renewal (or reboot).
 
-!!! note "Deploy Pi-hole on dedicated hardware, not in-cluster"
-    DNS is the most foundational service on the network — when it dies, every browser hangs and every container fails to pull images. Running Pi-hole as a k3s Helm chart means a routine cluster upgrade (or any cluster wedge) takes DNS down with it. The 2026 homelab best-practice consensus is a dedicated Raspberry Pi 4/5 running Pi-hole natively: $50, boots in 20 seconds, survives anything that happens to the cluster.
+!!! note "Run DNS on dedicated hardware, not in-cluster"
+    DNS is the most foundational service on the network — when it dies, every browser hangs and every container fails to pull images. Running it as a k3s Helm chart means a routine cluster upgrade (or any cluster wedge) takes DNS down with it. The best-practice consensus is a dedicated Raspberry Pi running the resolver natively: cheap, boots in seconds, survives anything that happens to the cluster.
 
-    For HA, run **two** instances (DHCP hands out both; clients fail over automatically). Sync config between them with [nebula-sync](https://github.com/lovelaze/nebula-sync) for Pi-hole 6.x. This is the path to take when you're ready to add the hardware.
+    For redundancy, run **two** (DHCP hands out both; clients fail over automatically) and sync config from the primary — see [Runbook 17](17-adguard-home.md).
 
 ## Step 4: Reaching UDM
 
@@ -481,7 +492,7 @@ Tailscale is easier (NAT traversal handled, no port forward needed). WireGuard o
 - [ ] From an IoT device: `curl http://<HA-IP>:8123` succeeds (iot-to-HA policy)
 - [ ] From the Apple TV: AirPlay handoff to Plex on the NAS works via Infuse and/or the Plex app (proves mDNS reflector + `iot-to-plex-tcp` + `iot-to-plex-udp` + IGMP snooping all wired up correctly, plus Plex Server's LAN Networks setting includes `10.0.30.0/24`)
 - [ ] From a phone on `home` SSID: AirPlay from Photos / Music finds Apple TV in the picker and casts successfully — proves mDNS reflector is working
-- [ ] *(after Pi-hole deploy)* From any client: `dig @8.8.8.8 example.com` times out (proves `dns-public-block` policy); `dig @<pi-hole-ip> example.com` succeeds
+- [ ] *(after AdGuard deploy)* From any client: `dig @8.8.8.8 example.com` times out (proves `dns-public-block` policy); `dig @10.0.0.20 example.com` succeeds
 - [ ] From a Trusted device with Tailscale connected via cellular: `ping 10.0.20.10` over Tailscale works
 - [ ] `tailscale status` on ruby AND emerald shows advertised routes accepted
 - [ ] Tailscale admin console: ACL file in place, only `autogroup:owner` has access to advertised subnets

@@ -13,7 +13,7 @@ This guide is written against a specific build. You can substitute (an x86 mini-
 - Ubiquiti UDM-Pro or UDM-SE for VLANs, firewall, DHCP
 - UGREEN DXP6800 Pro NAS (or any NAS that runs Docker) for bulk media + Immich + offsite-friendly bulk storage
 - 1× dedicated host for Home Assistant OS — this build uses **slate**, a repurposed Late-2014 Mac mini (16 GB RAM, 256 GB SSD) running Proxmox, with HAOS as a VM (2 vCPU, 4 GB RAM). Kept off the cluster so the smart-home hub survives cluster reboots and upgrades (R16). 4 GB for the VM matches HA's own reference spec; only raise it for Frigate NVR or long-retention history. (A Raspberry Pi 5 (4 GB) running HAOS bare-metal is an equally good dedicated host if you're buying new rather than repurposing.)
-- 2× Raspberry Pi Zero 2 W for AdGuard Home (primary + secondary DNS) — run natively rather than on k3s so DNS stays up independently of the cluster (R17)
+- 1× Raspberry Pi for AdGuard Home DNS (`pyrite`; this build uses a Pi 3 Model B — add a 2nd for optional failover, R17) — run natively rather than on k3s so DNS stays up independently of the cluster
 - Domain name registered through Cloudflare (~$10/yr for `.com` / `.net` / etc.)
 - Optional: UPS — recommended once you start storing real data on the cluster ([sizing in R3](03-turing-pi.md#power-ups-nut-for-graceful-shutdown))
 

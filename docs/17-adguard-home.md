@@ -5,28 +5,33 @@ DNS-level ad blocking and privacy protection for every device on the network.
 | | |
 |---|---|
 | **Difficulty** | Beginner |
-| **Time Estimate** | 1–2 hours |
-| **Runs On** | 2× Raspberry Pi Zero 2 W (OS-level service — not k3s) |
-| **Depends On** | Runbook 2 (static IPs assigned on Lab VLAN) |
+| **Time Estimate** | 1 hour |
+| **Runs On** | 1× Raspberry Pi (OS-level service — not k3s). This build: a Pi 3 Model B (`pyrite`). |
+| **Depends On** | Runbook 2 (static IP on the Default VLAN) |
 
-AdGuard Home runs natively on two dedicated Pi Zero 2 W nodes rather than in the k3s cluster. DNS must stay up independently of cluster reboots and upgrades. Two units give automatic failover: the UDM advertises both IPs as DNS servers via DHCP so if one goes down clients fail over with no manual intervention.
+AdGuard Home runs natively on a dedicated Raspberry Pi rather than in the k3s cluster: DNS must stay up independently of cluster reboots and upgrades. **One Pi is enough** for a working setup. Adding a **second** Pi is an optional upgrade for automatic failover — the UDM advertises both IPs as DNS servers via DHCP, so if one goes down clients fail over with no manual intervention.
+
+This build runs a single node, `pyrite`, at `10.0.0.20` on the Default VLAN. The optional secondary is `marcasite` at `10.0.0.21`.
+
+!!! note "Why the Default VLAN, not Lab"
+    DNS is shared infrastructure, not a cluster service, so it lives on the Default LAN (the management plane) alongside the UDM — not on Lab, where the firewall posture is "initiates to nothing." Trusted devices already reach the Default LAN (the `trusted-to-internal-allow` policy from R2), so they get DNS with no extra rule; IoT and Lab need one small allow rule each — see [R2 Step 3d](02-networking.md#step-3d-dns-enforcement).
 
 This runbook covers:
 
-1. Installing AdGuard Home on both Pi Zeros
-2. Configuring the primary
-3. Syncing config to the secondary via adguardhome-sync
-4. Advertising both IPs as DNS servers from the UDM
+1. Installing AdGuard Home on the Pi
+2. Configuring upstreams and blocklists
+3. Advertising it as the DNS server from the UDM
+4. *(Optional)* Adding a second Pi for failover with config sync
 
 ## Prerequisites
 
-- Both Pi Zero 2 Ws provisioned with DietPi (64-bit ARM) and accessible via SSH.
-- Static IPs assigned on the Lab VLAN — this runbook uses `10.0.20.20` (primary) and `10.0.20.21` (secondary) as examples. Substitute your actual assignments from Runbook 2.
+- A Raspberry Pi provisioned with DietPi (64-bit ARM) and reachable via SSH. If your `dietpi.txt` included `AUTO_SETUP_INSTALL_SOFTWARE_ID=126` (see [Runbook 3](03-turing-pi.md) for the DietPi automation pattern), AdGuard Home is already installed — skip to Step 2.
+- Static IP `10.0.0.20` on the Default VLAN (set via `dietpi.txt` at first boot, per Runbook 2).
 - UDM admin access.
 
-## Step 1: Install AdGuard Home on Both Pi Zeros
+## Step 1: Install AdGuard Home
 
-Run the following on **both** nodes. The official automated installer detects ARM64 and downloads the correct binary. See the [official install docs](https://adguard-dns.io/kb/adguard-home/getting-started/) for reference.
+If DietPi-Software didn't already install it (ID 126), run the official installer — it detects ARM64 and downloads the correct binary. See the [official install docs](https://adguard-dns.io/kb/adguard-home/getting-started/) for reference.
 
 ```bash
 curl -s -S -L https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/scripts/install.sh | sh -s -- -v
@@ -49,16 +54,16 @@ systemctl status AdGuardHome
 
 ## Step 2: Initial Setup Wizard
 
-Open `http://<pi-ip>:3000` from a browser on your local network and complete the wizard on **both nodes**:
+Open `http://10.0.0.20:3000` from a browser on your local network and complete the wizard:
 
 1. **Listen interfaces** — accept the default (all interfaces).
 2. **DNS listen port** — leave at 53.
-3. **Admin credentials** — create a strong username and password. Save both to Vaultwarden before proceeding. Use the same credentials on both nodes (adguardhome-sync requires it).
-4. Complete the wizard. AdGuard Home is now serving DNS on port 53 and its web UI on port 80.
+3. **Admin credentials** — create a strong username and password; save both to Vaultwarden. (If you plan to add a second node later, reuse these credentials there — adguardhome-sync requires matching logins.)
+4. Complete the wizard. AdGuard Home now serves DNS on port 53 and its web UI on port 80.
 
-## Step 3: Configure the Primary
+## Step 3: Configure Upstreams and Blocklists
 
-Log into the primary at `http://10.0.20.20` and apply the following settings.
+Log into `http://10.0.0.20` and apply the following.
 
 **Settings → DNS settings → Upstream DNS servers:**
 
@@ -81,20 +86,39 @@ Enable **Parallel requests** so both upstreams are queried simultaneously.
 - AdGuard DNS filter (built-in — enable it)
 - Add OISD Basic: `https://abp.oisd.nl/`
 
-The secondary will receive this config automatically in Step 4 — do not configure it manually.
+## Step 4: Point the UDM's DHCP at AdGuard
 
-## Step 4: Install adguardhome-sync on the Primary
+In the UniFi Network app, hand out the Pi's IP as the DNS server for each VLAN that should use AdGuard Home:
 
-[adguardhome-sync](https://github.com/bakito/adguardhome-sync) pushes configuration from the primary to the secondary on a schedule. Install it as a Docker container on the **primary Pi Zero**.
+1. Go to **Settings → Networks → [VLAN name] → DHCP → DNS Server**.
+2. Set **DNS Server 1** to `10.0.0.20`.
+3. Repeat for the Trusted, Lab, and IoT VLANs.
 
-First, install Docker on the primary if not already present:
+!!! warning "IoT and Lab need a firewall rule to reach it"
+    AdGuard sits on the Default LAN (Internal zone). Trusted reaches it already, but with the zone-based firewall the IoT and Lab zones are blocked from Internal by default — clients there will *silently* lose DNS unless you add the allow rules in [R2 Step 3d](02-networking.md#step-3d-dns-enforcement). Add those before flipping each VLAN's DNS over.
+
+Clients pick up AdGuard at the next DHCP renewal. Force a renewal on a test device (`sudo dhclient -r && sudo dhclient` on Linux, reconnect Wi-Fi on a phone) and verify queries appear in AdGuard's **Query Log**.
+
+## Optional: Add a Second Node for Failover
+
+A single Pi is a single point of failure for DNS. For automatic failover, add a second Pi (`marcasite`, `10.0.0.21`) and have the UDM hand out both. Config is kept in sync from the primary, so you only ever edit one.
+
+### Install and set up the secondary
+
+Repeat Step 1 and Step 2 on the second Pi at `10.0.0.21`, using the **same** admin username and password as the primary. Do **not** configure upstreams or blocklists on it — they'll be pushed from the primary in the next step.
+
+### Sync config with adguardhome-sync
+
+[adguardhome-sync](https://github.com/bakito/adguardhome-sync) pushes configuration from the primary to the secondary on a schedule. Run it as a Docker container on the **primary** (`pyrite`).
+
+Install Docker on the primary if not already present:
 
 ```bash
 apt update && apt install -y docker.io
 systemctl enable --now docker
 ```
 
-Create the config directory and write the config file. Create `/etc/adguardhome-sync/adguardhome-sync.yaml` with the following content (substitute your credentials and IPs):
+Create `/etc/adguardhome-sync/adguardhome-sync.yaml` (substitute your credentials):
 
 ```yaml
 origin:
@@ -103,7 +127,7 @@ origin:
   password: YOUR_PRIMARY_PASSWORD
 
 replicas:
-  - url: http://10.0.20.21:80
+  - url: http://10.0.0.21:80
     username: admin
     password: YOUR_SECONDARY_PASSWORD
 
@@ -111,7 +135,7 @@ cron: "*/30 * * * *"
 runOnStart: true
 ```
 
-Run the sync container using the [LinuxServer.io image](https://docs.linuxserver.io/images/docker-adguardhome-sync/) (ARM64 ✅):
+Run the sync container ([LinuxServer.io image](https://docs.linuxserver.io/images/docker-adguardhome-sync/), ARM64 ✅):
 
 ```bash
 docker run -d \
@@ -127,44 +151,42 @@ Verify the first sync completed:
 docker logs adguardhome-sync
 ```
 
-You should see a successful push. Log into the secondary at `http://10.0.20.21` and confirm blocklists match the primary.
+You should see a successful push. Log into `http://10.0.0.21` and confirm blocklists match the primary.
 
-## Step 5: Configure UDM DHCP
+### Advertise both from the UDM
 
-In the UniFi Network app, advertise both Pi Zero IPs as DNS servers for each VLAN that should use AdGuard Home:
-
-1. Go to **Settings → Networks → [VLAN name] → DHCP → DNS Server**.
-2. Set **DNS Server 1** to `10.0.20.20` (primary).
-3. Set **DNS Server 2** to `10.0.20.21` (secondary).
-4. Repeat for your Trusted, Lab, and IoT VLANs.
-
-Clients will use AdGuard at the next DHCP renewal. Force a renewal on a test device (`sudo dhclient -r && sudo dhclient` on Linux, reconnect Wi-Fi on a phone) and verify queries appear in AdGuard's **Query Log**.
+Back in **Settings → Networks → [VLAN name] → DHCP → DNS Server**, set **DNS Server 2** to `10.0.0.21` on each VLAN (DNS Server 1 stays `10.0.0.20`). Clients now fail over automatically. Extend the IoT/Lab allow rules in [R2 Step 3d](02-networking.md#step-3d-dns-enforcement) to cover `10.0.0.21` as well.
 
 ## Ansible
 
-The Pi Zero 2 W nodes should be in your `homelab-ansible` inventory so their configuration is rebuild-durable. Add them to a `dns` host group with a role that covers:
+The Pi should be in your `homelab-ansible` inventory so its configuration is rebuild-durable. Add it to a `dns` host group with a role that covers:
 
 - AdGuard Home install and service enable
 - systemd-resolved disable
-- Docker install and adguardhome-sync container
+- *(secondary only)* Docker install and adguardhome-sync container
 
 ## Verification
 
-- [ ] AdGuard Home service running on both nodes:
+- [ ] AdGuard Home service running:
 
     ```bash
     systemctl status AdGuardHome
     ```
 
-- [ ] Primary web UI accessible at `http://10.0.20.20`.
-- [ ] Secondary web UI accessible at `http://10.0.20.21` — blocklists and filter rules match primary.
-- [ ] adguardhome-sync container running on primary with no errors in logs.
-- [ ] Test that a known ad domain is blocked from a network client:
+- [ ] Web UI accessible at `http://10.0.0.20`.
+- [ ] A known ad domain is blocked:
 
     ```bash
-    dig doubleclick.net @10.0.20.20
+    dig doubleclick.net @10.0.0.20
     # Expect: 0.0.0.0 in the answer section
     ```
 
-- [ ] UDM DHCP advertising both Pi Zero IPs as DNS on all VLANs.
+- [ ] UDM DHCP advertising `10.0.0.20` as DNS on every VLAN that should filter.
+- [ ] From a device on Trusted, IoT, and Lab: DNS resolves (proves the R2 Step 3d allow rules are in place).
 - [ ] Query log in AdGuard UI shows traffic from network devices.
+
+**If you added the second node:**
+
+- [ ] Secondary web UI at `http://10.0.0.21` — blocklists and filter rules match the primary.
+- [ ] adguardhome-sync container running on the primary with no errors in logs.
+- [ ] UDM DHCP advertising both `10.0.0.20` and `10.0.0.21`.
