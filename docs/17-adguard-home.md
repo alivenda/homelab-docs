@@ -62,11 +62,14 @@ Open `http://10.0.0.20:3000` from a browser on your local network and complete t
 1. **Listen interfaces** — accept the default (all interfaces).
 2. **DNS listen port** — leave at 53.
 3. **Admin credentials** — create a strong username and password; save both to Vaultwarden. (If you plan to add a second node later, reuse these credentials there — adguardhome-sync requires matching logins.)
-4. Complete the wizard. AdGuard Home now serves DNS on port 53 and its web UI on port 80.
+4. Complete the wizard. AdGuard Home now serves DNS on port 53 and its web UI on port 80 (a manual install's default).
+
+!!! info "Web-UI port: `:8083` on this build"
+    DietPi-Software (ID 126) serves the web UI on **`:8083`**, *not* `:80` — and never on `:3000`, which is only the manual-install setup wizard. This runbook writes `http://10.0.0.20:8083` for `pyrite`; on a manual install, drop the `:8083` (it's on `:80`). The host firewall in the [`dns` Ansible play](#ansible) opens whichever port `adguard_web_port` is set to.
 
 ## Step 3: Configure Upstreams and Blocklists
 
-Log into `http://10.0.0.20` and apply the following.
+Log into `http://10.0.0.20:8083` and apply the following.
 
 **Settings → DNS settings → Upstream DNS servers:**
 
@@ -127,7 +130,7 @@ users:
     password: $2y$10$....your.new.hash....
 ```
 
-Restart AdGuard, then log in at `http://10.0.0.20` with the new password to confirm:
+Restart AdGuard, then log in at `http://10.0.0.20:8083` with the new password to confirm:
 
 ```bash
 dietpi-services restart adguardhome
@@ -177,12 +180,12 @@ Create `/etc/adguardhome-sync/adguardhome-sync.yaml` (substitute your credential
 
 ```yaml
 origin:
-  url: http://localhost:80
+  url: http://localhost:8083
   username: admin
   password: YOUR_PRIMARY_PASSWORD
 
 replicas:
-  - url: http://10.0.0.21:80
+  - url: http://10.0.0.21:8083
     username: admin
     password: YOUR_SECONDARY_PASSWORD
 
@@ -206,7 +209,7 @@ Verify the first sync completed:
 docker logs adguardhome-sync
 ```
 
-You should see a successful push. Log into `http://10.0.0.21` and confirm blocklists match the primary.
+You should see a successful push. Log into `http://10.0.0.21:8083` and confirm blocklists match the primary.
 
 ### Advertise both from the UDM
 
@@ -236,7 +239,7 @@ ansible-playbook site.yml --limit pyrite
     systemctl status AdGuardHome
     ```
 
-- [ ] Web UI accessible at `http://10.0.0.20`.
+- [ ] Web UI accessible at `http://10.0.0.20:8083`.
 - [ ] A known ad domain is blocked:
 
     ```bash
@@ -250,6 +253,6 @@ ansible-playbook site.yml --limit pyrite
 
 **If you added the second node:**
 
-- [ ] Secondary web UI at `http://10.0.0.21` — blocklists and filter rules match the primary.
+- [ ] Secondary web UI at `http://10.0.0.21:8083` — blocklists and filter rules match the primary.
 - [ ] adguardhome-sync container running on the primary with no errors in logs.
 - [ ] UDM DHCP advertising both `10.0.0.20` and `10.0.0.21`.
