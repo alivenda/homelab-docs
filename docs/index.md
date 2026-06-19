@@ -10,7 +10,7 @@ A runbook guide for building a 4-node k3s cluster on a Turing Pi 2, learning Dev
 - Ubiquiti UDM rackmount for VLANs, firewall, DHCP
 - UGREEN DXP6800 Pro NAS (x86, 8 GB DDR5) for bulk media and Immich
 - slate — repurposed Late-2014 Mac mini (16 GB RAM, 256 GB SSD), Proxmox host running Home Assistant OS in a VM (2 vCPU, 4 GB)
-- 2× Raspberry Pi Zero 2 W for AdGuard Home (primary + secondary DNS)
+- 1× Raspberry Pi for AdGuard Home DNS (`pyrite` — this build: Pi 3 Model B; add a 2nd for optional failover)
 - Cloudflare-registered domain (~$10/yr)
 
 You can substitute hardware, but commands are written against this exact build. Full parts list (PSU, SSD, UPS, and the rest) is in [Runbook 0](00-prerequisites.md).
@@ -52,7 +52,7 @@ R11 Forgejo
  ↓
 R12 Woodpecker CI/CD
  ↓
-R17 AdGuard Home        ← DNS ad-blocking (Pi Zero 2 W — not k3s)
+R17 AdGuard Home        ← DNS ad-blocking (dedicated Pi — not k3s)
  ↓
 R18 Authelia + lldap    ← SSO + OIDC provider (depends on R6, R7)
  ↓

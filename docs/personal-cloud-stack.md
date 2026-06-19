@@ -1,6 +1,6 @@
 # Personal Cloud Stack — Complete Service Guide
 
-A comprehensive review of every awesome-selfhosted category mapped against your specific hardware, existing stack, and day-to-day needs. Written against the Turing Pi 2 cluster, UGREEN DXP6800 Pro NAS, slate (a Late-2014 Mac mini running Home Assistant OS as a Proxmox VM), and 2× Pi Zero 2 W DNS nodes.
+A comprehensive review of every awesome-selfhosted category mapped against your specific hardware, existing stack, and day-to-day needs. Written against the Turing Pi 2 cluster, UGREEN DXP6800 Pro NAS, slate (a Late-2014 Mac mini running Home Assistant OS as a Proxmox VM), and a dedicated Raspberry Pi for DNS (`pyrite`).
 
 ---
 
@@ -11,7 +11,7 @@ A comprehensive review of every awesome-selfhosted category mapped against your 
 | **Cluster (4× CM4)** | ARM64, 32 GB total RAM, 1 TB NFS | Traefik, ArgoCD, Prometheus/Grafana/Loki, Vaultwarden, Nextcloud, Paperless-ngx, Forgejo, Woodpecker |
 | **NAS (DXP6800 Pro)** | x86-64, **8 GB RAM** (expandable) | Plex, Immich |
 | **Home Assistant node (slate — Mac mini)** | x86-64, 16 GB RAM / 256 GB SSD, Proxmox | Home Assistant OS (VM: 2 vCPU, 4 GB) |
-| **DNS nodes (2× Pi Zero 2 W)** | ARM64, 512 MB RAM each | AdGuard Home (primary + secondary) |
+| **DNS node (`pyrite` — Pi 3 Model B)** | ARM64, 1 GB RAM | AdGuard Home (optional 2nd, `marcasite`, for failover) |
 
 > **NAS RAM is a meaningful constraint.** At 8 GB, Plex + Immich can consume 2.5–6 GB under load, leaving 2–5.5 GB headroom. Enough to run the Arr stack locally (if you prefer), but not enough for Ollama without a RAM upgrade. The DXP6800 Pro accepts standard DDR5 SO-DIMMs — upgrading to 16 GB (~$35–50) opens up AI workloads and makes the NAS more comfortable overall. This doc marks services that require the upgrade `⚠️ NAS RAM upgrade recommended`.
 
@@ -42,7 +42,7 @@ Headroom is comfortable. OCR (Paperless) and CI builds (Woodpecker) are still th
 | ⚪ **Skip / edge case** | Niche, heavy, ARM issues, or not relevant |
 | 🖥️ **Cluster** | Run on k3s |
 | 💾 **NAS** | Run via Docker Compose on DXP6800 |
-| 🌐 **DNS nodes** | Run on Pi Zero 2 W (primary/secondary) |
+| 🌐 **DNS** | Run on a dedicated Raspberry Pi (`pyrite`; optional 2nd) |
 | ⚠️ | Needs NAS RAM upgrade to run comfortably |
 | 🚫 | Trap — don't self-host this |
 
@@ -76,13 +76,13 @@ Headroom is comfortable. OCR (Paperless) and CI builds (Woodpecker) are still th
 These unlock everything else. Add them before the "good additions" below.
 
 ### 🔴 DNS Ad-Blocking — AdGuard Home
-**Category:** DNS | **Run:** 🌐 2× Pi Zero 2 W (primary + secondary) | **RAM:** ~100 MB each | **ARM64:** ✅ Official multiarch | **Runbook:** [R17](17-adguard-home.md)
+**Category:** DNS | **Run:** 🌐 Raspberry Pi — `pyrite` (optional 2nd, `marcasite`, for failover) | **RAM:** ~100 MB | **ARM64:** ✅ Official multiarch | **Runbook:** [R17](17-adguard-home.md)
 
-Running on dedicated Pi Zero 2 Ws is the correct pattern: DNS must stay up independently of your cluster, and two units give you redundancy. AdGuard Home has *no* native cross-instance sync — R17 runs the [`adguardhome-sync`](https://github.com/bakito/adguardhome-sync) container on the primary to keep the secondary's blocklists and config in lockstep.
+Running on a dedicated Pi is the correct pattern: DNS must stay up independently of your cluster. One Pi is enough; a second gives you redundancy. AdGuard Home has *no* native cross-instance sync — when you run two, R17 runs the [`adguardhome-sync`](https://github.com/bakito/adguardhome-sync) container on the primary to keep the secondary's blocklists and config in lockstep.
 
-The Pi Zero 2 W has 512 MB RAM — AdGuard Home uses ~100 MB, leaving plenty of headroom. Install via the official one-line installer on DietPi or Raspberry Pi OS Lite.
+This build runs `pyrite`, a Pi 3 Model B (1 GB RAM) — AdGuard Home uses ~100 MB, leaving plenty of headroom. Install via DietPi-Software (ID 126) or the official one-line installer on DietPi / Raspberry Pi OS Lite.
 
-**Setup:** Configure your UDM to advertise both Pi Zero IPs as DNS servers via DHCP on each VLAN. Handing clients two resolvers gives only *partial* failover, though — stub resolvers retry inconsistently and can stall on a dead server for several seconds. For true HA, front the pair with a shared [keepalived](https://www.keepalived.org/) VIP. Note also that the Pi Zero 2 W is Wi-Fi-only (no Ethernet port); for DNS infrastructure a USB-Ethernet dongle is worth considering.
+**Setup:** Configure your UDM to advertise `pyrite`'s IP (`10.0.0.20`) as the DNS server via DHCP on each VLAN — and add a second IP once you run `marcasite`. Handing clients two resolvers gives only *partial* failover, though — stub resolvers retry inconsistently and can stall on a dead server for several seconds. For true HA, front the pair with a shared [keepalived](https://www.keepalived.org/) VIP. Note the Pi Zero 2 W (a common pick for the second node) is Wi-Fi-only with no Ethernet port — for DNS infrastructure a USB-Ethernet dongle is worth it.
 
 **Replaces:** Google's DNS, your ISP's DNS, in-browser ad blockers.
 
@@ -326,7 +326,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **CMS** | ⚪ Skip | Nextcloud covers docs; BookStack covers wiki; Ghost covers blog |
 | **CRM** | ⚪ Skip | Personal use; Monica (personal CRM) is 🟡 if you track relationships |
 | **Database Management** | 🟡 Adminer or pgAdmin | Already in stack via Nextcloud/Paperless; Adminer is ~50 MB |
-| **DNS** | 🔴 AdGuard Home | See Part 2 — runs on 2× Pi Zero 2 W |
+| **DNS** | 🔴 AdGuard Home | See Part 2 — runs on a dedicated Pi (`pyrite`) |
 | **Document Mgmt** | ✅ Paperless-ngx | |
 | **Document Mgmt — E-Books** | 🔴 Kavita + 🔴 Audiobookshelf | See Part 3 |
 | **Document Mgmt — Library Systems** | ⚪ Skip | Institutional use |
@@ -425,7 +425,7 @@ The Nextcloud Collabora integration turns Nextcloud into a full Google Docs repl
 
 ## Part 6 — Recommended Deployment Order
 
-If starting fresh, add services in this sequence. AdGuard Home goes on the Pi Zero 2 Ws — everything else goes on the cluster unless marked 💾 NAS. Items tagged `(Rxx)` have a runbook; untagged items are recommended but not yet documented.
+If starting fresh, add services in this sequence. AdGuard Home goes on the dedicated DNS Pi (`pyrite`) — everything else goes on the cluster unless marked 💾 NAS. Items tagged `(Rxx)` have a runbook; untagged items are recommended but not yet documented.
 
 ```
 1.  AdGuard Home              (R17) → whole-network ad blocking immediately
