@@ -89,6 +89,41 @@ Enable **Parallel requests** so both upstreams are queried simultaneously.
 - AdGuard DNS filter (built-in — enable it)
 - Add OISD Basic: `https://abp.oisd.nl/`
 
+## Recommended configuration
+
+Step 3 gets DNS working; these settings make it noticeably better on a homelab. All live in the web UI, so the nightly backup captures them.
+
+### Split-horizon DNS for local services
+
+By default a client resolving `vault.yourdomain.com` goes out to public DNS and hairpins back in through the WAN. Point internal lookups straight at the reverse proxy instead.
+
+**Filters → DNS rewrites → Add:**
+
+| Domain | Answer |
+|---|---|
+| `*.yourdomain.com` | `10.0.20.200` (Traefik's load-balancer IP) |
+
+Internal clients now reach every gateway-routed service directly. TLS still validates — Traefik selects the certificate by SNI — and the public DNS records stay in place for off-network access. This is the AdGuard-native version of the UDM host-record trick in [Runbook 6](06-traefik.md), and it's the one that applies now: every VLAN resolves through AdGuard, not the UDM.
+
+!!! warning "The wildcard assumes everything is behind the proxy"
+    It sends *every* `*.yourdomain.com` name to Traefik. If a subdomain is served elsewhere, add a more specific rewrite for it — AdGuard honours the most specific match — or use per-host rewrites instead of the wildcard.
+
+### DNSSEC
+
+In **Settings → DNS settings**, tick **Enable DNSSEC** to validate signed responses from the upstreams.
+
+### Private reverse DNS
+
+So the query log shows device names instead of bare IPs: under **Settings → DNS settings → Private reverse DNS servers** add your gateway (`10.0.0.1`), then enable **Use private reverse DNS resolvers** and **reverse-resolve clients' IP addresses**.
+
+### Cache tuning
+
+Under **Settings → DNS settings → DNS cache configuration**, set the cache size to `4194304` (4 MB) and enable **optimistic caching** — repeat lookups return instantly from cache while AdGuard refreshes them in the background.
+
+### Query log retention
+
+The Pi logs to its SD card, so cap retention in **Settings → General settings**: a **7-day** query log is plenty for debugging. Statistics are tiny and can stay longer.
+
 ## Step 4: Point the UDM's DHCP at AdGuard
 
 In the UniFi Network app, hand out the Pi's IP as the DNS server for each VLAN that should use AdGuard Home:
