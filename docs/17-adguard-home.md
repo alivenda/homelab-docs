@@ -25,7 +25,7 @@ This runbook covers:
 
 ## Prerequisites
 
-- A Raspberry Pi provisioned with DietPi (64-bit ARM) and reachable via SSH. If your `dietpi.txt` included `AUTO_SETUP_INSTALL_SOFTWARE_ID=126` (see [Runbook 3](03-turing-pi.md) for the DietPi automation pattern), AdGuard Home is already installed — skip to Step 2.
+- A Raspberry Pi provisioned with DietPi (64-bit ARM) and reachable via SSH. If your `dietpi.txt` included `AUTO_SETUP_INSTALL_SOFTWARE_ID=126` (see [Runbook 3](03-turing-pi.md) for the DietPi automation pattern), AdGuard Home is already installed *and* its web-admin login was seeded from `AUTO_SETUP_GLOBAL_PASSWORD` — there's no wizard to run. Rotate that password in [Post-install hardening](#post-install-hardening) first, then continue at Step 3.
 - Static IP `10.0.0.20` on the Default VLAN (set via `dietpi.txt` at first boot, per Runbook 2).
 - UDM admin access.
 
@@ -53,6 +53,9 @@ systemctl status AdGuardHome
     ```
 
 ## Step 2: Initial Setup Wizard
+
+!!! note "Headless installs skip this"
+    If AdGuard came in via DietPi-Software (ID 126), there's no wizard — it was pre-configured and its admin login seeded from `AUTO_SETUP_GLOBAL_PASSWORD`. Rotate that password in [Post-install hardening](#post-install-hardening), then go to Step 3.
 
 Open `http://10.0.0.20:3000` from a browser on your local network and complete the wizard:
 
@@ -98,6 +101,58 @@ In the UniFi Network app, hand out the Pi's IP as the DNS server for each VLAN t
     AdGuard sits on the Default LAN (Internal zone). Trusted reaches it already, but with the zone-based firewall the IoT and Lab zones are blocked from Internal by default — clients there will *silently* lose DNS unless you add the allow rules in [R2 Step 3d](02-networking.md#step-3d-dns-enforcement). Add those before flipping each VLAN's DNS over.
 
 Clients pick up AdGuard at the next DHCP renewal. Force a renewal on a test device (`sudo dhclient -r && sudo dhclient` on Linux, reconnect Wi-Fi on a phone) and verify queries appear in AdGuard's **Query Log**.
+
+## Post-install hardening { #post-install-hardening }
+
+A fresh DietPi + AdGuard install leaves a couple of doors wider than they need to be. Close them before the box starts resolving DNS for the whole network.
+
+### Give AdGuard its own admin password
+
+A headless install (DietPi-Software ID 126) seeds the web-admin login from `AUTO_SETUP_GLOBAL_PASSWORD` — the **same** secret as the `root` and `dietpi` OS accounts. One leaked password would then surrender both the box and its DNS config, so decouple them.
+
+AdGuard Home has no "change password" button in the web UI; the admin hash lives in its config file. Generate a fresh bcrypt hash (`htpasswd` ships in `apache2-utils`):
+
+```bash
+apt install -y apache2-utils
+htpasswd -B -C 10 -n admin
+# Enter a new, unique password when prompted.
+# Output: admin:$2y$10$....
+```
+
+Copy the hash (everything after `admin:`) into the `users:` block of `AdGuardHome.yaml` (on this build: `/mnt/dietpi_userdata/adguardhome/AdGuardHome.yaml`):
+
+```yaml
+users:
+  - name: admin
+    password: $2y$10$....your.new.hash....
+```
+
+Restart AdGuard, then log in at `http://10.0.0.20` with the new password to confirm:
+
+```bash
+dietpi-services restart adguardhome
+```
+
+Save the new password to Vaultwarden, separate from the OS credentials.
+
+### Rotate the OS logins and lock SSH to keys
+
+While you're in here, rotate `root` and `dietpi` off the shared global password too (`passwd root`, `passwd dietpi`), and switch SSH to key-only. Add your public key first (`ssh-copy-id dietpi@10.0.0.20`) and confirm a passwordless login works, **then** disable password auth with DietPi's helper:
+
+```bash
+sudo /boot/dietpi/func/dietpi-set_software disable_ssh_password_logins 1
+```
+
+!!! warning "The helper leaves a PAM gap"
+    `disable_ssh_password_logins` writes `PasswordAuthentication no` but not `KbdInteractiveAuthentication no`, so OpenSSH's PAM keyboard-interactive path can still prompt for a password. Verify both are closed:
+    ```bash
+    sudo sshd -T | grep -E 'passwordauthentication|kbdinteractive'
+    # both should report `no`
+    ```
+    If `kbdinteractiveauthentication` is still `yes`, drop `KbdInteractiveAuthentication no` into a separate `/etc/ssh/sshd_config.d/99-hardening.conf` (DietPi won't clobber it) and restart ssh.
+
+!!! tip "This is codified"
+    All of the above lives in `homelab-ansible`: the `dns` play installs AdGuard and applies a DNS-shaped firewall, and the shared SSH play sets key-only auth **and** closes the `KbdInteractiveAuthentication` gap on every node. Re-running the playbook keeps SSH hardened — but the admin-password rotation stays a one-time manual step, since the automation never generates the secret.
 
 ## Optional: Add a Second Node for Failover
 
@@ -159,11 +214,19 @@ Back in **Settings → Networks → [VLAN name] → DHCP → DNS Server**, set *
 
 ## Ansible
 
-The Pi should be in your `homelab-ansible` inventory so its configuration is rebuild-durable. Add it to a `dns` host group with a role that covers:
+`pyrite` is in the `homelab-ansible` inventory under a `dns` host group, so its configuration is rebuild-durable. The `dns` play (tag `dns`) covers:
 
-- AdGuard Home install and service enable
-- systemd-resolved disable
-- *(secondary only)* Docker install and adguardhome-sync container
+- AdGuard Home install (idempotent — gated on the running unit) and service enable
+- a DNS-shaped UFW ruleset (port 53 from every VLAN; SSH + web UI from Trusted only)
+- a nightly `AdGuardHome.yaml` → Garage (S3) backup timer
+
+It also inherits the shared `all` hardening plays (key-only SSH, unattended-upgrades, chrony). Apply with:
+
+```bash
+ansible-playbook site.yml --limit pyrite
+```
+
+*(secondary only)* Docker and the adguardhome-sync container aren't codified yet — add them to the play when you bring up `marcasite`.
 
 ## Verification
 
