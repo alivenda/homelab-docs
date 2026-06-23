@@ -1,4 +1,4 @@
-# Runbook 15: Immich
+# Immich
 
 Self-hosted photo and video management.
 
@@ -41,10 +41,10 @@ docker exec -t immich_postgres pg_dumpall -c -U postgres \
 ```
 
 Immich's database is deliberately **not** covered by the shared NAS Postgres backup job —
-its bundled Postgres predates the [shared server](27-nas-postgres.md) and stays separate. The
+its bundled Postgres predates the [shared server](nas-postgres.md) and stays separate. The
 command above is the manual capture to run **before an update**. Routine off-box protection is
 automated separately: Immich's own built-in backup dumps the database nightly to
-`${UPLOAD_LOCATION}/backups/`, and the [Immich database → Garage](10-backups.md#immich-database-garage)
+`${UPLOAD_LOCATION}/backups/`, and the [Immich database → Garage](backups.md#immich-database-garage)
 sync job ships those dumps to a dedicated Garage bucket so they survive a NAS volume failure
 and land in the [cold-shutdown export](cold-shutdown.md).
 

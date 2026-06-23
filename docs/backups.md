@@ -1,4 +1,4 @@
-# Runbook 10: Backups and Disaster Recovery
+# Backups & DR
 
 Local backups with a clearly-marked offsite TODO.
 
@@ -236,7 +236,7 @@ configuration:
       default: true
       config:
         region: us-east-1               # matches Garage's s3_region
-        s3Url: http://10.0.20.50:9000   # NAS (R2 static-IP table)
+        s3Url: http://10.0.20.50:9000   # NAS (Networking static-IP table)
         s3ForcePathStyle: "true"        # Garage uses path-style addressing
 
 deployNodeAgent: true       # replaces deployRestic; needed for PVC-content backups
@@ -272,7 +272,7 @@ Pin `--version` to a current release listed on [vmware-tanzu/helm-charts](https:
 
 ## Home Assistant backups → Garage
 
-Home Assistant runs off-cluster — an HAOS VM on **slate** (`10.0.20.21`, see [Runbook 16](16-home-assistant.md)). Its native backups are local; getting them off-box to Garage is done by **pulling from the NAS with rclone**, not by an in-HA S3 integration.
+Home Assistant runs off-cluster — an HAOS VM on **slate** (`10.0.20.21`, see [Home Assistant](home-assistant.md)). Its native backups are local; getting them off-box to Garage is done by **pulling from the NAS with rclone**, not by an in-HA S3 integration.
 
 !!! note "Why pull from the NAS instead of an HA S3 backup-agent integration"
     Home Assistant's S3-compatible backup-agent integrations are `botocore`-based, and on current HA they break on an `aiobotocore`↔`botocore` version skew (the integration's newer `aiobotocore` passes an argument the bundled `botocore` doesn't accept). Decoupling — HA writes local backups, the NAS ships them to Garage — sidesteps HA's Python entirely and survives HA core updates, which is the better DR posture regardless.
@@ -368,12 +368,12 @@ NAS**, next to the server: nightly per-database `pg_dump -Fc` plus a
 `pg_dumpall --globals-only`, pushed to a dedicated `postgres-backups` Garage bucket by a
 `postgres-backup.timer` (04:30, an hour before the HA sync so the jobs don't contend for
 NAS I/O). The full pipeline — script, units, and the seeded restore drill that gates it —
-is in [Runbook 27](27-nas-postgres.md).
+is in [NAS PostgreSQL](nas-postgres.md).
 
 Two things stay out of this shared job, each for its own reason:
 
 - **Immich** keeps its own dump path — its bundled Postgres on the NAS predates the shared
-  server (Runbook 15), and Immich's built-in scheduled backup already dumps the database
+  server (Immich), and Immich's built-in scheduled backup already dumps the database
   itself. Getting those dumps **off-box** is a separate job, the same shape as Audiobookshelf
   — see [Immich database → Garage](#immich-database-garage) below.
 - **Embedded-SQLite apps** — their volumes live on `local-path`, which Velero's node-agent
@@ -464,7 +464,7 @@ is the recovery reference.
 
 ## Immich database → Garage
 
-Immich [runs as Docker on the NAS](15-immich.md) with its **own** bundled Postgres, separate
+Immich [runs as Docker on the NAS](immich.md) with its **own** bundled Postgres, separate
 from the shared server above. It already backs that database up on a schedule — Immich's
 built-in job writes a version-stamped dump to `${UPLOAD_LOCATION}/backups/` (e.g.
 `/volume1/photos/backups/immich-db-backup-20260617T020000-v2.7.5-pg14.19.sql.gz`) nightly at
@@ -551,7 +551,7 @@ something real and check **content**, not exit codes:
   (see the [storage architecture](storage-architecture.md#the-local-path-tier) for how that
   failure mode was caught).
 - A database dump must restore from the **Garage copy** into a scratch database with
-  matching row counts — [Runbook 27](27-nas-postgres.md) has the drill.
+  matching row counts — [NAS PostgreSQL](nas-postgres.md) has the drill.
 
 !!! tip "Schedule a restore drill"
     The first time you discover backups are corrupt should NOT be when you need them.
@@ -577,7 +577,7 @@ something real and check **content**, not exit codes:
 
 - [ ] Restore test (do this monthly): restore a dump from the Garage copy into a scratch
   database and compare row counts against the source — the drill in
-  [Runbook 27](27-nas-postgres.md) is the template.
+  [NAS PostgreSQL](nas-postgres.md) is the template.
 
 - [ ] Off-node etcd snapshot present in Garage:
 

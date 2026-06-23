@@ -1,4 +1,4 @@
-# Runbook 21: Arr Stack
+# Arr Stack
 
 !!! warning "Shelved — not deployed (2026-06-16)"
     The manifests were written but this stack is **not deployed**, and the
@@ -33,7 +33,7 @@ stack runs on the cluster and feeds **Plex**, which runs on the NAS.
 |---|---|
 | **Difficulty** | Intermediate |
 | **Runs On** | k3s (cluster); media + Plex on the NAS |
-| **Depends On** | R5 (k3s), R6 (Traefik Gateway + wildcard TLS), R18 (Authelia — ForwardAuth), R8 (Cloudflare DNS), a VPN provider account |
+| **Depends On** | Kubernetes (k3s), Traefik (Gateway + wildcard TLS), Authelia (ForwardAuth), Terraform (Cloudflare DNS), a VPN provider account |
 
 !!! note "Source of truth is the manifest"
     The deployed state lives in `homelab-manifests/apps/arr/manifests/` and
@@ -116,7 +116,7 @@ an optimisation, not a requirement; see the end of this runbook.)
 qBittorrent runs with a **gluetun** sidecar in the same pod. gluetun brings up a
 WireGuard/OpenVPN tunnel and a kill-switch; both containers share the pod network
 namespace, so **all** of qBittorrent's traffic exits via the VPN and nothing
-leaks to the home WAN IP if the tunnel drops. This replaces R21's original
+leaks to the home WAN IP if the tunnel drops. This replaces Arr Stack's original
 no-VPN qBittorrent.
 
 ### Manifests + Application layout

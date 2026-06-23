@@ -1,16 +1,16 @@
-# Runbook 5: Kubernetes Cluster (k3s) on Turing Pi 2
+# Kubernetes (k3s)
 
 Deploy k3s across all 4 CM4 nodes, using the SATA SSD on Node 3 for NFS persistent storage and your UGREEN NAS for bulk media.
 
 | | |
 |---|---|
 | **Difficulty** | Intermediate |
-| **Time Estimate** | 1–2 hours (after Runbook 3) |
+| **Time Estimate** | 1–2 hours (after Turing Pi) |
 | **Runs On** | Turing Pi 2 (all 4 CM4 nodes) |
-| **Depends On** | Runbook 3 (or 4) |
+| **Depends On** | Turing Pi (or Ansible) |
 
-!!! note "If you ran Runbook 4 (Ansible)"
-    R4's playbooks already installed NFS on topaz and k3s on all 4 nodes. **Skip Steps 1–4 below** — they are the imperative reference for what Ansible did, useful for understanding but redundant if you ran the playbook. Resume at [Step 5: Install Helm](#step-5-install-helm).
+!!! note "If you ran Ansible"
+    Ansible's playbooks already installed NFS on topaz and k3s on all 4 nodes. **Skip Steps 1–4 below** — they are the imperative reference for what Ansible did, useful for understanding but redundant if you ran the playbook. Resume at [Step 5: Install Helm](#step-5-install-helm).
 
 ## Step 0: Get `kubectl` working on your machine
 
@@ -25,7 +25,7 @@ sudo pacman -S kubectl
 sudo snap install kubectl --classic
 
 # Pull the kubeconfig from ruby and rewrite the server URL.
-# Log in as dietpi (root login is disabled in R4); k3s wrote the file
+# Log in as dietpi (root login is disabled by the Ansible playbook); k3s wrote the file
 # world-readable via --write-kubeconfig-mode 644, so dietpi can read it.
 mkdir -p ~/.kube
 scp dietpi@10.0.20.10:/etc/rancher/k3s/k3s.yaml ~/.kube/config
@@ -107,7 +107,7 @@ kubectl label nodes amethyst kubernetes.io/role=worker storage=small
 In this build the labels are managed declaratively — each host's `node_labels` in the `homelab-ansible` inventory is the source of truth, applied by the `labels` play — so treat the commands above as the imperative reference for what the play does.
 
 !!! note "Three labels, three different jobs"
-    `storage=large/small` records raw eMMC size (32 GB modules are ruby and topaz) and is **not** a placement signal — the two large-disk nodes are the control plane and the NFS/monitoring server, exactly where app data should *not* go. Placement uses the other two labels: `workload=heavy` (emerald-only) takes the spiky workloads R0 warns about — Paperless OCR (R14) and Woodpecker builds (R12) — and `app-state=true` (also emerald-only) marks the designated home for node-local `local-path` app data, so SQLite apps and their PVs land together on one known node. `node-role.kubernetes.io/control-plane=true` on ruby is only a **label**, not a taint — k3s does not taint its server by default. If you'd rather hard-fence ruby, taint it (`kubectl taint nodes ruby node-role.kubernetes.io/control-plane=:NoSchedule`), but that also evicts the lighter app pods this build intentionally runs on ruby.
+    `storage=large/small` records raw eMMC size (32 GB modules are ruby and topaz) and is **not** a placement signal — the two large-disk nodes are the control plane and the NFS/monitoring server, exactly where app data should *not* go. Placement uses the other two labels: `workload=heavy` (emerald-only) takes the spiky workloads the [Prerequisites](prerequisites.md) runbook warns about — Paperless OCR and Woodpecker builds — and `app-state=true` (also emerald-only) marks the designated home for node-local `local-path` app data, so SQLite apps and their PVs land together on one known node. `node-role.kubernetes.io/control-plane=true` on ruby is only a **label**, not a taint — k3s does not taint its server by default. If you'd rather hard-fence ruby, taint it (`kubectl taint nodes ruby node-role.kubernetes.io/control-plane=:NoSchedule`), but that also evicts the lighter app pods this build intentionally runs on ruby.
 
 ## Step 5: Install Helm
 
@@ -150,7 +150,7 @@ spec:
     These manifests live at `homelab-manifests/infrastructure/metallb/{ipaddresspool,l2advertisement}.yaml`. Apply via `kubectl apply -f` from a clone of that repo; the YAML above is shown inline for learning context. Edit the repo, not your local copy, so the changes survive a rebuild.
 
 !!! warning "MetalLB pool vs DHCP"
-    MetalLB's pool (`10.0.20.200–10.0.20.250`) **must be excluded from the Lab VLAN DHCP scope**. R2's Network Plan bounds Lab VLAN DHCP to `.100–.199` for exactly this reason — if you change either side, change both. Without the bound, UDM will eventually hand out an address in `.200–.250` to a random device and you'll get intermittent IP conflicts that are nightmare to debug. In UniFi Network: Settings → Networks → Lab → DHCP Range should stay `10.0.20.100–10.0.20.199`.
+    MetalLB's pool (`10.0.20.200–10.0.20.250`) **must be excluded from the Lab VLAN DHCP scope**. Networking's Network Plan bounds Lab VLAN DHCP to `.100–.199` for exactly this reason — if you change either side, change both. Without the bound, UDM will eventually hand out an address in `.200–.250` to a random device and you'll get intermittent IP conflicts that are nightmare to debug. In UniFi Network: Settings → Networks → Lab → DHCP Range should stay `10.0.20.100–10.0.20.199`.
 
 ## Step 7: Install NFS Storage Provisioner
 
@@ -177,14 +177,14 @@ kubectl -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath="{.data.password}" | base64 -d
 ```
 
-Save the printed password to your password manager. (Once R7 is up, Vaultwarden becomes the home for everything cluster-generated.)
+Save the printed password to your password manager. (Once Vaultwarden is up, it becomes the home for everything cluster-generated.)
 
 !!! note "Why `--server-side`"
     The upstream `install.yaml` is large enough that a client-side `kubectl apply` can hit the 256 KB annotation limit on the embedded CRDs. The current ArgoCD docs recommend server-side apply with `--force-conflicts` for the initial install.
 
 ## Step 9: Access ArgoCD (before Traefik is up)
 
-ArgoCD has no Ingress yet — Runbook 6 (Traefik) is the next runbook. To reach the UI in the meantime, port-forward:
+ArgoCD has no Ingress yet — Traefik is the next runbook. To reach the UI in the meantime, port-forward:
 
 ```bash
 # In a separate terminal:
@@ -199,7 +199,7 @@ Then:
 - Password: the value you decoded from the secret in Step 8.
 
 !!! tip
-    After Runbook 6 (Traefik) is up, you'll add an HTTPRoute so `argocd.yourdomain.com` works without port-forwarding. The port-forward method is the bootstrap path that always works.
+    After Traefik is up, you'll add an HTTPRoute so `argocd.yourdomain.com` works without port-forwarding. The port-forward method is the bootstrap path that always works.
 
 ## Step 10: Control-plane redundancy (SPOF awareness)
 
@@ -222,11 +222,11 @@ etcd-snapshot-dir: /var/lib/rancher/k3s/server/db/snapshots
 sudo systemctl restart k3s
 ```
 
-Get the snapshots off-node too: k3s can upload them straight to the Garage S3 store on the NAS via its built-in `etcd-s3` config — [Runbook 10](10-backups.md#off-node-etcd-snapshots-k3s-native) sets that up (codified in `homelab-ansible`).
+Get the snapshots off-node too: k3s can upload them straight to the Garage S3 store on the NAS via its built-in `etcd-s3` config — [Backups](backups.md#off-node-etcd-snapshots-k3s-native) sets that up (codified in `homelab-ansible`).
 
 ## Step 11: Restore procedure (when ruby dies)
 
-If ruby is unrecoverable: reflash DietPi (Runbook 3), re-bootstrap with Ansible (Runbook 4), then restore etcd from your latest snapshot instead of running k3s server fresh:
+If ruby is unrecoverable: reflash DietPi (per [Turing Pi](turing-pi.md)), re-bootstrap with [Ansible](ansible.md), then restore etcd from your latest snapshot instead of running k3s server fresh:
 
 ```bash
 # On the new ruby, copy the latest snapshot from your NAS to:
@@ -264,7 +264,7 @@ sudo pacman -S kubeseal
 
 ## Step 13: Encrypt your first secret
 
-Worked example: encrypt the Cloudflare API token (which Runbook 6 will use for Traefik DNS-01) as a SealedSecret manifest. Commit the encrypted form to `homelab-manifests`; the cluster decrypts it at runtime.
+Worked example: encrypt the Cloudflare API token (which Traefik will use for DNS-01) as a SealedSecret manifest. Commit the encrypted form to `homelab-manifests`; the cluster decrypts it at runtime.
 
 ```bash
 # The traefik namespace needs to exist for the runtime materialization;
@@ -351,4 +351,4 @@ rm cf-token-plain.yaml   # never commit plaintext
     ```
 
 !!! tip "Next"
-    Runbook 6 (Traefik) before deploying any user-facing service. After Traefik is up, return to [Runbook 1 Step 7](01-git.md#step-7-wire-argocd-to-homelab-manifests) to wire ArgoCD to `homelab-manifests` using the read-only PAT.
+    Set up Traefik before deploying any user-facing service. After it's up, return to [Git Step 7](git.md#step-7-wire-argocd-to-homelab-manifests) to wire ArgoCD to `homelab-manifests` using the read-only PAT.

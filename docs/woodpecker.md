@@ -1,4 +1,4 @@
-# Runbook 12: CI/CD with Forgejo and Woodpecker CI
+# Woodpecker CI/CD
 
 End-to-end pipeline: push code, auto-build container images, deploy to k3s via GitOps.
 
@@ -7,7 +7,7 @@ End-to-end pipeline: push code, auto-build container images, deploy to k3s via G
 | **Difficulty** | Intermediate–Advanced |
 | **Time Estimate** | 2–3 hours |
 | **Runs On** | k3s cluster (32 GB node) |
-| **Depends On** | Runbook 5, 6, 10, 11 |
+| **Depends On** | Kubernetes, Traefik, Backups, Forgejo |
 
 ## Step 1: OAuth2 App in Forgejo
 
@@ -87,8 +87,8 @@ server:
   # regenerates on every ArgoCD resync and breaks the server<->agent handshake.
   createAgentSecret: false
   # SQLite on local-path, NOT nfs-storage — SQLite needs POSIX byte-range locking
-  # that NFS doesn't do reliably (corrupts the DB), the same constraint as Forgejo
-  # (R11). The DB is small + reconstructible; pin it to the heavy node and let
+  # that NFS doesn't do reliably (corrupts the DB), the same constraint as Forgejo.
+  # The DB is small + reconstructible; pin it to the heavy node and let
   # Velero back it up.
   persistentVolume:
     enabled: true
@@ -141,7 +141,7 @@ Pin `--version` to a current release listed on [woodpecker-ci/helm](https://gith
 
 ### GitOps-managed install (recommended)
 
-Commit two ArgoCD `Application`s, exactly as Forgejo does (R11 Step 3): the chart
+Commit two ArgoCD `Application`s, exactly as Forgejo does (its Step 3): the chart
 Application via the multi-source `$values` pattern, plus a second Application for
 the raw manifests (HTTPRoute, the sealed secret, the scratch StorageClass).
 
@@ -200,7 +200,7 @@ volumeBindingMode: Immediate
 
 ## Step 5: HTTPRoute
 
-Standard HTTPRoute for `ci.yourdomain.com`. Same shape as [Vaultwarden Step 3](07-vaultwarden.md#step-3-httproute) — change the backend service to `woodpecker-server`, port `80` (the server subchart's Service port; the `woodpecker-server` name comes from the mandatory `woodpecker` release name).
+Standard HTTPRoute for `ci.yourdomain.com`. Same shape as [Vaultwarden Step 3](vaultwarden.md#step-3-httproute) — change the backend service to `woodpecker-server`, port `80` (the server subchart's Service port; the `woodpecker-server` name comes from the mandatory `woodpecker` release name).
 
 ## Step 6: Why kubernetes backend (not docker)
 
@@ -209,7 +209,7 @@ Standard HTTPRoute for `ci.yourdomain.com`. Same shape as [Vaultwarden Step 3](0
 - Cross-architecture builds: pin steps to amd64 or arm64 via `nodeSelector` on the build pod if you ever add x86 nodes.
 
 !!! warning "Pipeline images must be ARM64"
-    All pipeline images must be ARM64-compatible. Most official images publish arm64 builds — verify third-party plugins. See [Reality of ARM64 Homelabs](00-prerequisites.md#reality-of-arm64-homelabs) for debugging strategy.
+    All pipeline images must be ARM64-compatible. Most official images publish arm64 builds — verify third-party plugins. See [Reality of ARM64 Homelabs](prerequisites.md#reality-of-arm64-homelabs) for debugging strategy.
 
 ## Pre-merge validation gate (kubeconform)
 

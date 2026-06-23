@@ -1,16 +1,16 @@
-# Runbook 8: Terraform for the Homelab
+# Terraform
 
 Three things in your homelab are good Terraform fits: Cloudflare DNS records, UniFi network config, and a small cloud account used for learning.
 
 !!! note "Why this runbook is retroactive"
-    At this point in the guide you've already manually clicked through Cloudflare and UDM (Runbooks 2 and 6). Runbook 8 is therefore retroactive — you're IaC-ifying configuration you already created. That's still valuable: the next time you add a service, you'll add a Cloudflare record via `terraform apply` instead of clicking through the UI. If you want a stricter IaC-first workflow, you can move Runbook 8 to before Runbook 6 on a future rebuild.
+    At this point in the guide you've already manually clicked through Cloudflare and UDM (Networking and Traefik). Terraform is therefore retroactive — you're IaC-ifying configuration you already created. That's still valuable: the next time you add a service, you'll add a Cloudflare record via `terraform apply` instead of clicking through the UI. If you want a stricter IaC-first workflow, you can move Terraform to before Traefik on a future rebuild.
 
 | | |
 |---|---|
 | **Difficulty** | Intermediate |
 | **Time Estimate** | 3–4 hours |
 | **Runs On** | Your machine |
-| **Depends On** | Runbook 6, Runbook 2 |
+| **Depends On** | Traefik, Networking |
 
 ## Where Terraform Genuinely Fits
 
@@ -22,7 +22,7 @@ Three things in your homelab are good Terraform fits: Cloudflare DNS records, Un
 
 ## Where Terraform Does NOT Fit
 
-- Bare-metal node provisioning — use Ansible (Runbook 4)
+- Bare-metal node provisioning — use [Ansible](ansible.md)
 - Kubernetes resource creation — ArgoCD watching Git is better
 - Helm releases — same reason
 
@@ -49,7 +49,7 @@ homelab-terraform/
 ```
 
 !!! warning "Don't commit state or plaintext tfvars"
-    Never commit `.tfstate`, `.tfvars` (plaintext), or anything containing API tokens. The `.gitignore` from Runbook 1 covers this, with the `!*.enc.tfvars` exception allowing sops-encrypted tfvars through.
+    Never commit `.tfstate`, `.tfvars` (plaintext), or anything containing API tokens. The `.gitignore` from Git covers this, with the `!*.enc.tfvars` exception allowing sops-encrypted tfvars through.
 
 ## Remote State
 
@@ -58,7 +58,7 @@ By default, Terraform writes state to `terraform.tfstate` in the working directo
 Two reasonable options:
 
 === "S3 backend → Garage on NAS"
-    Use the shared Garage S3 store from [Runbook 10](10-backups.md) — create a dedicated `tfstate` bucket and key there (same `bucket create` / `key create` / `bucket allow` pattern). Garage already serves the S3 API on `:9000` with `s3_region = "us-east-1"` and path-style addressing, exactly what the backend config below expects.
+    Use the shared Garage S3 store from [Backups](backups.md) — create a dedicated `tfstate` bucket and key there (same `bucket create` / `key create` / `bucket allow` pattern). Garage already serves the S3 API on `:9000` with `s3_region = "us-east-1"` and path-style addressing, exactly what the backend config below expects.
 
     Then `backend.tf`:
 
@@ -67,7 +67,7 @@ Two reasonable options:
       backend "s3" {
         bucket                      = "tfstate"
         key                         = "homelab/cloudflare.tfstate"
-        endpoints                   = { s3 = "http://10.0.20.50:9000" }  # NAS (R2 static-IP table)
+        endpoints                   = { s3 = "http://10.0.20.50:9000" }  # NAS (Networking static-IP table)
         region                      = "us-east-1"
         use_path_style              = true
         skip_credentials_validation = true
@@ -156,7 +156,7 @@ provider "unifi" {
 
 ## Secret Handling
 
-Use sops + age ([Runbook 1 Step 5](01-git.md#step-5-secret-management-with-sops-age)). Tfvars are encrypted as `secrets.enc.tfvars`, which is allowed through the `.gitignore` via the `!*.enc.tfvars` exception.
+Use sops + age ([Git Step 5](git.md#step-5-secret-management-with-sops-age)). Tfvars are encrypted as `secrets.enc.tfvars`, which is allowed through the `.gitignore` via the `!*.enc.tfvars` exception.
 
 ## Workflow
 

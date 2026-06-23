@@ -113,7 +113,7 @@ Online office suite (CODE) — the editing backend for Nextcloud.
 - **Do not put Authelia/ForwardAuth in front of it.** Nextcloud's server calls Collabora directly (WOPI), and the browser opens a websocket straight to coolwsd; an auth challenge on either leg breaks document editing. (This is the one app where the route stays unauthenticated.)
 - The compensating control for the open route is the WOPI host pin: `aliasgroup1=https://nextcloud.yourdomain.com:443` — coolwsd rejects WOPI traffic for any other origin. Plus: leave the admin console's `username`/`password` env **unset**, which disables the console entirely (official-docs behaviour) — nothing to brute-force on the open route.
 - The image's entrypoint runs coolwsd with `--use-env-vars`, so config is plain env. Behind the TLS-terminating Gateway the trio is `extra_params=--o:ssl.enable=false --o:ssl.termination=true`, `server_name=office.yourdomain.com` (responses must carry the external hostname or WOPI handshakes fail), and `DONT_GEN_SSL_CERT=1`.
-- Pairs with Nextcloud (R13): enable the Nextcloud **Office** app (richdocuments) and point it at `https://office.yourdomain.com`. Smoke test before touching Nextcloud: `https://office.yourdomain.com/hosting/discovery` must return the WOPI capability XML.
+- Pairs with [Nextcloud](nextcloud.md): enable the Nextcloud **Office** app (richdocuments) and point it at `https://office.yourdomain.com`. Smoke test before touching Nextcloud: `https://office.yourdomain.com/hosting/discovery` must return the WOPI capability XML.
 - Stateless means the backup check **inverts**: the velero gate is the *absence* of any `PodVolumeBackup` for the namespace — if one appears, something grew state that shouldn't exist.
 
 ## Donetick
@@ -245,7 +245,7 @@ Hierarchical note-taking with a server + desktop/web sync.
     audience, and its checks were click-ops SQLite state rather than GitOps. Its useful
     checks were replaced by declarative blackbox-exporter `Probe`s (the six public HTTPS
     endpoints) feeding Prometheus `PublicEndpointDown` / cert-expiry alerts → ntfy. See
-    [Observability](09-observability.md) and the `infrastructure/blackbox-exporter`
+    [Observability](observability.md) and the `infrastructure/blackbox-exporter`
     manifests. It remains a fine pick if you want a user-facing status page — it runs as
     raw manifests (`louislam/uptime-kuma:2`) on `local-path` (SQLite needs POSIX locking,
     so never `nfs-storage`) behind Authelia ForwardAuth.

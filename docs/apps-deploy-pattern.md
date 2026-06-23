@@ -6,7 +6,7 @@ Every user-facing service on the cluster is deployed the same way. This is that 
 |---|---|
 | **Difficulty** | Intermediate |
 | **Runs On** | k3s (cluster) |
-| **Depends On** | A working Traefik `Gateway` + wildcard TLS (R6), and Authelia (R18) for auth |
+| **Depends On** | A working [Traefik](traefik.md) `Gateway` + wildcard TLS, and [Authelia](authelia.md) for auth |
 
 !!! note "Source of truth is the manifest, not this page"
     The deployed state lives in `homelab-manifests/apps/<app>/`. This runbook documents the *procedure*; it deliberately does not restate per-app YAML. App-specific values (chart version, env, hostname) belong in the manifest plus the catalog row — not duplicated into prose that drifts.
@@ -47,7 +47,7 @@ kubectl create secret generic <app>-secrets \
   > apps/<app>/manifests/<app>-sealed.yaml
 ```
 
-Save the plaintext to Vaultwarden as well. The controller's signing key is itself backed up — see [Backups & DR](10-backups.md).
+Save the plaintext to Vaultwarden as well. The controller's signing key is itself backed up — see [Backups & DR](backups.md).
 
 ## Step 3 — Storage
 
@@ -64,7 +64,7 @@ See **[Storage & Data Architecture](storage-architecture.md)** for the full rati
 
 ## Step 4 — Routing (DNS + HTTPRoute)
 
-**First, publish the hostname.** Service names are individual A records — there is no wildcard record: add the subdomain to `var.services` in the Cloudflare Terraform module (Runbook 8) and apply; each entry becomes one A record pointing at the Traefik LB IP. A browser "server not found" on a freshly deployed app is almost always this step missing — the route below can be perfectly healthy and still unreachable by name. If a record was ever hand-created in the dashboard, `tofu import` it into state instead of letting apply mint a duplicate A record.
+**First, publish the hostname.** Service names are individual A records — there is no wildcard record: add the subdomain to `var.services` in the Cloudflare [Terraform](terraform.md) module and apply; each entry becomes one A record pointing at the Traefik LB IP. A browser "server not found" on a freshly deployed app is almost always this step missing — the route below can be perfectly healthy and still unreachable by name. If a record was ever hand-created in the dashboard, `tofu import` it into state instead of letting apply mint a duplicate A record.
 
 Then attach an `HTTPRoute` to the shared Traefik `Gateway`'s `websecure` listener. **The app configures no TLS** — the Gateway terminates it with the cert-manager `*.yourdomain.com` wildcard, so a route is all you need:
 

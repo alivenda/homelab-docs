@@ -1,4 +1,4 @@
-# Runbook 11: Forgejo
+# Forgejo
 
 Self-hosted Git server — the cluster's primary Git host.
 
@@ -7,9 +7,9 @@ Self-hosted Git server — the cluster's primary Git host.
 | **Difficulty** | Intermediate |
 | **Time Estimate** | 45 minutes |
 | **Runs On** | k3s (pinned to the node holding its `local-path` DB) |
-| **Depends On** | Runbooks 6 (Traefik Gateway + wildcard TLS) and 18 (Authelia, for SSO) |
+| **Depends On** | Traefik (Gateway + wildcard TLS) and Authelia (for SSO) |
 
-Deploy Forgejo via the official Helm chart instead of docker-compose. This keeps the Git server inside the cluster's GitOps lifecycle: ArgoCD reconciles it, an HTTPRoute (Runbook 6) gives HTTPS off the shared Gateway, a MetalLB `LoadBalancer` carries Git-over-SSH on the *same* IP, and it authenticates against Authelia over OIDC (Runbook 18) so accounts come from your lldap directory.
+Deploy Forgejo via the official Helm chart instead of docker-compose. This keeps the Git server inside the cluster's GitOps lifecycle: ArgoCD reconciles it, an HTTPRoute (Traefik) gives HTTPS off the shared Gateway, a MetalLB `LoadBalancer` carries Git-over-SSH on the *same* IP, and it authenticates against Authelia over OIDC so accounts come from your lldap directory.
 
 !!! warning "Chart key naming"
     The Forgejo chart inherits Gitea's chart-internal `gitea.` value prefix (Forgejo forked it). This is not a bug — check the chart README at [code.forgejo.org/forgejo-helm](https://code.forgejo.org/forgejo-helm/forgejo-helm) for any value-name changes when you bump the chart.

@@ -1,4 +1,4 @@
-# Runbook 18: Authelia + lldap
+# Authelia + lldap
 
 Single sign-on, two-factor authentication, and OIDC provider for all cluster services.
 
@@ -7,7 +7,7 @@ Single sign-on, two-factor authentication, and OIDC provider for all cluster ser
 | **Difficulty** | Intermediate |
 | **Time Estimate** | 2–3 hours |
 | **Runs On** | k3s (cluster) |
-| **Depends On** | Runbook 5 (k3s), Runbook 6 (Traefik), Runbook 7 (Vaultwarden) |
+| **Depends On** | Kubernetes (k3s), Traefik, Vaultwarden |
 
 This runbook deploys two services:
 
@@ -543,4 +543,4 @@ Each app's runbook covers its specific `redirect_uris` and configuration. Do not
 - [ ] `https://auth.yourdomain.com` loads the Authelia login portal.
 - [ ] Log in with your lldap user — session is established; enrol TOTP at `auth.yourdomain.com/settings/two-factor-authentication`.
 - [ ] `https://lldap.yourdomain.com` redirects to Authelia login before showing the lldap UI.
-- [ ] A service using the ForwardAuth middleware (e.g., Homepage after Runbook 20) redirects to `auth.yourdomain.com` for unauthenticated requests.
+- [ ] A service using the ForwardAuth middleware (e.g., Homepage) redirects to `auth.yourdomain.com` for unauthenticated requests.

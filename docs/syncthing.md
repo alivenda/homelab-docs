@@ -1,4 +1,4 @@
-# Runbook 23: Syncthing
+# Syncthing
 
 Continuous peer-to-peer file synchronisation between devices — no cloud relay needed.
 
@@ -7,7 +7,7 @@ Continuous peer-to-peer file synchronisation between devices — no cloud relay 
 | **Difficulty** | Beginner |
 | **Time Estimate** | 30 minutes per device |
 | **Runs On** | Per-device install (not k3s) |
-| **Depends On** | Runbook 2 (static IPs on your LAN) |
+| **Depends On** | Networking (static IPs on your LAN) |
 
 Syncthing ([syncthing.net](https://syncthing.net)) synchronises folders between devices directly — no central server is required. Each device runs its own Syncthing instance; devices pair with each other using device IDs, and sync happens over your LAN or via Syncthing's global relay network when devices are remote. ARM64 ✅ (native binary and Docker image available). See the [Syncthing documentation](https://docs.syncthing.net) for full reference.
 

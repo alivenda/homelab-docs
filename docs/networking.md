@@ -1,4 +1,4 @@
-# Runbook 2: Network Segmentation and VPN
+# Networking
 
 VLAN plan, firewall, and remote access via Tailscale. Sets up the network model that every later runbook assumes (cluster nodes on Lab VLAN, MetalLB pool reserved, global mDNS reflector, Tailscale subnet routing).
 
@@ -30,7 +30,7 @@ This table is the authoritative source for every later runbook (Terraform `unifi
 - IPv6: disabled on both WAN and LAN (see Step 1 note)
 - IGMP snooping: **on** (on the UDM's built-in switch, see Step 1d) — required for mDNS reflector to forward multicast cleanly across VLANs
 - Multicast DNS (mDNS): **global gateway reflector set to Auto** — the UDM retransmits common mDNS (AirPlay, Cast, HomeKit, Bonjour) across **all** VLANs; it is not a per-network toggle. Custom mode (whitelist services, scope to chosen VLANs) is the hardening option — see Step 1e
-- UDM upstream DNS: `1.1.1.1` (Cloudflare). Client DNS is handed off to a dedicated AdGuard Home appliance (`pyrite`, `10.0.0.20`) — see Step 3d and [Runbook 17](17-adguard-home.md)
+- UDM upstream DNS: `1.1.1.1` (Cloudflare). Client DNS is handed off to a dedicated AdGuard Home appliance (`pyrite`, `10.0.0.20`) — see Step 3d and [AdGuard Home](adguard-home.md)
 - MetalLB pool: `10.0.20.200–.250` (reserved within Lab VLAN, outside DHCP)
 
 !!! note "Why NAS sits on Lab, not Trusted"
@@ -41,7 +41,7 @@ This table is the authoritative source for every later runbook (Terraform `unifi
 
 ### Static IP allocations
 
-Within the static range of each VLAN. Cluster nodes get their static IP from `dietpi.txt` at first boot (R3 Step 3, via DietPi's `ifupdown` — not netplan, and not a UDM DHCP reservation) so they boot deterministically even if UDM is down.
+Within the static range of each VLAN. Cluster nodes get their static IP from `dietpi.txt` at first boot (Turing Pi Step 3, via DietPi's `ifupdown` — not netplan, and not a UDM DHCP reservation) so they boot deterministically even if UDM is down.
 
 | Device | VLAN | IP | Assignment |
 |---|---|---|---|
@@ -298,13 +298,13 @@ UniFi auto-generates a matching `(Return)` policy for every Allow rule (it's sta
     Fix is Plex-side, not firewall-side: in Plex Web UI → **Settings → Network → "List of IP addresses and networks that are allowed without auth"**, add the Plex client subnets — `10.0.10.0/24, 10.0.30.0/24` for this setup. Plex then advertises its local IP to clients on those subnets and treats their streams as LAN-quality. The firewall policies above are correct regardless; this is just Plex's own LAN-detection logic.
 
 !!! note "Forward-looking: Lab → IoT for Home Assistant local control"
-    When Home Assistant is deployed (R6+), the best-practice integration for Philips Hue, Shelly, and other local-control smart devices is HA talking to them directly on the local network — faster and works offline, unlike cloud routing. That's a **Lab → IoT** flow, which the matrix above blocks by default.
+    When Home Assistant is deployed (Traefik+), the best-practice integration for Philips Hue, Shelly, and other local-control smart devices is HA talking to them directly on the local network — faster and works offline, unlike cloud routing. That's a **Lab → IoT** flow, which the matrix above blocks by default.
 
     Add a narrowly-scoped policy then (e.g. `lab-to-hue-bridge`: Lab → `10.0.30.x` of the bridge/controller, TCP `80` and/or `443`). Scope to the specific device IP, not whole IoT zone, to avoid HA being able to reach the printer's web UI or other unrelated IoT devices.
 
 ### Step 3d: DNS enforcement
 
-This build runs **AdGuard Home** on a dedicated Pi (`pyrite`, `10.0.0.20` on the Default LAN — see [Runbook 17](17-adguard-home.md)). This step does two firewall jobs around it: let every VLAN *reach* the resolver, then force *all* client DNS through it.
+This build runs **AdGuard Home** on a dedicated Pi (`pyrite`, `10.0.0.20` on the Default LAN — see [AdGuard Home](adguard-home.md)). This step does two firewall jobs around it: let every VLAN *reach* the resolver, then force *all* client DNS through it.
 
 **Let each zone reach the resolver.** AdGuard sits in the Internal zone (Default LAN). Trusted already reaches Internal (the `trusted-to-internal-allow` override above), but IoT and Lab are blocked from Internal by default — so clients there would lose DNS the moment you hand them the AdGuard IP. Add one allow policy each, scoping the destination to the resolver IP (not the whole Internal zone):
 
@@ -336,7 +336,7 @@ Then update each VLAN's DHCP DNS server (UniFi → Networks → [each VLAN] → 
 !!! note "Run DNS on dedicated hardware, not in-cluster"
     DNS is the most foundational service on the network — when it dies, every browser hangs and every container fails to pull images. Running it as a k3s Helm chart means a routine cluster upgrade (or any cluster wedge) takes DNS down with it. The best-practice consensus is a dedicated Raspberry Pi running the resolver natively: cheap, boots in seconds, survives anything that happens to the cluster.
 
-    For redundancy, run **two** (DHCP hands out both; clients fail over automatically) and sync config from the primary — see [Runbook 17](17-adguard-home.md).
+    For redundancy, run **two** (DHCP hands out both; clients fail over automatically) and sync config from the primary — see [AdGuard Home](adguard-home.md).
 
 ## Step 4: Reaching UDM
 
@@ -358,7 +358,7 @@ UDM accepts management on every VLAN gateway IP by default. Where you connect fr
 Install Tailscale on two cluster nodes (ruby + emerald) so the subnet router survives reboots. Configure ACLs so only your devices can reach the advertised subnets.
 
 !!! warning "Requires ruby and emerald"
-    This step needs the first two cluster nodes booted and reachable. If you have not finished Runbook 3 yet, complete Steps 1–4 of this runbook now (UDM, devices, firewall, UDM access) and return for Step 5 after the cluster nodes are flashed.
+    This step needs the first two cluster nodes booted and reachable. If you have not finished Turing Pi yet, complete Steps 1–4 of this runbook now (UDM, devices, firewall, UDM access) and return for Step 5 after the cluster nodes are flashed.
 
 ### Step 5a: Configure Tailscale ACLs first
 

@@ -1,4 +1,4 @@
-# Runbook 26: Ollama + Open WebUI
+# Ollama + Open WebUI
 
 Local LLM inference on the NAS with a browser chat interface.
 
@@ -7,7 +7,7 @@ Local LLM inference on the NAS with a browser chat interface.
 | **Difficulty** | Beginner |
 | **Time Estimate** | 30–45 minutes |
 | **Runs On** | UGREEN DXP6800 Pro NAS (Docker Compose — not k3s) |
-| **Depends On** | NAS RAM upgrade to 16 GB, Runbook 6 (Traefik reverse proxy for HTTPS) |
+| **Depends On** | NAS RAM upgrade to 16 GB, Traefik (reverse proxy for HTTPS) |
 
 !!! warning "Defer until NAS RAM upgrade"
     Ollama and the models it runs are RAM-hungry. The NAS currently has 8 GB DDR5, which leaves insufficient headroom after Plex and Immich are running. Upgrade to 16 GB DDR5 SO-DIMM first (see [personal-cloud-stack.md](personal-cloud-stack.md) — Part 7) — then deploy this runbook.

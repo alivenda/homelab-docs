@@ -1,4 +1,4 @@
-# Runbook 7: Vaultwarden
+# Vaultwarden
 
 Lightweight self-hosted Bitwarden-compatible server. First service runbook after Traefik — smallest dependency footprint of anything in this guide, and the first **stateful** app, so it's where we work the [GitOps deploy pattern](apps-deploy-pattern.md) end to end and meet the SQLite storage rules for real. Once it's up you have a self-hosted password manager to hold every later runbook's credentials instead of pasting them into a cloud vault.
 
@@ -7,7 +7,7 @@ Lightweight self-hosted Bitwarden-compatible server. First service runbook after
 | **Difficulty** | Beginner (the GitOps pattern, walked slowly) |
 | **Time Estimate** | 45 minutes |
 | **Runs On** | `amethyst` (pinned via `nodeSelector` — see Step 2) |
-| **Depends On** | Runbook 6 (HTTPS), plus the cluster baseline this guide stands up before any app: ArgoCD, the Sealed Secrets controller, and the standalone `local-path` provisioner |
+| **Depends On** | Traefik (HTTPS), plus the cluster baseline this guide stands up before any app: ArgoCD, the Sealed Secrets controller, and the standalone `local-path` provisioner |
 
 This runbook follows the [GitOps deploy pattern](apps-deploy-pattern.md) — nothing here is applied imperatively; every object is committed to `homelab-manifests` and ArgoCD reconciles it. What's *specific* to Vaultwarden, and worth slowing down for, is the **SQLite storage model**. Get that wrong and the vault silently runs on ephemeral disk — wiped on every restart.
 
@@ -32,7 +32,7 @@ kubectl create secret generic vaultwarden-admin \
 `--dry-run=client` means the plaintext Secret is only ever built in memory and piped to `kubeseal` — it never touches the cluster or the disk. The output is a `SealedSecret` that decrypts, in-cluster, to a Secret named `vaultwarden-admin` (key `admin-token`); `values.yaml` references it by name.
 
 !!! warning "Save the token now, off-cluster"
-    The token is the only way into `/admin`, and `/admin` is the only way to manage settings without DB access. Save the plaintext to the bootstrap password manager you're migrating *away from* — not this new Vaultwarden, which would be circular. The Sealed Secrets signing key is itself backed up; see [Backups & DR](10-backups.md).
+    The token is the only way into `/admin`, and `/admin` is the only way to manage settings without DB access. Save the plaintext to the bootstrap password manager you're migrating *away from* — not this new Vaultwarden, which would be circular. The Sealed Secrets signing key is itself backed up; see [Backups & DR](backups.md).
 
 ## Step 2: Values — storage is the part everyone gets wrong
 

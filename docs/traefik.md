@@ -1,4 +1,4 @@
-# Runbook 6: Traefik + Gateway API with HTTPS
+# Traefik
 
 Foundational layer: clean URLs, automatic HTTPS via Let's Encrypt, and a single entry point for every service. Traffic flows MetalLB → Traefik (Gateway API provider) → `HTTPRoute`s, with TLS terminated by a cert-manager wildcard certificate on the `Gateway`.
 
@@ -7,7 +7,7 @@ Foundational layer: clean URLs, automatic HTTPS via Let's Encrypt, and a single 
 | **Difficulty** | Intermediate |
 | **Time Estimate** | 2–3 hours |
 | **Runs On** | k3s cluster |
-| **Depends On** | Runbook 5 (k3s + MetalLB) |
+| **Depends On** | Kubernetes (k3s + MetalLB) |
 
 !!! note "Why the Gateway API, not IngressRoute"
     The cluster uses the Kubernetes **Gateway API**, not Traefik's proprietary `IngressRoute`. The Gateway API splits ownership: the platform owns the `Gateway` (listeners + TLS), each app owns its `HTTPRoute`. TLS is handled once by a cert-manager wildcard cert on the Gateway, so apps attach a route and configure no TLS at all. See [Deploying an App](apps-deploy-pattern.md) for the per-app side.
@@ -39,7 +39,7 @@ In GitOps this is an `Application` pointing at `config/crd/standard` of that rep
 
 ```bash
 helm repo add traefik https://traefik.github.io/charts
-kubectl create namespace traefik   # skip if created in R5
+kubectl create namespace traefik   # skip if created during Kubernetes setup
 ```
 
 `homelab-manifests/apps/traefik/values.yaml`:

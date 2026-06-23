@@ -1,4 +1,4 @@
-# Runbook 25: Reactive Resume
+# Reactive Resume
 
 Self-hosted resume builder with OIDC login, PDF export, and a polished editor.
 
@@ -7,7 +7,7 @@ Self-hosted resume builder with OIDC login, PDF export, and a polished editor.
 | **Difficulty** | Intermediate |
 | **Time Estimate** | 45–60 minutes |
 | **Runs On** | k3s (cluster) |
-| **Depends On** | Runbook 5 (k3s), Runbook 6 (Traefik), Runbook 18 (Authelia OIDC) |
+| **Depends On** | Kubernetes (k3s), Traefik, Authelia (OIDC) |
 
 Reactive Resume ([rxresu.me](https://rxresu.me)) is a feature-complete resume builder with real-time editing, multiple templates, and PDF export. ARM64 ✅ — the image is based on `node:24-slim` (multi-arch), and `FLAG_DISABLE_IMAGE_PROCESSING=true` reduces load on ARM hardware. See the [self-hosting docs](https://docs.rxresu.me/overview/self-hosting) for full reference.
 

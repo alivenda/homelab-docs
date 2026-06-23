@@ -1,4 +1,4 @@
-# Runbook 20: Homepage
+# Homepage
 
 A services dashboard — one tile per deployed service, behind Authelia.
 
@@ -7,14 +7,14 @@ A services dashboard — one tile per deployed service, behind Authelia.
 | **Difficulty** | Beginner |
 | **Time Estimate** | 45–60 minutes |
 | **Runs On** | k3s (cluster) |
-| **Depends On** | Runbook 6 (Traefik), Runbook 8 (Terraform, DNS), Runbook 18 (Authelia — ForwardAuth), [the deploy pattern](apps-deploy-pattern.md) |
+| **Depends On** | Traefik, Terraform (DNS), Authelia (ForwardAuth), [the deploy pattern](apps-deploy-pattern.md) |
 
 Homepage ([gethomepage.dev](https://gethomepage.dev)) is a YAML-configured start page. In this stack it serves static tiles and bookmarks for every live service, reads the Kubernetes API for cluster stats, and sits entirely behind Authelia ForwardAuth.
 
 The `ghcr.io/gethomepage/homepage` image ships official multiarch builds — **pin a release tag and confirm `arm64` is on the manifest when you bump** (check the ghcr manifest list, not just the release notes). The deployed pin at time of writing is `v1.13.2`.
 
 !!! note "ForwardAuth — not OIDC"
-    Homepage has no login page and no OIDC support. It is protected by the Authelia ForwardAuth middleware (Runbook 18, same recipe as lldap). Do **not** attempt to register it as an OIDC client.
+    Homepage has no login page and no OIDC support. It is protected by the Authelia ForwardAuth middleware (Authelia, same recipe as lldap). Do **not** attempt to register it as an OIDC client.
 
 ## The shape of the deployment
 
@@ -185,7 +185,7 @@ Non-root works cleanly: the image ships every file chowned `1000:1000`, and its 
 
 ## HTTPRoute + ForwardAuth
 
-The standard recipe from Runbook 18, deployed and proven on lldap: the Traefik `Middleware` is copied into the app's own namespace (an `ExtensionRef` filter cannot cross namespaces), pointing at the central Authelia service; the `HTTPRoute` references it as a filter. Fails closed — if Authelia is down the route 5xx's rather than serving the dashboard unauthenticated.
+The standard recipe from Authelia, deployed and proven on lldap: the Traefik `Middleware` is copied into the app's own namespace (an `ExtensionRef` filter cannot cross namespaces), pointing at the central Authelia service; the `HTTPRoute` references it as a filter. Fails closed — if Authelia is down the route 5xx's rather than serving the dashboard unauthenticated.
 
 ```yaml
 rules:
@@ -276,7 +276,7 @@ g, readonly, role:readonly
 
 then mint against `readonly`: with the CLI, `argocd account generate-token --account readonly`; with no CLI, two REST calls — `POST /api/v1/session` (admin creds) for a session JWT, then `POST /api/v1/account/readonly/token`. **Send the bodies as JSON** — curl's `-d` defaults to form-encoding, ArgoCD answers with a non-JSON error, and the outer `jq` chokes; add `-H 'Content-Type: application/json'`.
 
-**ntfy** widgets read the `alerts` topic, so the dashboard gets its own **read-only** publisher: a `homepage` user (bcrypt hash in the configmap — committable) with `homepage:alerts:ro` access, plus a `tk_…` token in the token SealedSecret. ntfy reads users and tokens only at startup, and provisioning a user doesn't change the Deployment spec — so it won't auto-roll; `kubectl -n ntfy rollout restart deployment ntfy` after merge. (See [Runbook 19 — ntfy](19-ntfy.md) for the provisioning model.)
+**ntfy** widgets read the `alerts` topic, so the dashboard gets its own **read-only** publisher: a `homepage` user (bcrypt hash in the configmap — committable) with `homepage:alerts:ro` access, plus a `tk_…` token in the token SealedSecret. ntfy reads users and tokens only at startup, and provisioning a user doesn't change the Deployment spec — so it won't auto-roll; `kubectl -n ntfy rollout restart deployment ntfy` after merge. (See [ntfy — ntfy](ntfy.md) for the provisioning model.)
 
 ## Verification
 

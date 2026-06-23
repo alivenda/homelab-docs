@@ -1,4 +1,4 @@
-# Runbook 22: BookStack
+# BookStack
 
 Self-hosted wiki and knowledge base with OIDC login and role-based access.
 
@@ -7,7 +7,7 @@ Self-hosted wiki and knowledge base with OIDC login and role-based access.
 | **Difficulty** | Intermediate |
 | **Time Estimate** | 45–60 minutes |
 | **Runs On** | k3s (cluster) |
-| **Depends On** | Runbook 5 (k3s), Runbook 6 (Traefik), Runbook 18 (Authelia OIDC) |
+| **Depends On** | Kubernetes (k3s), Traefik, Authelia (OIDC) |
 
 BookStack ([bookstackapp.com](https://www.bookstackapp.com)) is a structured wiki platform organised around Shelves → Books → Chapters → Pages. ARM64 ✅ (`lscr.io/linuxserver/bookstack` ships multiarch via LinuxServer.io). See the [official documentation](https://www.bookstackapp.com/docs/) for full reference.
 

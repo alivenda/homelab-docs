@@ -1,6 +1,6 @@
-# Runbook 0: Prerequisites and Mental Model
+# Prerequisites
 
-Read this before Runbook 1 — it covers what you need to **have and understand** before you start: the hardware to buy, the accounts to create, and the platform realities (ARM64 images, namespace conventions, resource budget) that shape every later runbook. For the big picture — how the runbooks fit together and what you end up with — see the [Home overview](index.md). You can skip this runbook if you already run a homelab; none of the later runbooks reference it as a hard dependency.
+Read this before Git — it covers what you need to **have and understand** before you start: the hardware to buy, the accounts to create, and the platform realities (ARM64 images, namespace conventions, resource budget) that shape every later runbook. For the big picture — how the runbooks fit together and what you end up with — see the [Home overview](index.md). You can skip this runbook if you already run a homelab; none of the later runbooks reference it as a hard dependency.
 
 ## Hardware Shopping List
 
@@ -12,20 +12,20 @@ This guide is written against a specific build. You can substitute (an x86 mini-
 - PicoPSU (24-pin), **120 W** — the cluster pulls 30–60 W under load, so 120 W leaves comfortable headroom while staying tiny and silent. A standard ATX PSU works too, but it's bulky and runs inefficiently at this low draw.
 - Ubiquiti UDM-Pro or UDM-SE for VLANs, firewall, DHCP
 - UGREEN DXP6800 Pro NAS (or any NAS that runs Docker) for bulk media + Immich + offsite-friendly bulk storage
-- 1× dedicated host for Home Assistant OS — this build uses **slate**, a repurposed Late-2014 Mac mini (16 GB RAM, 256 GB SSD) running Proxmox, with HAOS as a VM (2 vCPU, 4 GB RAM). Kept off the cluster so the smart-home hub survives cluster reboots and upgrades (R16). 4 GB for the VM matches HA's own reference spec; only raise it for Frigate NVR or long-retention history. (A Raspberry Pi 5 (4 GB) running HAOS bare-metal is an equally good dedicated host if you're buying new rather than repurposing.)
-- 1× Raspberry Pi for AdGuard Home DNS (`pyrite`; this build uses a Pi 3 Model B — add a 2nd for optional failover, R17) — run natively rather than on k3s so DNS stays up independently of the cluster
+- 1× dedicated host for Home Assistant OS — this build uses **slate**, a repurposed Late-2014 Mac mini (16 GB RAM, 256 GB SSD) running Proxmox, with HAOS as a VM (2 vCPU, 4 GB RAM). Kept off the cluster so the smart-home hub survives cluster reboots and upgrades. 4 GB for the VM matches HA's own reference spec; only raise it for Frigate NVR or long-retention history. (A Raspberry Pi 5 (4 GB) running HAOS bare-metal is an equally good dedicated host if you're buying new rather than repurposing.)
+- 1× Raspberry Pi for AdGuard Home DNS (`pyrite`; this build uses a Pi 3 Model B — add a 2nd for optional failover) — run natively rather than on k3s so DNS stays up independently of the cluster
 - Domain name registered through Cloudflare (~$10/yr for `.com` / `.net` / etc.)
-- Optional: UPS — recommended once you start storing real data on the cluster ([sizing in R3](03-turing-pi.md#power-ups-nut-for-graceful-shutdown))
+- Optional: UPS — recommended once you start storing real data on the cluster ([sizing in Turing Pi](turing-pi.md#power-ups-nut-for-graceful-shutdown))
 
 ## Accounts You'll Need
 
-Create these before starting Runbook 1. All free tiers are sufficient.
+Create these before starting Git. All free tiers are sufficient.
 
-- **GitHub** — primary Git host (Runbooks 1, 5, 11, 16)
-- **Cloudflare** — DNS + free TLS via DNS-01 (Runbooks 6, 8)
-- **Tailscale** — free tier covers up to 100 devices (Runbook 2)
+- **GitHub** — primary Git host (Git, Kubernetes, Forgejo, Home Assistant)
+- **Cloudflare** — DNS + free TLS via DNS-01 (Traefik, Terraform)
+- **Tailscale** — free tier covers up to 100 devices
 - **Docker Hub** (optional) — for pulling public images without rate limits
-- **A bootstrap password manager** (1Password, Bitwarden Cloud, KeePassXC) — you will replace this with self-hosted Vaultwarden at Runbook 7, but you need somewhere to store PATs and API tokens during the bootstrap weeks
+- **A bootstrap password manager** (1Password, Bitwarden Cloud, KeePassXC) — you will replace this with self-hosted Vaultwarden later, but you need somewhere to store PATs and API tokens during the bootstrap weeks
 
 ## Namespace Strategy
 

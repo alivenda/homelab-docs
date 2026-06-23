@@ -1,8 +1,8 @@
 # Cold Shutdown & Storage
 
-Powering down the **entire stack** — cluster, NAS, Home Assistant host, network gear — for **more than a day**: a house move, extended travel, electrical work, long-term storage. An overnight power-down is just [Runbook 3's Planned Shutdown & Startup](03-turing-pi.md#shutdown); longer than that and the secondary effects start to bite — backup jobs silently miss their windows, RTC-less boards drift, and the Sealed Secrets key can cross its rotation boundary while the controller is off.
+Powering down the **entire stack** — cluster, NAS, Home Assistant host, network gear — for **more than a day**: a house move, extended travel, electrical work, long-term storage. An overnight power-down is just [Turing Pi's Planned Shutdown & Startup](turing-pi.md#shutdown); longer than that and the secondary effects start to bite — backup jobs silently miss their windows, RTC-less boards drift, and the Sealed Secrets key can cross its rotation boundary while the controller is off.
 
-Runbook 3 owns the cluster-internal ordering (etcd snapshot, NFS clients before the NFS server). This page is the layer above it: final data captures while everything is still running, the cross-device ordering, transporting the hardware if it's moving, and a cold-start sequence plus verification checklist for the day it all comes back.
+Turing Pi owns the cluster-internal ordering (etcd snapshot, NFS clients before the NFS server). This page is the layer above it: final data captures while everything is still running, the cross-device ordering, transporting the hardware if it's moving, and a cold-start sequence plus verification checklist for the day it all comes back.
 
 | | |
 |---|---|
@@ -14,7 +14,7 @@ Runbook 3 owns the cluster-internal ordering (etcd snapshot, NFS clients before 
 
 ### Make sure you can log in without the homelab
 
-Vaultwarden runs *inside* the cluster, so it is offline for the entire outage. Anything you might need between power-off and full recovery must live in the externally-hosted password manager (see [Runbook 10's keystone warning](10-backups.md#secrets-and-key-material-recovery)) — not only in Vaultwarden:
+Vaultwarden runs *inside* the cluster, so it is offline for the entire outage. Anything you might need between power-off and full recovery must live in the externally-hosted password manager (see [Backups's keystone warning](backups.md#secrets-and-key-material-recovery)) — not only in Vaultwarden:
 
 - ISP account credentials — especially if you're moving, since you'll be setting up the new WAN before anything self-hosted exists
 - Router/controller admin login, BMC root, NAS admin, Proxmox root
@@ -72,7 +72,7 @@ Take these while everything is still running, in this order (cluster captures fi
     ```
 
 !!! warning "Powered down, your data and its backups share one box"
-    Garage — the backup target for Velero, etcd, the databases, and HA — lives **on the NAS**. For the whole outage the originals and every backup sit in the same chassis: one truck if you're moving, one storage unit if it's going dark for a season. This is exactly the scenario [Runbook 10's off-site TODO](10-backups.md) warns about. Cheap mitigation: sync the critical buckets to an external drive and keep it somewhere else (different bag, different car, different building).
+    Garage — the backup target for Velero, etcd, the databases, and HA — lives **on the NAS**. For the whole outage the originals and every backup sit in the same chassis: one truck if you're moving, one storage unit if it's going dark for a season. This is exactly the scenario [Backups's off-site TODO](backups.md) warns about. Cheap mitigation: sync the critical buckets to an external drive and keep it somewhere else (different bag, different car, different building).
 
     Every Garage key is scoped to its consumer's bucket, so no existing key can read them all — mint a temporary read-only export key, use it, delete it:
 
@@ -99,7 +99,7 @@ Take these while everything is still running, in this order (cluster captures fi
 Writers stop before the things they write to. Network gear goes last because everything else is managed *over* it.
 
 1. **Home Assistant, then its host** — shut the HAOS VM down cleanly (HA: Settings → System → Hardware → Shutdown, or from the Proxmox UI), then shut down the Proxmox host itself.
-2. **The cluster** — follow [Runbook 3's shutdown](03-turing-pi.md#shutdown) exactly: amethyst, emerald, ruby; *confirm all three have halted*; then topaz (the NFS server) last.
+2. **The cluster** — follow [Turing Pi's shutdown](turing-pi.md#shutdown) exactly: amethyst, emerald, ruby; *confirm all three have halted*; then topaz (the NFS server) last.
 3. **The NAS** — only after the cluster is fully down (the etcd S3 upload and the sync jobs above are its last writers). Use the NAS UI's shutdown, or `sudo poweroff` over SSH.
 4. **Network gear** — gateway, switch, APs. Their configuration persists on-device.
 5. **UPS** — power it off; if it's being transported or stored long-term, disconnect the battery (tape exposed terminals). A jostled lead-acid battery shorting against a chassis is the one genuinely dangerous item in the load.
@@ -133,7 +133,7 @@ Reverse dependency order: network → NAS → Home Assistant host → cluster.
 
 3. **Home Assistant host.** Power on the Proxmox machine; the HAOS VM should auto-start (verify the VM's *Start at boot* option is set **before** the shutdown, not after).
 
-4. **The cluster** — follow [Runbook 3's startup](03-turing-pi.md#startup): topaz first (NFS), then ruby (wait for `Ready`), then emerald and amethyst. ArgoCD reconciles the workloads on its own; give it a few minutes before touching anything.
+4. **The cluster** — follow [Turing Pi's startup](turing-pi.md#startup): topaz first (NFS), then ruby (wait for `Ready`), then emerald and amethyst. ArgoCD reconciles the workloads on its own; give it a few minutes before touching anything.
 
     !!! tip "UFW may come back half-loaded"
         If `sudo ufw status` on a node fails with *"problem running ip6tables"*, the firewall is in a half-loaded state (empty IPv6 chains). Don't reboot or retry — reset it:
@@ -175,4 +175,4 @@ Reverse dependency order: network → NAS → Home Assistant host → cluster.
     ```
 
     — and the next day's key-backup dump in Garage contains both (decrypt it and check `jq '.items | length'`).
-- [ ] End-to-end alerting still works: publish a test message through ntfy (see [Runbook 19](19-ntfy.md)) and confirm it reaches your phone.
+- [ ] End-to-end alerting still works: publish a test message through ntfy (see [ntfy](ntfy.md)) and confirm it reaches your phone.

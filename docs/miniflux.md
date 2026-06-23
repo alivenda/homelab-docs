@@ -1,4 +1,4 @@
-# Runbook 29: Miniflux
+# Miniflux
 
 Minimalist RSS/Atom feed reader — a single Go binary with Fever and Google
 Reader API endpoints for mobile clients, and very low RAM.
@@ -8,7 +8,7 @@ Reader API endpoints for mobile clients, and very low RAM.
 | **Difficulty** | Beginner |
 | **Time Estimate** | ~45 minutes |
 | **Runs On** | k3s (app) **+ NAS (database)** |
-| **Depends On** | [Deploying an App](apps-deploy-pattern.md), Runbook 27 (NAS Postgres), Runbook 18 (Authelia), [Storage & Data Architecture](storage-architecture.md) |
+| **Depends On** | [Deploying an App](apps-deploy-pattern.md), NAS PostgreSQL, Authelia, [Storage & Data Architecture](storage-architecture.md) |
 
 The deployed truth is `homelab-manifests/apps/miniflux/`; this runbook records
 the decisions and the bring-up procedure, not the YAML.
@@ -21,7 +21,7 @@ picked Miniflux, and Miniflux is **PostgreSQL-only**: no SQLite fallback, no
 data directory. That changes the shape twice over:
 
 - **A database means a runbook** (the catalog's own rule): db + role
-  `miniflux` on the shared NAS Postgres (`10.0.20.50:5433`) per Runbook 27,
+  `miniflux` on the shared NAS Postgres (`10.0.20.50:5433`) per NAS PostgreSQL,
   joining the nightly dump → Garage backup automatically.
 - **There is no storage tier at all.** The FreshRSS row said `nfs-storage`,
   2 Gi; Miniflux mounts nothing — no PVC, not even an emptyDir. The pod is
@@ -36,7 +36,7 @@ in one SealedSecret. It is the smallest app directory in the repo.
 
 ## Step 1 — Database on the NAS
 
-Per Runbook 27, on the NAS — but set the password interactively with
+Per NAS PostgreSQL, on the NAS — but set the password interactively with
 `\password`, not inline in `CREATE ROLE`:
 
 ```bash
@@ -63,7 +63,7 @@ anywhere. Store it in your password manager, then paste it at the
 `\password` prompt.
 
 Append the four per-node `pg_hba.conf` lines scoped to `miniflux miniflux`,
-then `SELECT pg_reload_conf()` — Runbook 27 has the exact lines.
+then `SELECT pg_reload_conf()` — NAS PostgreSQL has the exact lines.
 
 ## Step 2 — Configuration: env-only, no ConfigMap
 
@@ -81,7 +81,7 @@ Everything non-secret sits inline in the Deployment:
   Prometheus scrapes `/metrics` on the app listener, gated by source network
   (scrapes arrive with the Prometheus pod's IP from the pod CIDR), so no
   scrape credentials. A `ServiceMonitor` carrying the
-  `release: kube-prometheus-stack` label completes the path (Runbook 9).
+  `release: kube-prometheus-stack` label completes the path (Observability).
 - Probes: `GET /healthcheck` — a dedicated route, exempt from
   authentication (verified in `internal/http/server/routes.go` at v2.3.1).
 
@@ -113,7 +113,7 @@ Plaintexts to your password manager.
 
 ## Step 4 — SSO: OIDC client
 
-The Authelia client follows the Runbook 18 recipe — `client_id: miniflux`,
+The Authelia client follows the Authelia recipe — `client_id: miniflux`,
 pbkdf2 hash in `apps/authelia/values.yaml` — with one deviation from the
 Vikunja client: **`require_pkce: true` / `pkce_challenge_method: 'S256'`**.
 Miniflux always sends a PKCE challenge on the authorization request and the

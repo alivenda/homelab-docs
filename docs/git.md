@@ -1,6 +1,6 @@
-# Runbook 1: Git Repository Organization
+# Git Foundation
 
-How to structure your homelab project across Git repositories, where to host them, and how to keep secrets out of them. Sets up the foundation that Runbooks 5 (ArgoCD), 4 (Ansible), and 7 (Terraform) all assume.
+How to structure your homelab project across Git repositories, where to host them, and how to keep secrets out of them. Sets up the foundation that Kubernetes (ArgoCD), Ansible, and Terraform all assume.
 
 | | |
 |---|---|
@@ -16,7 +16,7 @@ Resist the urge to put everything in one mono-repo. Each repo below has a distin
 | Repo | Purpose | Consumer |
 |---|---|---|
 | `homelab-docs` | These runbooks, diagrams, decisions log | You (humans) |
-| `homelab-ansible` | OS provisioning playbooks (Runbook 4) | Your machine |
+| `homelab-ansible` | OS provisioning playbooks | Your machine |
 | `homelab-manifests` | k3s YAML, Helm values, HTTPRoutes | ArgoCD |
 | `homelab-terraform` | Cloudflare DNS, UniFi config, cloud practice | Your machine → Woodpecker |
 | `homelab-secrets` | Encrypted secrets (sops/age) — **PRIVATE** | Your machine (sops); Sealed Secrets controller for in-cluster manifests |
@@ -38,14 +38,14 @@ Three viable patterns:
 | **B: GitHub primary + Forgejo mirror** | Start on GitHub, mirror to Forgejo later for learning | Most people, **recommended** |
 | **C: Forgejo primary + GitHub mirror** | Self-host primary, mirror to GitHub for offsite backup | Maximum self-hosting |
 
-**Recommendation: Pattern B.** Start on GitHub now so nothing blocks on infrastructure not yet built. Migrate later if you want the Forgejo experience, with GitHub as your offsite-IaC-backup (which Runbook 10 calls for anyway).
+**Recommendation: Pattern B.** Start on GitHub now so nothing blocks on infrastructure not yet built. Migrate later if you want the Forgejo experience, with GitHub as your offsite-IaC-backup (which Backups calls for anyway).
 
 !!! tip
     Whatever pattern you choose, the GitHub copy serves as offsite backup of your infrastructure-as-code. If your homelab burns down, you can rebuild it from these repos. That alone justifies the pattern.
 
 ## Step 1: Create the Repos on GitHub
 
-You will create two Personal Access Tokens (PATs) over the course of this runbook — one for your local `gh` CLI to create and push to repos, and a second (later, after Runbook 5) for ArgoCD to pull from `homelab-manifests`. Different jobs, different permission scopes.
+You will create two Personal Access Tokens (PATs) over the course of this runbook — one for your local `gh` CLI to create and push to repos, and a second (later, after Kubernetes) for ArgoCD to pull from `homelab-manifests`. Different jobs, different permission scopes.
 
 ### Token 1: Local `gh` CLI / development machine
 
@@ -63,7 +63,7 @@ Sign in to GitHub. Go to **Settings → Developer Settings → Personal access t
 !!! warning
     Fine-grained PATs scope to specific repos, but you are *creating* repos that don't exist yet — hence "All repositories" for now. Classic PATs with the `repo` scope sidestep this entirely; that's why a lot of guides still use them. Fine-grained is the modern recommendation, so we use it here.
 
-### Token 2: ArgoCD / read-only deploy (create later, in Runbook 5)
+### Token 2: ArgoCD / read-only deploy (create later, in Kubernetes)
 
 Note this here so you remember to come back. When you wire ArgoCD to `homelab-manifests` in Step 7, create a second fine-grained PAT scoped only to that single repo:
 
@@ -293,7 +293,7 @@ The `.enc.tfvars` file IS safe to commit — it's encrypted with your age key. T
 
 ## Step 6: Migrating to Forgejo (When You Get There)
 
-Once Runbook 11 (Forgejo) is running, you have three migration paths:
+Once Forgejo is running, you have three migration paths:
 
 1. **Mirror from GitHub** (read-only Forgejo copy): Forgejo → New Migration → "This repository will be a mirror" → paste GitHub URL.
 2. **Push mirror to GitHub** (Forgejo is primary): In each Forgejo repo, Settings → Mirror Settings → Add Push Mirror. Every push to Forgejo auto-syncs to GitHub.
@@ -303,7 +303,7 @@ Once Runbook 11 (Forgejo) is running, you have three migration paths:
 
 ## Step 7: Wire ArgoCD to homelab-manifests
 
-**Come back to this step after Runbook 5.** Once your repos are set up and the cluster is running, point ArgoCD at `homelab-manifests` using the read-only Token 2 from Step 1:
+**Come back to this step after Kubernetes.** Once your repos are set up and the cluster is running, point ArgoCD at `homelab-manifests` using the read-only Token 2 from Step 1:
 
 ```bash
 # Add the repo to ArgoCD using the read-only PAT
@@ -378,5 +378,5 @@ Workflow even for solo work:
 - [ ] `~/.config/sops/age/keys.txt` exists and is backed up
 - [ ] `.sops.yaml` committed in `homelab-secrets` and `homelab-terraform`
 - [ ] Test commit with a fake secret — verify gitleaks blocks it
-- [ ] (After Runbook 5) ArgoCD ApplicationSet syncing from `homelab-manifests`
-- [ ] (After Runbook 11) Push mirror configured Forgejo → GitHub
+- [ ] (After Kubernetes) ArgoCD ApplicationSet syncing from `homelab-manifests`
+- [ ] (After Forgejo) Push mirror configured Forgejo → GitHub
