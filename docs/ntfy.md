@@ -1,5 +1,8 @@
 # ntfy
 
+!!! success "Status — Live"
+    Live in the cluster — push notifications for the whole stack.
+
 Self-hosted push notifications for the entire homelab stack.
 
 | | |

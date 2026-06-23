@@ -1,5 +1,8 @@
 # Woodpecker CI/CD
 
+!!! success "Status — Live"
+    Live in the cluster — builds container images and reconciles them via GitOps.
+
 End-to-end pipeline: push code, auto-build container images, deploy to k3s via GitOps.
 
 | | |

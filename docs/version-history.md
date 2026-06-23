@@ -2,7 +2,11 @@
 
 The doc lineage. Body content always reflects the current state; this appendix captures the shape of each release.
 
-## v15 (current)
+## v20 (current)
+
+Documentation reorganization — **runbook numbers retired**. The 30 numbered files (`00-prerequisites.md` … `29-miniflux.md`) were renamed to slug-based filenames (`prerequisites.md`, `vaultwarden.md`, `woodpecker.md`, …) and their `# Runbook N — Title` headings became plain titles; the MkDocs nav now carries the ordering. Old `/NN-name/` URLs keep resolving via the `mkdocs-redirects` plugin, so external bookmarks don't 404. The **`Rxx` / `Runbook N` shorthand is retired** in favour of app names — in prose and in the `Depends On` headers alike — because the number cross-references had drifted (the deployment-order list cited runbook numbers that no longer matched). The nav gained a **Platform Services** tier (Vaultwarden, Authelia + lldap, ntfy, NAS PostgreSQL, Forgejo, Woodpecker, AdGuard) and a **Planned & Future** section, and every app/service page now opens with a **Status** banner (Live / Planned / Shelved / Retired). The App Catalog is split into Live / Planned / Retired, and the stale catalog list (FreshRSS, double-listed Vikunja) was reconciled against what's actually deployed. Page content is otherwise unchanged. *(The appendix had lagged at v15 while page bodies advanced through the incremental app-runbook additions of v16–v19; this entry brings it current.)*
+
+## v15
 
 R3/R4 alignment to the first real deployment on DietPi. Non-root throughout — Ansible and SSH use the `dietpi` user with `sudo`, not root, and R4 adds the post-key SSH hardening (disable root login + password auth). Secrets move from Ansible Vault to sops + age via the `community.sops` lookup, unifying with the `homelab-secrets` mechanism and R5's two-layer model. R4 bootstrap drops the `hostname` and netplan tasks: DietPi owns node identity (hostname + static IP from `dietpi.txt`), has no dbus for `ansible.builtin.hostname`, and ships no netplan. The cmdline path is corrected to `/boot/firmware/cmdline.txt`, `stdout_callback` becomes `default` + `callback_result_format: yaml` (the standalone `yaml` callback was removed in community.general 12), and the NFS play is tagged `nfs` so the cluster can come up before the SATA SSD is installed.
 

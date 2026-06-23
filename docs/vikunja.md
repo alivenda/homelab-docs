@@ -1,5 +1,8 @@
 # Vikunja
 
+!!! success "Status — Live"
+    Live in the cluster, database on NAS PostgreSQL.
+
 Task management — lists, kanban, labels, due dates, reminders, with mobile and
 desktop clients.
 

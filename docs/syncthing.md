@@ -1,5 +1,8 @@
 # Syncthing
 
+!!! info "Status — Planned (not yet deployed)"
+    Documented — not yet set up across devices in this build.
+
 Continuous peer-to-peer file synchronisation between devices — no cloud relay needed.
 
 | | |

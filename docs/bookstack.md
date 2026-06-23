@@ -1,5 +1,8 @@
 # BookStack
 
+!!! info "Status — Planned (not yet deployed)"
+    Documented and ready to deploy — not running in this build yet.
+
 Self-hosted wiki and knowledge base with OIDC login and role-based access.
 
 | | |

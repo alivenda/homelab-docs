@@ -1,5 +1,8 @@
 # Homepage
 
+!!! success "Status — Live"
+    Live in the cluster behind Authelia ForwardAuth.
+
 A services dashboard — one tile per deployed service, behind Authelia.
 
 | | |

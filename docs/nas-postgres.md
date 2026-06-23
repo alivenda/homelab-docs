@@ -1,5 +1,8 @@
 # NAS PostgreSQL
 
+!!! success "Status — Live"
+    Live on the NAS (Docker) — the shared relational tier, one database + role per app.
+
 One PostgreSQL server on the NAS, one database + role per app. This is the "Relational DB"
 tier from the [Storage & Data Architecture](storage-architecture.md) — the cluster runs app
 pods, the NAS runs their databases.

@@ -1,5 +1,8 @@
 # Forgejo
 
+!!! success "Status — Live"
+    Live in the cluster — the primary Git host and upstream for these repos.
+
 Self-hosted Git server — the cluster's primary Git host.
 
 | | |

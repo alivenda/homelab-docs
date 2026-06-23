@@ -1,5 +1,8 @@
 # Miniflux
 
+!!! success "Status — Live"
+    Live in the cluster (stateless app), database on NAS PostgreSQL.
+
 Minimalist RSS/Atom feed reader — a single Go binary with Fever and Google
 Reader API endpoints for mobile clients, and very low RAM.
 

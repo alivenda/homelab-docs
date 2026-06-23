@@ -1,5 +1,8 @@
 # RustDesk Server
 
+!!! info "Status — Planned (not yet deployed)"
+    Documented — not yet deployed in this build.
+
 Self-hosted relay server for RustDesk remote desktop — ID registration and traffic relay.
 
 | | |
