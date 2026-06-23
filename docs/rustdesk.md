@@ -1,4 +1,4 @@
-# Runbook 24: RustDesk Server
+# RustDesk Server
 
 Self-hosted relay server for RustDesk remote desktop — ID registration and traffic relay.
 
@@ -7,7 +7,7 @@ Self-hosted relay server for RustDesk remote desktop — ID registration and tra
 | **Difficulty** | Beginner–Intermediate |
 | **Time Estimate** | 30–45 minutes |
 | **Runs On** | k3s (cluster) — LoadBalancer service via MetalLB |
-| **Depends On** | Runbook 5 (k3s, MetalLB), Runbook 2 (Lab VLAN IP range) |
+| **Depends On** | Kubernetes (k3s, MetalLB), Networking (Lab VLAN IP range) |
 
 RustDesk ([rustdesk.com](https://rustdesk.com)) is an open-source remote desktop application. This runbook deploys the **server components** (`hbbs` for peer ID registration, `hbbr` for traffic relay) on the cluster. The actual RustDesk client apps are installed separately on the machines you want to connect to. ARM64 ✅ (`rustdesk/rustdesk-server` ships multiarch). See the [self-hosting docs](https://rustdesk.com/docs/en/self-host/rustdesk-server-oss/) for full reference.
 
@@ -180,7 +180,7 @@ Each device shows a numeric ID — share the ID and a one-time password to allow
 
 If you want to access the RustDesk server from outside your LAN without opening firewall ports:
 
-1. The cluster nodes are already on Tailscale (from Runbook 2). The MetalLB IP `10.0.20.50` is on the Lab VLAN which is advertised via the Tailscale subnet router.
+1. The cluster nodes are already on Tailscale (from Networking). The MetalLB IP `10.0.20.50` is on the Lab VLAN which is advertised via the Tailscale subnet router.
 2. Set the RustDesk client ID/Relay server to the MetalLB IP — it will be reachable from anywhere on your Tailscale network.
 
 ## Verification

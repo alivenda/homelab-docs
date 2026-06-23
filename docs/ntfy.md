@@ -1,4 +1,4 @@
-# Runbook 19: ntfy
+# ntfy
 
 Self-hosted push notifications for the entire homelab stack.
 
@@ -7,7 +7,7 @@ Self-hosted push notifications for the entire homelab stack.
 | **Difficulty** | Beginner |
 | **Time Estimate** | 45–60 minutes |
 | **Runs On** | k3s (cluster) |
-| **Depends On** | Runbook 5 (k3s), Runbook 6 (Traefik), Runbook 8 (Terraform, DNS), [the deploy pattern](apps-deploy-pattern.md) |
+| **Depends On** | Kubernetes (k3s), Traefik, Terraform (DNS), [the deploy pattern](apps-deploy-pattern.md) |
 
 ntfy is a pub/sub notification service — services publish messages to named topics and your phone (or any HTTP client) subscribes to receive them. Every other service in this stack can send notifications through it: Prometheus Alertmanager, CI pipeline results, Home Assistant automations.
 
@@ -114,7 +114,7 @@ Save each token to your password manager — you'll paste them into the publishi
 
 ## DNS, routing, and (no) SSO
 
-1. **Publish the hostname** — add `ntfy` to the service list in the Cloudflare Terraform module (Runbook 8) and apply: one A record per service pointing at the Traefik LB IP. The route can't be reached by name until this exists.
+1. **Publish the hostname** — add `ntfy` to the service list in the Cloudflare [Terraform](terraform.md) module and apply: one A record per service pointing at the Traefik LB IP. The route can't be reached by name until this exists.
 2. **HTTPRoute** per the [deploy pattern](apps-deploy-pattern.md) — plain, on the shared Gateway's `websecure` listener; the wildcard cert terminates at the Gateway.
 
 !!! note "No Authelia in front of ntfy"
@@ -129,7 +129,7 @@ Save each token to your password manager — you'll paste them into the publishi
 - [ ] Anonymous publish rejected: `curl -d test https://ntfy.yourdomain.com/uptime` → 401/403
 - [ ] Token publish arrives on the phone:
   `curl -H "Authorization: Bearer tk_..." -d "ntfy is live" https://ntfy.yourdomain.com/uptime`
-- [ ] **Backup captured real bytes** — run an on-demand velero backup of the namespace and check `PodVolumeBackup` progress for **non-zero** `totalBytes` on *both* volumes. `Completed` alone proves nothing (see [Backups & DR](10-backups.md)).
+- [ ] **Backup captured real bytes** — run an on-demand velero backup of the namespace and check `PodVolumeBackup` progress for **non-zero** `totalBytes` on *both* volumes. `Completed` alone proves nothing (see [Backups & DR](backups.md)).
 
 ## Mobile app
 
@@ -140,7 +140,7 @@ Install the ntfy [Android](https://play.google.com/store/apps/details?id=io.heck
 Each service uses *its own* token against *its own* topic:
 
 - **Prometheus Alertmanager** — configured in kube-prometheus-stack's values, not
-  by hand; [Runbook 9 Step 4](09-observability.md#step-4-alerting-ntfy) has the full
+  by hand; [Observability Step 4](observability.md#step-4-alerting-ntfy) has the full
   wiring. Two details differ from the other publishers: it uses the **in-cluster**
   URL (`http://ntfy.ntfy.svc.cluster.local/alerts?template=alertmanager`) so alert
   delivery survives an ingress/DNS outage, and the token rides in a SealedSecret

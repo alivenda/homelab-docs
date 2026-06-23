@@ -1,4 +1,4 @@
-# Runbook 28: Vikunja
+# Vikunja
 
 Task management — lists, kanban, labels, due dates, reminders, with mobile and
 desktop clients.
@@ -8,7 +8,7 @@ desktop clients.
 | **Difficulty** | Beginner–Intermediate |
 | **Time Estimate** | ~1 hour |
 | **Runs On** | k3s (app) **+ NAS (database)** |
-| **Depends On** | [Deploying an App](apps-deploy-pattern.md), Runbook 27 (NAS Postgres), Runbook 18 (Authelia), [Storage & Data Architecture](storage-architecture.md) |
+| **Depends On** | [Deploying an App](apps-deploy-pattern.md), NAS PostgreSQL, Authelia, [Storage & Data Architecture](storage-architecture.md) |
 
 The deployed truth is `homelab-manifests/apps/vikunja/`; this runbook records the
 decisions and the bring-up procedure, not the YAML.
@@ -23,7 +23,7 @@ so the [decomposition rule](storage-architecture.md#how-to-decompose-one-app) ap
 and the relational tier wins:
 
 - **Database** → the shared NAS Postgres (`10.0.20.50:5433`), db + role `vikunja`,
-  provisioned per Runbook 27 at bring-up. The nightly dump script enumerates databases
+  provisioned per NAS PostgreSQL at bring-up. The nightly dump script enumerates databases
   dynamically, so `vikunja` joins the Garage backup on its first 04:30 run.
 - **Attachments / uploaded files** → one `nfs-storage` PVC mounted at
   `/app/vikunja/files` — flat files, NFS-safe. RWO + `strategy: Recreate`.
@@ -37,7 +37,7 @@ actually deploys is one container, one ConfigMap, one PVC.
 
 ## Step 1 — Database on the NAS
 
-Per Runbook 27, on the NAS:
+Per NAS PostgreSQL, on the NAS:
 
 ```bash
 sudo docker exec -ti postgres psql -U postgres \
@@ -65,7 +65,7 @@ Two things the env-var convention hides:
 2. **`enableServiceLinks: false` is mandatory.** The Service is named `vikunja`, so the
    kubelet's discovery env is `VIKUNJA_SERVICE_HOST`, `VIKUNJA_PORT=tcp://…` — squarely
    inside Vikunja's own `VIKUNJA_*` config namespace. Same failure class as the
-   `PAPERLESS_PORT` collision in Runbook 14.
+   `PAPERLESS_PORT` collision in Paperless-ngx.
 
 Also pinned deliberately: `VIKUNJA_SERVICE_JWTSECRET`. Left unset, Vikunja mints a
 fresh secret on every start and all sessions die on restart.
@@ -80,7 +80,7 @@ manager.
 
 ## Step 4 — SSO: OIDC client
 
-The Authelia client follows the Runbook 18 recipe: `client_id: vikunja`, the **pbkdf2
+The Authelia client follows the Authelia recipe: `client_id: vikunja`, the **pbkdf2
 hash** of the client secret in `apps/authelia/values.yaml`, no PKCE,
 `client_secret_basic`, scopes `openid profile email`, and the callback
 

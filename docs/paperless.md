@@ -1,4 +1,4 @@
-# Runbook 14: Paperless-ngx
+# Paperless-ngx
 
 Scan, OCR, and organize all your documents.
 
@@ -7,7 +7,7 @@ Scan, OCR, and organize all your documents.
 | **Difficulty** | Intermediate |
 | **Time Estimate** | 1–2 hours |
 | **Runs On** | k3s (app + Redis) **+ NAS (database)** |
-| **Depends On** | [Deploying an App](apps-deploy-pattern.md), Runbook 27 (NAS Postgres), Runbook 18 (Authelia), [Storage & Data Architecture](storage-architecture.md) |
+| **Depends On** | [Deploying an App](apps-deploy-pattern.md), NAS PostgreSQL, Authelia, [Storage & Data Architecture](storage-architecture.md) |
 
 Paperless-ngx is the cleanest live example of the
 [decomposition rule](storage-architecture.md#how-to-decompose-one-app): one app, four
@@ -66,7 +66,7 @@ Resource requests steer placement; the 2 Gi memory limit absorbs OCR spikes.
 
 ## Step 1 — Database on the NAS
 
-Follow [Runbook 27 → Provisioning a database for an app](27-nas-postgres.md#provisioning-a-database-for-an-app)
+Follow [NAS PostgreSQL → Provisioning a database for an app](nas-postgres.md#provisioning-a-database-for-an-app)
 with `<app> = paperless`: create the role + database, append the four per-node
 `pg_hba.conf` lines scoped to exactly this db/role, and `pg_reload_conf()`. The role
 password goes to your password manager and into the SealedSecret in Step 2.
@@ -190,4 +190,4 @@ scanner exists.
 
 - [ ] **DB backup gate**: after the next 04:30 NAS run, `paperless-<date>.dump`
       exists in the Garage `postgres-backups` bucket with a non-trivial size
-      (list with rclone via the `garage-pg` remote, per Runbook 27)
+      (list with rclone via the `garage-pg` remote, per NAS PostgreSQL)

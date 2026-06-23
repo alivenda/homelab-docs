@@ -1,4 +1,4 @@
-# Runbook 27: NAS PostgreSQL (shared database server)
+# NAS PostgreSQL
 
 One PostgreSQL server on the NAS, one database + role per app. This is the "Relational DB"
 tier from the [Storage & Data Architecture](storage-architecture.md) — the cluster runs app
@@ -9,7 +9,7 @@ pods, the NAS runs their databases.
 | **Difficulty** | Intermediate |
 | **Time Estimate** | 1–2 hours |
 | **Runs On** | NAS (Docker — not k3s) |
-| **Depends On** | Runbook 10 (Garage S3), [Storage & Data Architecture](storage-architecture.md) |
+| **Depends On** | Backups (Garage S3), [Storage & Data Architecture](storage-architecture.md) |
 
 ## Does your app even belong here?
 
@@ -180,7 +180,7 @@ postgresql://<app>:<password>@10.0.20.50:5433/<app>
 
 ## Backups: nightly dumps → Garage
 
-Same per-consumer pattern as every other Garage client (Runbook 10): dedicated bucket +
+Same per-consumer pattern as every other Garage client (Backups): dedicated bucket +
 least-privilege key, rclone remote, systemd timer on the NAS.
 
 ```bash

@@ -1,13 +1,13 @@
-# Runbook 4: Ansible Automation
+# Ansible
 
-Replace the manual per-node steps in Runbook 3 with a single Ansible playbook. Provision all 4 CM4 nodes (or rebuild any one) in minutes.
+Replace the manual per-node steps in Turing Pi with a single Ansible playbook. Provision all 4 CM4 nodes (or rebuild any one) in minutes.
 
 | | |
 |---|---|
 | **Difficulty** | Intermediate |
 | **Time Estimate** | 2–3 hours upfront, saves hours forever |
 | **Runs On** | Your machine (the Ansible control host) |
-| **Replaces** | Manual setup steps in Runbook 3 + k3s install |
+| **Replaces** | Manual setup steps in Turing Pi + k3s install |
 | **DevOps Skills** | Configuration management, idempotency, infrastructure as code |
 
 ## Why Ansible (and Not Terraform)
@@ -38,7 +38,7 @@ The two k3s install tasks in Step 8 of this runbook intentionally use `ansible.b
     The k3s install tasks above will trip `command-instead-of-module` on ansible-lint's `basic` profile or higher. The curl-pipe is the canonical upstream install path, not an oversight — scope the exception narrowly with `# noqa: command-instead-of-module` on each install task rather than disabling the rule globally.
 
 !!! tip
-    Add the `kubernetes.core` collection to your `requirements.yml` before R5: `ansible-galaxy collection install kubernetes.core`. The `kubeconfig:` parameter on `kubernetes.core.k8s` lets you run cluster ops from your machine against the remote API.
+    Add the `kubernetes.core` collection to your `requirements.yml` before Kubernetes: `ansible-galaxy collection install kubernetes.core`. The `kubeconfig:` parameter on `kubernetes.core.k8s` lets you run cluster ops from your machine against the remote API.
 
 ## Step 1: Install Ansible on Your Machine
 
@@ -57,7 +57,7 @@ ansible --version
 
 ## Step 2: SSH Key Distribution
 
-Runbook 3's `dietpi.txt` sets each node's static IP (`AUTO_SETUP_NET_USESTATIC=1`) and hostname at first boot, so the nodes come up directly on their planned addresses (`10.0.20.10–.13`) — there's no DHCP-to-static transition to manage. A matching DHCP reservation in UDM → Clients is optional belt-and-suspenders.
+Turing Pi's `dietpi.txt` sets each node's static IP (`AUTO_SETUP_NET_USESTATIC=1`) and hostname at first boot, so the nodes come up directly on their planned addresses (`10.0.20.10–.13`) — there's no DHCP-to-static transition to manage. A matching DHCP reservation in UDM → Clients is optional belt-and-suspenders.
 
 Copy your key to the **`dietpi`** user — DietPi's default admin account. Ansible logs in as `dietpi` and escalates with `sudo` rather than logging in as root:
 
@@ -206,7 +206,7 @@ Steps 6–8 each show one play. Append them in order into `site.yml` at the repo
 ```
 
 !!! note "DietPi owns node identity — Ansible sets neither hostname nor IP"
-    On DietPi the hostname (`AUTO_SETUP_NET_HOSTNAME`) and static IP (`AUTO_SETUP_NET_USESTATIC`) are set from `dietpi.txt` at first boot (R3 Step 3), and the network is managed by `ifupdown` (`/etc/network/interfaces`), not netplan. So this play deliberately has **no hostname task and no netplan task**:
+    On DietPi the hostname (`AUTO_SETUP_NET_HOSTNAME`) and static IP (`AUTO_SETUP_NET_USESTATIC`) are set from `dietpi.txt` at first boot (Turing Pi Step 3), and the network is managed by `ifupdown` (`/etc/network/interfaces`), not netplan. So this play deliberately has **no hostname task and no netplan task**:
 
     - `ansible.builtin.hostname` needs systemd's dbus, which the DietPi minimal image doesn't run — the task fails with `Failed to connect to system scope bus`.
     - A netplan file would be ignored (netplan isn't installed) and would only fight DietPi's own config.
@@ -321,7 +321,7 @@ Adding a `name:` to each play (which the verbatim Step 6–8 blocks omit for bre
 
 ## Step 10: Secrets via sops + age
 
-The cluster token lives encrypted in `secrets/secrets.sops.yaml` and is decrypted at runtime by the `community.sops` lookup in the inventory — the **same sops + age mechanism** as the `homelab-secrets` repo (R1). That gives you one repo-side secrets tool, consistent with R5 Step 12's two-layer model (sops + age repo-side, Sealed Secrets cluster-side).
+The cluster token lives encrypted in `secrets/secrets.sops.yaml` and is decrypted at runtime by the `community.sops` lookup in the inventory — the **same sops + age mechanism** as the `homelab-secrets` repo (Git). That gives you one repo-side secrets tool, consistent with Kubernetes Step 12's two-layer model (sops + age repo-side, Sealed Secrets cluster-side).
 
 Generate a strong token and write it into a sops-encrypted file (the repo-root `.sops.yaml` pins your age recipient):
 
@@ -330,7 +330,7 @@ sops secrets/secrets.sops.yaml
 # Add line:  k3s_token: <output of `openssl rand -hex 32`>
 ```
 
-The age **private** key stays at `~/.config/sops/age/keys.txt` (never committed); the encrypted file is safe to commit. Save the token to your password manager too — losing it on top of losing ruby turns a 2-hour rebuild into a full cluster rebuild (R5 Step 11).
+The age **private** key stays at `~/.config/sops/age/keys.txt` (never committed); the encrypted file is safe to commit. Save the token to your password manager too — losing it on top of losing ruby turns a 2-hour rebuild into a full cluster rebuild (Kubernetes Step 11).
 
 ## Step 11: Run It
 

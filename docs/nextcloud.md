@@ -1,4 +1,4 @@
-# Runbook 13: Nextcloud
+# Nextcloud
 
 Self-hosted file sync, calendar, contacts — and later Notes, Bookmarks, and Collabora
 office editing on top of the same install. Architecturally it's the poster child of the
@@ -10,7 +10,7 @@ that touches **every** storage tier, decomposed so each part lands on the right 
 | **Difficulty** | Intermediate |
 | **Time Estimate** | 1–2 hours |
 | **Runs On** | k3s — any node. Nothing pins it: files are on NFS, the DB is on the NAS, so the pod can reschedule freely |
-| **Depends On** | Runbook 6 (Traefik Gateway), Runbook 18 (Authelia), Runbook 27 (NAS Postgres), and the [GitOps deploy pattern](apps-deploy-pattern.md) |
+| **Depends On** | Traefik (Gateway), Authelia, NAS PostgreSQL, and the [GitOps deploy pattern](apps-deploy-pattern.md) |
 
 This runbook follows the [deploy pattern](apps-deploy-pattern.md) — everything is
 committed to `homelab-manifests` and reconciled by ArgoCD; the manifests are the source
@@ -24,7 +24,7 @@ reverse-proxy config, background jobs, and OIDC.
 |---|---|---|
 | PHP/Apache app pod | the cluster | What the CM4s are good at |
 | Files (`/var/www/html` PVC) | `nfs-storage`, 100Gi | Bulk flat files; survives rescheduling to any node |
-| Database | NAS Postgres, `10.0.20.50:5433` | Sustained fsync'd writes belong on x86 + a real disk ([R27](27-nas-postgres.md)) |
+| Database | NAS Postgres, `10.0.20.50:5433` | Sustained fsync'd writes belong on x86 + a real disk ([NAS PostgreSQL](nas-postgres.md)) |
 | Cache + file locking | ephemeral Valkey pod | Not a system of record — no PVC, nothing to back up |
 
 !!! danger "Leave the chart's bundled databases off"
@@ -40,7 +40,7 @@ reverse-proxy config, background jobs, and OIDC.
 
 ## Step 1: Provision the database on the NAS
 
-Follow [R27's per-app procedure](27-nas-postgres.md#provisioning-a-database-for-an-app)
+Follow [NAS PostgreSQL's per-app procedure](nas-postgres.md#provisioning-a-database-for-an-app)
 on the NAS — generate a password (`openssl rand -base64 24` → password manager first):
 
 ```bash
@@ -50,7 +50,7 @@ sudo docker exec -ti postgres psql -U postgres \
 ```
 
 Append the four node-IP lines to `pg_hba.conf` (scoped to exactly this database and
-role), then `SELECT pg_reload_conf()` — both verbatim from R27.
+role), then `SELECT pg_reload_conf()` — both verbatim from NAS PostgreSQL.
 
 The nightly backup needs **no** configuration: the dump script enumerates
 `pg_database`, so `nextcloud-<date>.dump` appears in the `postgres-backups` bucket
@@ -94,7 +94,7 @@ internalDatabase:
 externalDatabase:
   enabled: true
   type: postgresql
-  host: "10.0.20.50:5433"     # NAS shared Postgres — 5433, not 5432 (R27)
+  host: "10.0.20.50:5433"     # NAS shared Postgres — 5433, not 5432
   database: nextcloud
   existingSecret:
     enabled: true
@@ -157,7 +157,7 @@ nextcloud:
 
 !!! note "Pod CIDR here — node IPs for NAS-hosted apps"
     An in-cluster app sees the proxy as the **Traefik pod's IP** (the k3s pod CIDR,
-    `10.42.0.0/16`). Home Assistant (R16) needed **node** IPs for the same setting
+    `10.42.0.0/16`). [Home Assistant](home-assistant.md) needed **node** IPs for the same setting
     because it lives *outside* the cluster, where traffic leaves SNAT'd. Same concept,
     different vantage point — don't copy one into the other.
 
@@ -165,7 +165,7 @@ nextcloud:
 
 ## Step 4: Routing
 
-The hostname is already in `var.services` in the Cloudflare module (R8) — verify with
+The hostname is already in `var.services` in the Cloudflare module (Terraform) — verify with
 `tofu plan` before assuming. The route goes in the `-manifests` app, and the backend
 port is the chart's Service default, **8080**:
 
@@ -200,11 +200,11 @@ spec:
 !!! warning "The chart can render this route itself now — don't let it"
     Chart ≥ 9 ships `httpRoute.enabled`. Tempting, but the chart `Application` syncs
     with Server-Side Apply, and SSA + a Gateway API `HTTPRoute` is the
-    [permanent-OutOfSync trap](07-vaultwarden.md#step-3-httproute). The route stays in
+    [permanent-OutOfSync trap](vaultwarden.md#step-3-httproute). The route stays in
     the no-SSA `-manifests` app like every other app's.
 
 No auth middleware on this route — Nextcloud is an OIDC app (Step 7), and ForwardAuth
-would break every sync client ([R18](18-authelia.md)).
+would break every sync client ([Authelia](authelia.md)).
 
 ## Step 5: Register the Applications and sync
 
@@ -336,7 +336,7 @@ The `nextcloud-main` volume must show `TOTAL`/`DONE` clearly non-zero — a fres
 is hundreds of MB. (The Valkey pod contributes nothing durable; an emptyDir row is
 noise, not signal.)
 
-**Database (R27 nightly dump)** — after the next 04:30 run, on the NAS:
+**Database (NAS PostgreSQL nightly dump)** — after the next 04:30 run, on the NAS:
 
 ```bash
 sudo docker exec -ti garage /garage bucket info postgres-backups

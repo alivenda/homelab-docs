@@ -1,4 +1,4 @@
-# Runbook 3: Turing Pi 2 Board Setup
+# Turing Pi
 
 Initial hardware assembly, firmware update, OS flashing, and network configuration for your Turing Pi 2 with 4× Raspberry Pi CM4 modules (mixed eMMC capacity).
 
@@ -13,7 +13,7 @@ Initial hardware assembly, firmware update, OS flashing, and network configurati
 | **Total Cluster** | 16 cores, 32 GB RAM, 96 GB eMMC combined |
 | **Networking** | Onboard 1 Gbps managed switch, 2× RJ45 (bridged) |
 | **Storage I/O** | 2× SATA III (Node 3), 4× M.2 slots (NOT usable with CM4) |
-| **Time Estimate** | 1–2 hours (or 15 min with Runbook 4 / Ansible) |
+| **Time Estimate** | 1–2 hours (or 15 min with Ansible) |
 
 !!! warning "M.2 slots and CM4"
     The 4 M.2 slots on the back of the board are NOT usable with Raspberry Pi CM4 modules. Per the official Turing Pi docs, CM4 lacks the PCIe lanes needed to reach them. Only RK1 and Jetson modules can use the M.2 slots. Use a single SATA SSD on Node 3 for cluster persistent storage.
@@ -88,7 +88,7 @@ DietPi is a lightweight Debian-based OS optimized for single-board computers and
 9. Repeat for all 4 nodes, incrementing the static IP and hostname.
 
 !!! tip "Jump to Ansible now"
-    **STOP HERE and jump to Runbook 4 (Ansible).** Steps 4 and 5 below are MANUAL alternatives — Runbook 4 automates the cgroups edit, NFS server install, SSD mount, and k3s install across all 4 nodes with one playbook. Only do Steps 4–5 manually if you want to understand the per-node config before letting Ansible take over.
+    **STOP HERE and jump to Ansible.** Steps 4 and 5 below are MANUAL alternatives — Ansible automates the cgroups edit, NFS server install, SSD mount, and k3s install across all 4 nodes with one playbook. Only do Steps 4–5 manually if you want to understand the per-node config before letting Ansible take over.
 
 ## Step 4: Boot and Verify
 
@@ -102,12 +102,12 @@ DietPi is a lightweight Debian-based OS optimized for single-board computers and
     ```
 
 !!! note "Connect as the `dietpi` user"
-    DietPi's default admin account is `dietpi` — use it, not root (Ansible logs in as `dietpi` and escalates with `sudo`). R4 Step 2 installs your SSH key and covers disabling root login + password auth.
+    DietPi's default admin account is `dietpi` — use it, not root (Ansible logs in as `dietpi` and escalates with `sudo`). Ansible Step 2 installs your SSH key and covers disabling root login + password auth.
 
 ## Step 5: Prepare SATA SSD on Node 3 (topaz (Node 3))
 
 !!! note "Superseded by Ansible"
-    Runbook 4's NFS playbook does this automatically. This step is here as the imperative reference for what Ansible runs.
+    Ansible's NFS playbook does this automatically. This step is here as the imperative reference for what Ansible runs.
 
 Node 3 connects to the SATA ports. This SSD will serve as NFS storage for the entire cluster.
 
@@ -123,7 +123,7 @@ Node 3 connects to the SATA ports. This SSD will serve as NFS storage for the en
     ```
 
 !!! tip
-    Reserve IPs 10.0.20.10–13 for your nodes and 10.0.20.200–250 for MetalLB in your UDM DHCP settings (see Runbook 2 for the full Lab VLAN plan).
+    Reserve IPs 10.0.20.10–13 for your nodes and 10.0.20.200–250 for MetalLB in your UDM DHCP settings (see Networking for the full Lab VLAN plan).
 
 ## Power: UPS + NUT for Graceful Shutdown
 

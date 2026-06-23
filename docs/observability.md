@@ -1,4 +1,4 @@
-# Runbook 9: Observability
+# Observability
 
 Metrics, logs, dashboards, and alerts for the whole homelab.
 
@@ -7,7 +7,7 @@ Metrics, logs, dashboards, and alerts for the whole homelab.
 | **Difficulty** | Intermediate |
 | **Time Estimate** | 2–3 hours |
 | **Runs On** | k3s (cluster), namespace `monitoring` |
-| **Depends On** | Runbook 5 (k3s), Runbook 6 (Traefik), Runbook 8 (Terraform, DNS). The alerting hookup (Step 4) returns here after Runbook 19 (ntfy). |
+| **Depends On** | Kubernetes (k3s), Traefik, Terraform (DNS). The alerting hookup (Step 4) returns here after ntfy. |
 
 ## The shape of the stack
 
@@ -18,7 +18,7 @@ metrics  node-exporter (DaemonSet) + kube-state-metrics + kubelet/apiserver
            ──scrape──> Prometheus ──> Grafana dashboards
 logs     /var/log/pods on every node
            ──tail──> Alloy (DaemonSet) ──push──> Loki <──query── Grafana Explore
-alerts   Prometheus rules ──> Alertmanager ──webhook──> ntfy (R19) ──> your phone
+alerts   Prometheus rules ──> Alertmanager ──webhook──> ntfy ──> your phone
 ```
 
 - **`kube-prometheus-stack`** (Prometheus + Alertmanager + Grafana + the Prometheus
@@ -54,7 +54,7 @@ deploying the stack and the alert never fires.
 ### The Applications
 
 Two ArgoCD Applications in `bootstrap/kube-prometheus-stack.yaml`, exactly the
-chart-plus-manifests split Forgejo and Woodpecker use (R11/R12):
+chart-plus-manifests split Forgejo and Woodpecker use:
 
 ```yaml
 # bootstrap/kube-prometheus-stack.yaml (chart Application — abridged)
@@ -94,7 +94,7 @@ The second Application (`kube-prometheus-stack-manifests`) points at
 secret, the Grafana HTTPRoute, the alert rules and the sealed ntfy token from
 Step 4. Give it `CreateNamespace=true` too: the SealedSecret carries
 `namespace: monitoring`, so without it the manifests app fails until the chart app
-happens to create the namespace first. (And per the R11/R12 pattern, **no**
+happens to create the namespace first. (And per the Forgejo/Woodpecker pattern, **no**
 `ServerSideApply` on the manifests app — the HTTPRoute trap.)
 
 ### Grafana — stateless on purpose
@@ -134,7 +134,7 @@ The Loki datasource is added by hand because Loki is a separate chart; Prometheu
 and Alertmanager datasources are provisioned automatically. It points at the
 service port directly — Loki's nginx gateway is disabled (Step 2).
 
-Seal the admin login ([pattern from R5 Step 13](05-kubernetes.md#step-13-encrypt-your-first-secret)):
+Seal the admin login ([pattern from Kubernetes Step 13](kubernetes.md#step-13-encrypt-your-first-secret)):
 
 ```bash
 GRAFANA_ADMIN_PW=$(openssl rand -base64 24)
@@ -194,7 +194,7 @@ prometheus:
     With 8 GB per node this stack is the heaviest single workload in the cluster.
     If topaz struggles, drop `retention` first, then consider disabling
     Alertmanager. Reference the
-    [Resource Budget table in R0](00-prerequisites.md#resource-budget-expectations)
+    [Resource Budget table in Prerequisites](prerequisites.md#resource-budget-expectations)
     for steady-state numbers.
 
 ### Turn off the scrapes k3s can't serve
@@ -405,8 +405,8 @@ What's deliberate here:
 
 ## Step 4: Alerting → ntfy
 
-!!! note "Come back to this step after Runbook 19"
-    Alertmanager publishes to the ntfy server, which doesn't exist until R19. The
+!!! note "Come back to this step after ntfy"
+    Alertmanager publishes to the ntfy server, which doesn't exist until ntfy. The
     stack runs fine without it — alerts just have nowhere to go yet.
 
 Alertmanager is configured in the same kube-prometheus-stack `values.yaml`. The
@@ -456,7 +456,7 @@ The details that matter:
   built-in formatter for Alertmanager webhook payloads (firing/resolved).
 - **The token never appears in git:** it rides in a SealedSecret and Alertmanager
   reads it from the mounted file (`credentials_file`), not inline config. Seal the
-  `alertmanager` publisher token you provisioned in R19:
+  `alertmanager` publisher token you provisioned in ntfy:
 
     ```bash
     kubectl create secret generic alertmanager-ntfy-token \
@@ -481,7 +481,7 @@ The details that matter:
 The chart's default rules already cover node down, PVC pressure, crash loops, and
 scrape-target down. What they *can't* know about is your backup jobs and
 certificates — a `PrometheusRule` in the manifests Application fills the gap
-(deploy it after R10, which provides the velero metrics):
+(deploy it after Backups, which provides the velero metrics):
 
 ```yaml
 # manifests/alert-rules.yaml (abridged)
@@ -531,7 +531,7 @@ spec:
 
 ## Step 5: DNS + HTTPRoute
 
-1. Add `grafana` to the service list in the Cloudflare Terraform module (Runbook 8)
+1. Add `grafana` to the service list in the Cloudflare [Terraform](terraform.md) module
    and apply — one A record per service, no wildcard.
 2. HTTPRoute in the manifests Application, same shape as every other service:
 
@@ -596,7 +596,7 @@ next pod restart.
 - [ ] No false positives: the Alerting page shows **only `Watchdog`** firing — no
   `KubeControllerManagerDown` / `KubeSchedulerDown` / `KubeProxyDown` (the k3s
   scrape disables) and no `NodeClockNotSynchronising` (chrony).
-- [ ] *(After R19)* A test alert reaches your phone:
+- [ ] *(After ntfy)* A test alert reaches your phone:
 
     ```bash
     kubectl -n monitoring port-forward svc/kube-prometheus-stack-alertmanager 9093 &

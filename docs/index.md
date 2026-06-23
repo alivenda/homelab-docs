@@ -13,7 +13,7 @@ A runbook guide for building a 4-node k3s cluster on a Turing Pi 2, learning Dev
 - 1× Raspberry Pi for AdGuard Home DNS (`pyrite` — this build: Pi 3 Model B; add a 2nd for optional failover)
 - Cloudflare-registered domain (~$10/yr)
 
-You can substitute hardware, but commands are written against this exact build. Full parts list (PSU, SSD, UPS, and the rest) is in [Runbook 0](00-prerequisites.md).
+You can substitute hardware, but commands are written against this exact build. Full parts list (PSU, SSD, UPS, and the rest) is in [Prerequisites](prerequisites.md).
 
 ## What you end up with
 
@@ -21,57 +21,57 @@ A 4-node k3s cluster running self-hosted Git (Forgejo), password manager (Vaultw
 
 ## How the runbooks fit together
 
-[Runbook 0](00-prerequisites.md) sets the mental model — read it first. The guide is split into **Foundation → Infrastructure → Apps**:
+[Prerequisites](prerequisites.md) sets the mental model — read it first. The guide is split into **Foundation → Infrastructure → Apps**:
 
 ```
 ─── Foundation ──────────────────────────────────────────────
-R0 Prerequisites
+Prerequisites
  ↓
-R1 Git foundation (5 repos, sops, pre-commit)
+Git foundation (5 repos, sops, pre-commit)
 
 ─── Infrastructure (platform + operator tooling) ────────────
-R2 UDM VLANs                   ← Tailscale step waits on R3
+Networking — UDM VLANs           ← Tailscale step waits on Turing Pi
  ↓
-R3 Flash DietPi to 4× CM4      ← step 5 (SSD prep) superseded by R4
+Turing Pi — flash DietPi to 4× CM4   ← SSD-prep step superseded by Ansible
  ↓
-R4 Ansible (replaces R3 step 5, installs k3s)
+Ansible (replaces the SSD-prep step, installs k3s)
  ↓
-R5 k3s bring-up (MetalLB, NFS storage, ArgoCD, Sealed Secrets)
+Kubernetes — k3s bring-up (MetalLB, NFS storage, ArgoCD, Sealed Secrets)
  ↓
-R6 Traefik HTTPS (DNS-01 via Cloudflare)
+Traefik — HTTPS (DNS-01 via Cloudflare)
  ↓
-R7 Vaultwarden                 ← cred store for every later runbook
+Vaultwarden                      ← cred store for every later runbook
  ↓
-R8 Terraform (Cloudflare DNS + UniFi IaC; retroactive)
+Terraform (Cloudflare DNS + UniFi IaC; retroactive)
  ↓
-R9 Observability (Prometheus / Grafana / Loki / Alloy)
+Observability (Prometheus / Grafana / Loki / Alloy)
  ↓
-R10 Backups (Garage S3 + Velero)
+Backups (Garage S3 + Velero)
  ↓
-R11 Forgejo
+Forgejo
  ↓
-R12 Woodpecker CI/CD
+Woodpecker CI/CD
  ↓
-R17 AdGuard Home        ← DNS ad-blocking (dedicated Pi — not k3s)
+AdGuard Home             ← DNS ad-blocking (dedicated Pi — not k3s)
  ↓
-R18 Authelia + lldap    ← SSO + OIDC provider (depends on R6, R7)
+Authelia + lldap         ← SSO + OIDC provider (depends on Traefik, Vaultwarden)
  ↓
-R19 ntfy                ← push notifications for the whole stack
+ntfy                     ← push notifications for the whole stack
  ↓
-R27 NAS PostgreSQL      ← shared DB server (NAS Docker — not k3s)
+NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
 
 ─── Apps · full runbooks (DB / multi-service / special model) ─
- ├─→ R13 Nextcloud       (cluster — DB on NAS, R27)
- ├─→ R14 Paperless-ngx   (cluster — DB on NAS R27 + Redis)
- ├─→ R15 Immich          (NAS-Docker — not on k3s, see runbook for why)
- ├─→ R16 Home Assistant  (slate — Mac mini / Proxmox VM)
- ├─→ R20 Homepage        (cluster — config-heavy dashboard)
- ├─→ R21 Arr Stack       (cluster — 6 services + hardlinks; NAS after 16 GB)
- ├─→ R22 BookStack       (cluster — MariaDB on NAS, R27)
- ├─→ R23 Syncthing       (per-device — not k3s)
- ├─→ R24 RustDesk Server (cluster — TCP/UDP relay via MetalLB)
- ├─→ R25 Reactive Resume (cluster — Postgres + Redis + MinIO)
- └─→ R26 Ollama + WebUI  (NAS Docker — defer until 16 GB RAM upgrade)
+ ├─→ Nextcloud       (cluster — DB on NAS Postgres)
+ ├─→ Paperless-ngx   (cluster — DB on NAS Postgres + Redis)
+ ├─→ Immich          (NAS-Docker — not on k3s, see runbook for why)
+ ├─→ Home Assistant  (slate — Mac mini / Proxmox VM)
+ ├─→ Homepage        (cluster — config-heavy dashboard)
+ ├─→ Arr Stack       (cluster — 6 services + hardlinks; NAS after 16 GB)
+ ├─→ BookStack       (cluster — MariaDB on NAS Postgres)
+ ├─→ Syncthing       (per-device — not k3s)
+ ├─→ RustDesk Server (cluster — TCP/UDP relay via MetalLB)
+ ├─→ Reactive Resume (cluster — Postgres + Redis + MinIO)
+ └─→ Ollama + WebUI  (NAS Docker — defer until 16 GB RAM upgrade)
 
 ─── Apps · catalog (simple HTTP apps — one shared pattern) ────
  │  See: Deploying an App (pattern) + App Catalog
@@ -81,10 +81,10 @@ R27 NAS PostgreSQL      ← shared DB server (NAS Docker — not k3s)
 
 ## How to use this guide
 
-- Read each runbook fully before starting it. Several reference "come back to this after Runbook N" patterns — skim first so you don't get stuck mid-step.
-- Treat the `Depends On` header as the prerequisite check. If a runbook says "Depends On: Runbook 5", don't start until R5's Verification section passes.
+- Read each runbook fully before starting it. Several reference "come back to this after the such-and-such runbook" patterns — skim first so you don't get stuck mid-step.
+- Treat the `Depends On` header as the prerequisite check. If a runbook says "Depends On: Kubernetes", don't start until Kubernetes's Verification section passes.
 - When a runbook gives you a `docker-compose.yml`, check the `Runs On` header. NAS-hosted services use compose; cluster-hosted services use Helm + manifests committed to `homelab-manifests` so ArgoCD manages them.
-- The most common ordering confusion is Tailscale (R2 Step 3 needs ruby from R3) and ArgoCD (R5 Step 8 needs port-forward to access before R6 is up). Both are flagged where they appear.
+- The most common ordering confusion is Tailscale (Networking Step 3 needs ruby from Turing Pi) and ArgoCD (Kubernetes Step 8 needs port-forward to access before Traefik is up). Both are flagged where they appear.
 
 !!! tip "Bookmark this page"
     When you hit a "wait, when am I supposed to do X" moment three weeks in, the dependency map above answers it without scrolling the whole guide.

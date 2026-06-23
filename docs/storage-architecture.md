@@ -15,7 +15,7 @@ running many small app pods, weak at database I/O. So data is split by **what it
 not by which app owns it: bulk and flat files on NFS, embedded SQLite on node-local
 disk, real relational databases on x86 hardware (the NAS), caches in memory. Durability
 everywhere is **backups to Garage S3, not redundancy** — there is one real disk, by
-design (the storage SPOF is mitigated by backups, see [Backups & DR](10-backups.md)).
+design (the storage SPOF is mitigated by backups, see [Backups & DR](backups.md)).
 
 ## Why this isn't "just use the default StorageClass"
 
@@ -47,8 +47,8 @@ Two hardware facts drive every choice below:
       lldap, Forgejo, linkding, …) live on it, and a backup→restore drill confirmed
       local-path volumes round-trip through velero (see [below](#the-local-path-tier)).
     - NAS relational DB — **live** (PostgreSQL 18 on the NAS at `10.0.20.50:5433`, see
-      [Runbook 27](27-nas-postgres.md)); databases are provisioned per app at each app's
-      bring-up. MariaDB stays unbuilt until an app forces it. Immich's own Postgres (R15)
+      [NAS PostgreSQL](nas-postgres.md)); databases are provisioned per app at each app's
+      bring-up. MariaDB stays unbuilt until an app forces it. Immich's own Postgres
       predates the shared server and stays separate.
 
 ## How to decompose one app
@@ -97,7 +97,7 @@ node. SQLite apps pin to the designated app-state node — `emerald (Node 2)`, l
 
 The relational apps (Nextcloud, Paperless, Reactive Resume → PostgreSQL; BookStack →
 MariaDB) get a **shared database server on the NAS** — the same x86 Docker host that already
-runs Immich's Postgres (R15), so this extends an established pattern rather than inventing one.
+runs Immich's Postgres, so this extends an established pattern rather than inventing one.
 
 Shape of the layer:
 
@@ -107,14 +107,14 @@ Shape of the layer:
 - **One MariaDB container** for the MySQL-only apps (BookStack; optionally Ghost, Monica) —
   deferred until one of them actually deploys.
 - Cluster apps connect over the Lab VLAN via `DATABASE_URL`, credentials from a `SealedSecret`.
-- **Backups:** nightly `pg_dump` / `mysqldump` per database to Garage S3 (R10), gated by a
+- **Backups:** nightly `pg_dump` / `mysqldump` per database to Garage S3 (Backups), gated by a
   seeded restore drill. Move to pgBackRest / WAL archiving later if you want point-in-time
   recovery.
 - **Access:** `pg_hba` allows each role only its own database, only from the four node IPs
   (pod egress is SNAT'd to node IPs); no superuser over TCP. It stays on the trusted Lab
   VLAN, never exposed.
 
-[Runbook 27](27-nas-postgres.md) is the implementation.
+[NAS PostgreSQL](nas-postgres.md) is the implementation.
 
 !!! tip "Caches stay in-cluster"
     Redis/Valkey for Paperless and Reactive Resume is a **cache**, not a system of record.
@@ -153,7 +153,7 @@ These predate this record and should be reconciled to it as each app is touched:
   Actual Budget, Donetick, ntfy and Woodpecker all sit on it correctly (Forgejo was
   migrated off `nfs-storage`). Audit the App Catalog so no remaining SQLite app is still
   pinned to `nfs-storage`.
-- **Runbooks R22/R25 assume cluster-hosted databases** — revise their DB sections to the
-  NAS server above when each app is deployed. (R13 Nextcloud and R14 Paperless are done —
-  R13 documents the four-tier decomposition this page uses as its worked example, and R14
+- **BookStack and Reactive Resume assume cluster-hosted databases** — revise their DB sections to the
+  NAS server above when each app is deployed. (Nextcloud and Paperless-ngx are done —
+  Nextcloud documents the four-tier decomposition this page uses as its worked example, and Paperless-ngx
   was trued up at Paperless's 2026-06 bring-up.)
