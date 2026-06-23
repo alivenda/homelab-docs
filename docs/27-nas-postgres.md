@@ -16,7 +16,7 @@ pods, the NAS runs their databases.
 The architecture splits database-like data two ways, and sending an app to the wrong tier
 undoes the design:
 
-- **Embedded SQLite** (Uptime Kuma, Vaultwarden, Forgejo, Actual Budget, the Arr stack, …)
+- **Embedded SQLite** (Vaultwarden, Forgejo, Actual Budget, the Arr stack, …)
   → stays **in-cluster** on `local-path` + `strategy: Recreate`. SQLite is a library inside
   the app process, not a server — there is nothing to centralize, and putting its file on
   network storage is the corruption pattern this architecture exists to prevent. These apps

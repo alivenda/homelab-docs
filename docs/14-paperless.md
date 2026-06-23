@@ -20,7 +20,7 @@ The paperless-ngx project publishes **no first-party Helm chart**. Its GitHub or
 contains only `paperless-ngx`, `ansible`, `builder`, and `gh-docs-index` (verified
 2026-06), and the upstream-documented deployments are docker compose and bare metal.
 Everything on Artifact Hub is a third-party repackage — the same avoidable dependency
-this cluster already rejected for Uptime Kuma and ntfy.
+this cluster already rejected for ntfy.
 
 So the workload is **raw manifests**: one Deployment (image pinned to the upstream
 `ghcr.io/paperless-ngx/paperless-ngx` release), a small Redis Deployment, PVCs, a
