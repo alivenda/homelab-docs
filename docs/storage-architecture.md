@@ -23,8 +23,7 @@ Two hardware facts drive every choice below:
 
 1. **SQLite corrupts on NFS.** [sqlite.org/howtocorrupt](https://www.sqlite.org/howtocorrupt.html)
    §2.1: *"This is especially true of network filesystems and NFS in particular… database
-   corruption might result."* A large share of self-hosted apps embed SQLite (Uptime Kuma,
-   linkding, Actual Budget, the Arr stack, Forgejo, Vaultwarden, …) and several have no
+   corruption might result."* A large share of self-hosted apps embed SQLite (linkding, Actual Budget, the Arr stack, Forgejo, Vaultwarden, …) and several have no
    other backend. They **cannot** sit on `nfs-storage`.
 2. **The CM4s are the wrong place for a database.** PostgreSQL does sustained, fsync'd
    writes; the nodes have only eMMC (slow, write-endurance-limited, *and the boot medium*)
@@ -44,9 +43,9 @@ Two hardware facts drive every choice below:
     - `nfs-storage` — **live** (`infrastructure/nfs-provisioner`).
     - `local-path` standalone provisioner — **live** (`infrastructure/local-path-provisioner`).
       k3s was installed with `--disable local-storage`, so the built-in class is gone; this
-      separate provisioner gives SQLite apps a correct home. Uptime Kuma is the first app on
-      it, and a backup→restore drill confirmed its volumes round-trip through velero
-      (see [below](#the-local-path-tier)).
+      separate provisioner gives SQLite apps a correct home. The SQLite apps (Vaultwarden,
+      lldap, Forgejo, linkding, …) live on it, and a backup→restore drill confirmed
+      local-path volumes round-trip through velero (see [below](#the-local-path-tier)).
     - NAS relational DB — **live** (PostgreSQL 18 on the NAS at `10.0.20.50:5433`, see
       [Runbook 27](27-nas-postgres.md)); databases are provisioned per app at each app's
       bring-up. MariaDB stays unbuilt until an app forces it. Immich's own Postgres (R15)
@@ -150,12 +149,10 @@ One real disk means durability is **backups, not redundancy** — applied consis
 
 These predate this record and should be reconciled to it as each app is touched:
 
-- **The App Catalog points most SQLite apps at `nfs-storage`** — only Uptime Kuma is correct.
-  Migrate each to `local-path` + `Recreate` when it's deployed.
-- **Forgejo is live on SQLite over `nfs-storage`** (`infrastructure/forgejo/values.yaml`).
-  Single-replica and lightly used, so it's a *latent* risk (NFS lock state on a reschedule),
-  not active corruption — migrate it to `local-path` once the provisioner is live, snapshotting
-  first.
+- **Most SQLite apps are now on `local-path`** — Vaultwarden, lldap, linkding, Forgejo,
+  Actual Budget, Donetick, ntfy and Woodpecker all sit on it correctly (Forgejo was
+  migrated off `nfs-storage`). Audit the App Catalog so no remaining SQLite app is still
+  pinned to `nfs-storage`.
 - **Runbooks R22/R25 assume cluster-hosted databases** — revise their DB sections to the
   NAS server above when each app is deployed. (R13 Nextcloud and R14 Paperless are done —
   R13 documents the four-tier decomposition this page uses as its worked example, and R14

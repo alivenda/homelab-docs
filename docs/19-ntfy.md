@@ -9,13 +9,13 @@ Self-hosted push notifications for the entire homelab stack.
 | **Runs On** | k3s (cluster) |
 | **Depends On** | Runbook 5 (k3s), Runbook 6 (Traefik), Runbook 8 (Terraform, DNS), [the deploy pattern](apps-deploy-pattern.md) |
 
-ntfy is a pub/sub notification service — services publish messages to named topics and your phone (or any HTTP client) subscribes to receive them. Every other service in this stack can send notifications through it: Uptime Kuma alerts, Prometheus Alertmanager, CI pipeline results, Home Assistant automations.
+ntfy is a pub/sub notification service — services publish messages to named topics and your phone (or any HTTP client) subscribes to receive them. Every other service in this stack can send notifications through it: Prometheus Alertmanager, CI pipeline results, Home Assistant automations.
 
 The ARM64 image (`binwiederhier/ntfy`) ships official multiarch builds. See the [ntfy self-hosting docs](https://docs.ntfy.sh/install/) and [config reference](https://docs.ntfy.sh/config/) for full reference.
 
 ## The shape of the deployment
 
-ntfy follows the [deploy pattern](apps-deploy-pattern.md) in **raw-manifests mode**: there is no first-party Helm chart, only third-party repackages — an avoidable dependency for a handful of small files (same call as Uptime Kuma). That also means **one** ArgoCD `Application` pointing at `apps/ntfy/manifests/`; with no chart source there is nothing to split a second `-manifests` Application from.
+ntfy follows the [deploy pattern](apps-deploy-pattern.md) in **raw-manifests mode**: there is no first-party Helm chart, only third-party repackages — an avoidable dependency for a handful of small files (same call as Homepage). That also means **one** ArgoCD `Application` pointing at `apps/ntfy/manifests/`; with no chart source there is nothing to split a second `-manifests` Application from.
 
 ```text
 apps/ntfy/manifests/
@@ -78,14 +78,12 @@ metrics-listen-http: ":9090"
 # in server.yml — bcrypt hashes are one-way and safe to commit
 auth-users:
   - "<YOUR_USERNAME>:$2a$10$...:admin"        # you — the phone subscriber
-  - "uptime-kuma:$2a$10$...:user"             # one account per publishing service
-  - "alertmanager:$2a$10$...:user"
+  - "alertmanager:$2a$10$...:user"            # one account per publishing service
   - "home-assistant:$2a$10$...:user"
 
 # write-only + topic-scoped: a leaked publisher credential can spam its own
 # topic but can never read anything
 auth-access:
-  - "uptime-kuma:uptime:wo"
   - "alertmanager:alerts:wo"
   - "home-assistant:home:wo"
 ```
@@ -102,7 +100,7 @@ For your admin user, hash your real password (store it in your password manager 
 
 ```bash
 kubectl create secret generic ntfy-tokens --namespace ntfy \
-  --from-literal=NTFY_AUTH_TOKENS='uptime-kuma:tk_...,alertmanager:tk_...,home-assistant:tk_...' \
+  --from-literal=NTFY_AUTH_TOKENS='alertmanager:tk_...,home-assistant:tk_...' \
   --dry-run=client -o yaml \
   | kubeseal --controller-name=sealed-secrets-controller \
              --controller-namespace=sealed-secrets \
@@ -141,7 +139,6 @@ Install the ntfy [Android](https://play.google.com/store/apps/details?id=io.heck
 
 Each service uses *its own* token against *its own* topic:
 
-- **Uptime Kuma**: Settings → Notifications → ntfy — server URL, topic `uptime`, auth method *Bearer token*, paste the `uptime-kuma` token.
 - **Prometheus Alertmanager** — configured in kube-prometheus-stack's values, not
   by hand; [Runbook 9 Step 4](09-observability.md#step-4-alerting-ntfy) has the full
   wiring. Two details differ from the other publishers: it uses the **in-cluster**

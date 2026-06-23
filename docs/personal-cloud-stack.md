@@ -231,10 +231,10 @@ Books → Chapters → Pages hierarchy. Clean editor, search, image embedding, L
 **Replaces:** Confluence, Notion wiki, Google Docs scattered notes.
 
 
-### 🟡 Uptime Status Page — Uptime Kuma
+### ⬛ Uptime Status Page — Uptime Kuma *(retired here)*
 **Category:** Monitoring | **Run:** 🖥️ Cluster | **RAM:** ~150–200 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](apps-catalog.md#uptime-kuma)
 
-Monitors HTTP, TCP, ping, DNS for all your services and shows a clean status page. Different job than Prometheus — this is user-facing "is it up?" vs infrastructure metrics. Pairs well with ntfy for alerts.
+Retired from this build (2026-06): for a solo operator a status page has no audience, and the function moved to declarative blackbox-exporter `Probe`s + Prometheus `PublicEndpointDown` alerts → ntfy. Still a fine pick if you want a user-facing status page — monitors HTTP, TCP, ping, DNS and pairs well with ntfy.
 
 **Replaces:** UptimeRobot free tier (sends data to their cloud), StatusCake.
 
@@ -359,7 +359,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Media Streaming — Video** | ✅ Plex | PeerTube only if you want public video hosting |
 | **Miscellaneous** | See individual picks | Habitica/Donetick ✅, Reactive Resume ✅ |
 | **Money + Budgeting** | 🔴 Actual Budget | See Part 3 |
-| **Monitoring** | ✅ Prometheus/Grafana/Loki + 🟡 Uptime Kuma | |
+| **Monitoring** | ✅ Prometheus/Grafana/Loki + blackbox uptime Probes | |
 | **Network Utilities** | 🟡 NetAlertX + Upsnap | See Part 4 |
 | **Note-taking + Editors** | 🔴 Joplin via Nextcloud or TriliumNext server | See Part 3 |
 | **Office Suites** | 🟡 Nextcloud + Collabora Online | Enable as Nextcloud app; ~500 MB extra — [App Catalog](apps-catalog.md#collabora-online) |
@@ -432,7 +432,7 @@ If starting fresh, add services in this sequence. AdGuard Home goes on the dedic
 2.  Authelia                  (R18) → SSO foundation for everything after
 3.  Homepage                  (R20) → visual dashboard of what you're running
 4.  ntfy                      (R19) → notifications for everything that follows
-5.  Uptime Kuma               (R33) → status monitoring for your services
+5.  Blackbox uptime Probes    (R9)  → status checks for your public services
 6.  Miniflux                  (R29) → daily news/RSS replacement
 7.  linkding              (catalog) → bookmark manager
 8.  Actual Budget             (R26) → financial tracking
@@ -487,7 +487,7 @@ Until then, run the Arr stack on the cluster pointing at NFS — it works fine.
 | 🔴 High | Homepage | Browser tab chaos |
 | 🟡 Good | Mealie | Paprika, recipe screenshots |
 | 🟡 Good | BookStack | Confluence, scattered docs |
-| 🟡 Good | Uptime Kuma | UptimeRobot |
+| ⬛ Retired | Uptime Kuma → blackbox Probes | UptimeRobot |
 | 🟡 Good | Donetick | Habit and chore tracking |
 | 🟡 Good | Dawarich + OwnTracks | Google Timeline |
 | 🟡 Good | RustDesk | TeamViewer, AnyDesk |

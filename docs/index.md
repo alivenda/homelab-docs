@@ -76,7 +76,7 @@ R27 NAS PostgreSQL      ← shared DB server (NAS Docker — not k3s)
 ─── Apps · catalog (simple HTTP apps — one shared pattern) ────
  │  See: Deploying an App (pattern) + App Catalog
  └─→ Actual Budget · Audiobookshelf · Collabora · Donetick · FreshRSS ·
-     Kavita · linkding · Mealie · TriliumNext · Uptime Kuma · Vikunja
+     Kavita · linkding · Mealie · TriliumNext · Vikunja
 ```
 
 ## How to use this guide

@@ -30,7 +30,7 @@ apps/<app>/
 ## Step 1 — Choose the workload mode
 
 - **Helm chart** when upstream maintains one (e.g. Vaultwarden). The `Application` uses the multi-source `$values` pattern: chart from the upstream Helm repo + `valueFiles: [$values/apps/<app>/values.yaml]`. Pin `targetRevision` and add a `# renovate:` comment so Renovate tracks the chart.
-- **Raw manifests** when there's no good chart — most simple apps (linkding, Mealie, Uptime Kuma). Commit a `Deployment` + `Service` + `PVC` to `apps/<app>/manifests/`. **Pin the image tag — never `:latest`.**
+- **Raw manifests** when there's no good chart — most simple apps (linkding, Mealie, ntfy). Commit a `Deployment` + `Service` + `PVC` to `apps/<app>/manifests/`. **Pin the image tag — never `:latest`.**
 
 ## Step 2 — Secrets (SealedSecret)
 
@@ -122,7 +122,7 @@ For apps with their own user system (Immich, Grafana, Forgejo, Vikunja, …). Th
 
 ### ForwardAuth (Authelia gates the app at the proxy)
 
-For apps with no SSO of their own, or where you just want a 2FA gate in front (lldap UI, Uptime Kuma, …). Define an Authelia ForwardAuth `Middleware` in the app's namespace and reference it from the HTTPRoute with an `ExtensionRef` filter:
+For apps with no SSO of their own, or where you just want a 2FA gate in front (lldap UI, Homepage, …). Define an Authelia ForwardAuth `Middleware` in the app's namespace and reference it from the HTTPRoute with an `ExtensionRef` filter:
 
 ```yaml
 # middleware.yaml
@@ -148,16 +148,16 @@ spec:
             name: authelia-forwardauth
 ```
 
-The Middleware lives in the **app's own namespace** — an `ExtensionRef` filter can't cross namespaces — but its `address` points at the central Authelia service. The route **fails closed**: if Authelia is down, Traefik returns 5xx rather than serving the app unauthenticated. `status.yourdomain.com` (Uptime Kuma) is gated by the catch-all `*.yourdomain.com → two_factor` policy, so no extra `access_control` rule is needed unless you want to relax it (add a `one_factor`/`bypass` rule *above* the catch-all).
+The Middleware lives in the **app's own namespace** — an `ExtensionRef` filter can't cross namespaces — but its `address` points at the central Authelia service. The route **fails closed**: if Authelia is down, Traefik returns 5xx rather than serving the app unauthenticated. Homepage is gated by the catch-all `*.yourdomain.com → two_factor` policy, so no extra `access_control` rule is needed unless you want to relax it (add a `one_factor`/`bypass` rule *above* the catch-all).
 
-!!! note "Verified live (lldap UI + Uptime Kuma)"
+!!! note "Verified live (lldap UI + Homepage)"
     This `ExtensionRef → Middleware` wiring is deployed and working. Two things that make it work, worth re-checking on a major Traefik/Authelia bump:
 
     1. Traefik's **Kubernetes CRD provider** must be enabled (it is, in this cluster) for `ExtensionRef` middlewares to resolve — moving to the Gateway API does *not* remove that requirement.
     2. The `forward-auth` address and `authResponseHeaders` are Authelia-version-specific — the values above match Authelia 4.39. Confirm against [Authelia's Traefik integration docs](https://www.authelia.com/integration/proxies/traefik/) on a major bump.
 
 !!! tip "Apps with their own login double-prompt"
-    If the app has its own auth (Uptime Kuma), you'll authenticate twice — Authelia, then the app. After confirming ForwardAuth works, disable the app's built-in login (Uptime Kuma: **Settings → Security → Disable Auth**). Safe because the route fails closed.
+    If the app has its own auth, you'll authenticate twice — Authelia, then the app. After confirming ForwardAuth works, disable the app's built-in login where it offers the option. Safe because the route fails closed.
 
 ## Step 6 — Register the Application and sync
 

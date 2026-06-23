@@ -240,18 +240,12 @@ Hierarchical note-taking with a server + desktop/web sync.
 
 ## Uptime Kuma
 
-Uptime monitoring with status pages and ntfy alerts.
-
-| Field | Value |
-|---|---|
-| Workload | raw manifests — `louislam/uptime-kuma:2` |
-| Namespace / hostname | `uptime-kuma` / `status.yourdomain.com` |
-| Service port | 3001 |
-| Storage | **`local-path`, 2 Gi** (see gotcha) |
-| Secret keys | none (ntfy credentials entered in the UI) |
-| Auth | Authelia ForwardAuth (no built-in SSO) |
-
-**Gotchas**
-
-- **Do not use `nfs-storage`.** Uptime Kuma uses SQLite, which needs POSIX file locking; NFS doesn't provide it reliably and will corrupt the DB. Use `local-path` with `strategy: Recreate` (the volume mounts on a single node).
-- Notifications: Settings → Notifications → ntfy, server `https://ntfy.yourdomain.com`, topic `uptime`, auth = *Bearer token* (the `uptime-kuma` publisher token — see Runbook 19; the account is write-only on its own topic).
+!!! warning "Retired (2026-06)"
+    Uptime Kuma was removed from this cluster. For a solo operator a status page has no
+    audience, and its checks were click-ops SQLite state rather than GitOps. Its useful
+    checks were replaced by declarative blackbox-exporter `Probe`s (the six public HTTPS
+    endpoints) feeding Prometheus `PublicEndpointDown` / cert-expiry alerts → ntfy. See
+    [Observability](09-observability.md) and the `infrastructure/blackbox-exporter`
+    manifests. It remains a fine pick if you want a user-facing status page — it runs as
+    raw manifests (`louislam/uptime-kuma:2`) on `local-path` (SQLite needs POSIX locking,
+    so never `nfs-storage`) behind Authelia ForwardAuth.

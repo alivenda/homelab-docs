@@ -156,7 +156,13 @@ Reverse dependency order: network → NAS → Home Assistant host → cluster.
 - [ ] Clocks synced on every node: `chronyc tracking` offset in the millisecond range.
 - [ ] `sudo ufw status` → `active` on all four nodes (see the half-load tip above).
 - [ ] ArgoCD: every Application `Synced`/`Healthy`.
-- [ ] Uptime Kuma at `status.yourdomain.com`: all monitors green — it re-checks most of the stack for you.
+- [ ] Public endpoints reachable end-to-end: the blackbox `public-endpoints` Probe drives the `PublicEndpointDown` alert (fires to ntfy if any of the six public HTTPS hosts stay down for 5m), so a quiet inbox already means they're up. To spot-check directly, curl each — every one should return `200`:
+
+    ```bash
+    for h in auth argocd immich vault ha lldap; do
+      printf '%s: ' "$h"; curl -so /dev/null -w '%{http_code}\n' "https://$h.yourdomain.com"
+    done
+    ```
 - [ ] Velero: `velero backup-location get` → `Available`, and the next scheduled backup completes **with non-zero per-volume bytes**.
 - [ ] etcd: the next scheduled snapshot lands in Garage.
 - [ ] Tailscale: subnet routers advertise and connect (a new public IP is transparent to the tailnet).

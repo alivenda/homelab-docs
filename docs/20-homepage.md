@@ -14,11 +14,11 @@ Homepage ([gethomepage.dev](https://gethomepage.dev)) is a YAML-configured start
 The `ghcr.io/gethomepage/homepage` image ships official multiarch builds — **pin a release tag and confirm `arm64` is on the manifest when you bump** (check the ghcr manifest list, not just the release notes). The deployed pin at time of writing is `v1.13.2`.
 
 !!! note "ForwardAuth — not OIDC"
-    Homepage has no login page and no OIDC support. It is protected by the Authelia ForwardAuth middleware (Runbook 18, same recipe as Uptime Kuma). Do **not** attempt to register it as an OIDC client.
+    Homepage has no login page and no OIDC support. It is protected by the Authelia ForwardAuth middleware (Runbook 18, same recipe as lldap). Do **not** attempt to register it as an OIDC client.
 
 ## The shape of the deployment
 
-Homepage follows the [deploy pattern](apps-deploy-pattern.md) in **raw-manifests mode**: there is no first-party Helm chart — upstream's own docs link an unofficial one, the same avoidable third-party dependency Uptime Kuma and ntfy reject. One ArgoCD `Application` pointing at `apps/homepage/manifests/`:
+Homepage follows the [deploy pattern](apps-deploy-pattern.md) in **raw-manifests mode**: there is no first-party Helm chart — upstream's own docs link an unofficial one, the same avoidable third-party dependency ntfy rejects. One ArgoCD `Application` pointing at `apps/homepage/manifests/`:
 
 ```text
 apps/homepage/manifests/
@@ -115,7 +115,7 @@ Homepage expects nine files under `/app/config`; **all nine must exist as Config
         href: https://argocd.yourdomain.com
         description: GitOps
         icon: argo-cd.png
-    # ... Grafana, Uptime Kuma, Forgejo, Woodpecker
+    # ... Grafana, Forgejo, Woodpecker
 
 - Infrastructure:
     - Traefik:
@@ -185,7 +185,7 @@ Non-root works cleanly: the image ships every file chowned `1000:1000`, and its 
 
 ## HTTPRoute + ForwardAuth
 
-The standard recipe from Runbook 18, deployed and proven on Uptime Kuma and lldap: the Traefik `Middleware` is copied into the app's own namespace (an `ExtensionRef` filter cannot cross namespaces), pointing at the central Authelia service; the `HTTPRoute` references it as a filter. Fails closed — if Authelia is down the route 5xx's rather than serving the dashboard unauthenticated.
+The standard recipe from Runbook 18, deployed and proven on lldap: the Traefik `Middleware` is copied into the app's own namespace (an `ExtensionRef` filter cannot cross namespaces), pointing at the central Authelia service; the `HTTPRoute` references it as a filter. Fails closed — if Authelia is down the route 5xx's rather than serving the dashboard unauthenticated.
 
 ```yaml
 rules:
@@ -213,7 +213,6 @@ Homepage can decorate a tile with live per-service stats, each fed by an API tok
 | Paperless-ngx | `paperless.paperless.svc:8000` | documents, inbox |
 | Forgejo | `forgejo-http.forgejo.svc:3000` | repos, issues, PRs |
 | ArgoCD | `argocd-server.argocd.svc:80` | apps synced / out-of-sync / degraded |
-| Uptime Kuma | `uptime-kuma.uptime-kuma.svc:3001` | up / down (**keyless** — reads a public status page) |
 | ntfy | `ntfy.ntfy.svc` | unread count on the `alerts` topic |
 
 The other live services stay **tile-only on purpose** — the stat didn't earn a stored, rotatable credential:
