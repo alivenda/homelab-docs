@@ -1,5 +1,8 @@
 # Ollama + Open WebUI
 
+!!! info "Status — Planned (not yet deployed)"
+    Documented — deferred until the NAS RAM upgrade to 16 GB.
+
 Local LLM inference on the NAS with a browser chat interface.
 
 | | |

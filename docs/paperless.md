@@ -1,5 +1,8 @@
 # Paperless-ngx
 
+!!! success "Status — Live"
+    Live in the cluster (app + Redis), database on NAS PostgreSQL.
+
 Scan, OCR, and organize all your documents.
 
 | | |

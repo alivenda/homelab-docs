@@ -1,5 +1,8 @@
 # Home Assistant
 
+!!! success "Status — Live"
+    Live as Home Assistant OS in a Proxmox VM on slate (the Mac mini).
+
 Central hub for all smart home devices.
 
 | | |

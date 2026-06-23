@@ -1,5 +1,8 @@
 # Immich
 
+!!! success "Status — Live"
+    Live on the NAS via Docker, fronted on the cluster domain (see below for why it is not on k3s).
+
 Self-hosted photo and video management.
 
 | | |

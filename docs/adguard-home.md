@@ -1,5 +1,8 @@
 # AdGuard Home
 
+!!! success "Status — Live"
+    Live on a dedicated Raspberry Pi (`pyrite`, `10.0.0.20`) — not k3s.
+
 DNS-level ad blocking and privacy protection for every device on the network.
 
 | | |

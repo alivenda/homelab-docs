@@ -2,12 +2,16 @@
 
 These services follow the [app deployment pattern](apps-deploy-pattern.md) exactly — workload (Helm or raw), `SealedSecret`, an `HTTPRoute` on the shared Gateway, and Authelia. Instead of a full runbook each, this page records only the **per-app deltas** that feed the pattern, plus the one or two non-obvious gotchas. The deployed truth for each is `homelab-manifests/apps/<app>/`.
 
-Services with real deployment complexity keep their own runbook: a database (Nextcloud, Paperless, BookStack, Vikunja, Miniflux), multiple components (Arr stack, Reactive Resume), a non-cluster model (Immich, Home Assistant, Syncthing, Ollama), a non-HTTP service (RustDesk), config-heavy reference (Homepage), or auth backbones (Authelia, ntfy).
+Services with real deployment complexity keep their own runbook: a database (Nextcloud, Paperless, BookStack, Vikunja, Miniflux), multiple components (Arr stack, Reactive Resume), a non-cluster model (Immich, Home Assistant, Syncthing, Ollama), a non-HTTP service (RustDesk), config-heavy reference (Homepage), or auth backbones (Authelia, ntfy). Everything else is a one-pattern HTTP app and lives here as a row.
+
+Entries are grouped by deployment status: **Live** (running now), **Planned** (documented, not yet deployed), and **Retired** (removed from the build, kept for reference).
 
 !!! note "All images below are shown as the upstream repo — pin a specific tag"
     The source runbooks used `:latest`; pin an explicit version in the manifest and let Renovate bump it.
 
-## Actual Budget
+## Live
+
+### Actual Budget
 
 Personal budgeting (envelope method) with OIDC login.
 
@@ -33,7 +37,7 @@ Personal budgeting (envelope method) with OIDC login.
 - **Break-glass — OpenID-only**: the first owner bootstraps through Authelia, so there's no password login, and Actual's preview auth can't run password + OpenID at once — you **can't** add a parallel password (upstream [#5248](https://github.com/actualbudget/actual/issues/5248)). If Authelia is down, flip in-pod with `node /app/src/scripts/reset-password.js` (→ password-only), then `node /app/src/scripts/enable-openid.js` to flip back. `ACTUAL_OPENID_ENFORCE=false` (default) is kept so the flip needs no env change, and it dodges upstream [#6333](https://github.com/actualbudget/actual/issues/6333) (enforce silently ignored when the provider is unreachable at boot).
 - Health probe = `/health` (returns `{status:'UP'}` 200, unauthenticated, no Host header). **No metrics endpoint** — no ServiceMonitor.
 
-## Audiobookshelf
+### Audiobookshelf
 
 Audiobook + podcast server with native iOS/Android apps and a browser player.
 Verified against **v2.35.1** (latest stable GitHub release). **Runs as a Docker
@@ -95,7 +99,7 @@ fronts the NAS container for TLS on the cluster domain.
 - **Break-glass** = the local root account created during ABS setup; configure
   OIDC after it and leave Auto-register on so SSO users provision on first login.
 
-## Collabora Online
+### Collabora Online
 
 Online office suite (CODE) — the editing backend for Nextcloud.
 
@@ -116,7 +120,7 @@ Online office suite (CODE) — the editing backend for Nextcloud.
 - Pairs with [Nextcloud](nextcloud.md): enable the Nextcloud **Office** app (richdocuments) and point it at `https://office.yourdomain.com`. Smoke test before touching Nextcloud: `https://office.yourdomain.com/hosting/discovery` must return the WOPI capability XML.
 - Stateless means the backup check **inverts**: the velero gate is the *absence* of any `PodVolumeBackup` for the namespace — if one appears, something grew state that shouldn't exist.
 
-## Donetick
+### Donetick
 
 Recurring chores & habits tracker with OIDC login (single Go binary serving the
 React PWA + API). Verified against **v0.1.75** (latest stable; newer tags are
@@ -162,24 +166,7 @@ React PWA + API). Verified against **v0.1.75** (latest stable; newer tags are
   from the **ID token**, so it would need the `groups` scope + an Authelia
   `claims_policy` — left unused here.
 
-## Kavita
-
-Manga / comics / e-book reader.
-
-| Field | Value |
-|---|---|
-| Workload | raw manifests — `jvmilazz0/kavita` |
-| Namespace / hostname | `kavita` / `books.yourdomain.com` |
-| Service port | 5000 |
-| Storage | config on `nfs-storage` (~2 Gi); large media PVC (~500 Gi) for the library |
-| Secret keys | none (OIDC configured in the UI) |
-| Auth | OIDC — configured in Kavita's **web UI**, not env |
-
-**Gotchas**
-
-- OIDC is set up through Settings in the UI; a **restart is required** after enabling it.
-
-## linkding
+### linkding
 
 Bookmark manager with a browser extension and OIDC login.
 
@@ -202,7 +189,26 @@ Bookmark manager with a browser extension and OIDC login.
 - No metrics endpoint — no ServiceMonitor.
 - For the browser extension, generate the API token in the UI (Settings → Integrations) after first login.
 
-## Mealie
+## Planned
+
+### Kavita
+
+Manga / comics / e-book reader.
+
+| Field | Value |
+|---|---|
+| Workload | raw manifests — `jvmilazz0/kavita` |
+| Namespace / hostname | `kavita` / `books.yourdomain.com` |
+| Service port | 5000 |
+| Storage | config on `nfs-storage` (~2 Gi); large media PVC (~500 Gi) for the library |
+| Secret keys | none (OIDC configured in the UI) |
+| Auth | OIDC — configured in Kavita's **web UI**, not env |
+
+**Gotchas**
+
+- OIDC is set up through Settings in the UI; a **restart is required** after enabling it.
+
+### Mealie
 
 Recipe manager with meal planning and OIDC login.
 
@@ -221,7 +227,7 @@ Recipe manager with meal planning and OIDC login.
 - **Two** redirect URIs are required: `…/login` and `…/login?direct=1` (the second is for `OIDC_AUTO_REDIRECT=true`).
 - The default admin (`changeme@example.com` / `MyPassword`) stays active until you log in via OIDC and promote your user to admin (Settings → Users), then set `ALLOW_PASSWORD_LOGIN=false`.
 
-## TriliumNext Notes
+### TriliumNext Notes
 
 Hierarchical note-taking with a server + desktop/web sync.
 
@@ -238,7 +244,9 @@ Hierarchical note-taking with a server + desktop/web sync.
 
 - Pin the image tag — TriliumNext moves fast and the sync protocol version must match between the server and the desktop clients.
 
-## Uptime Kuma
+## Retired
+
+### Uptime Kuma
 
 !!! warning "Retired (2026-06)"
     Uptime Kuma was removed from this cluster. For a solo operator a status page has no

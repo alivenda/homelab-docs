@@ -120,34 +120,37 @@ nav:
       - Ansible: ansible.md
       - Kubernetes: kubernetes.md
       - Traefik: traefik.md
-      - Vaultwarden: vaultwarden.md
       - Terraform: terraform.md
+      - Storage & Data Architecture: storage-architecture.md
       - Observability: observability.md
       - Backups & DR: backups.md
-      - Storage & Data Architecture: storage-architecture.md
-      - Forgejo: forgejo.md
-      - Woodpecker CI/CD: woodpecker.md
-      - AdGuard Home: adguard-home.md
+      - Cold Shutdown: cold-shutdown.md
+  - Platform Services:
+      - Vaultwarden: vaultwarden.md
       - Authelia + lldap: authelia.md
       - ntfy: ntfy.md
       - NAS PostgreSQL: nas-postgres.md
-      - Cold Shutdown & Storage: cold-shutdown.md
+      - Forgejo: forgejo.md
+      - Woodpecker CI/CD: woodpecker.md
+      - AdGuard Home: adguard-home.md
   - Apps:
       - Deploying an App (pattern): apps-deploy-pattern.md
-      - App Catalog (simple services): apps-catalog.md
+      - App Catalog: apps-catalog.md
       - Nextcloud: nextcloud.md
       - Paperless-ngx: paperless.md
       - Immich: immich.md
       - Home Assistant: home-assistant.md
       - Homepage: homepage.md
-      - Arr Stack: arr-stack.md
-      - BookStack: bookstack.md
-      - Syncthing: syncthing.md
-      - RustDesk Server: rustdesk.md
-      - Reactive Resume: reactive-resume.md
-      - Ollama + Open WebUI: ollama.md
       - Vikunja: vikunja.md
       - Miniflux: miniflux.md
+  - Planned & Future:
+      - Personal Cloud Stack (overview): personal-cloud-stack.md
+      - Arr Stack (shelved): arr-stack.md
+      - BookStack: bookstack.md
+      - Syncthing: syncthing.md
+      - RustDesk: rustdesk.md
+      - Reactive Resume: reactive-resume.md
+      - Ollama + Open WebUI: ollama.md
   - Version History: version-history.md
 
 extra:

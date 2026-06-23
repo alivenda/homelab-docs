@@ -1,5 +1,8 @@
 # Vaultwarden
 
+!!! success "Status — Live"
+    Live in the cluster on `amethyst` (SQLite on local-path).
+
 Lightweight self-hosted Bitwarden-compatible server. First service runbook after Traefik — smallest dependency footprint of anything in this guide, and the first **stateful** app, so it's where we work the [GitOps deploy pattern](apps-deploy-pattern.md) end to end and meet the SQLite storage rules for real. Once it's up you have a self-hosted password manager to hold every later runbook's credentials instead of pasting them into a cloud vault.
 
 | | |

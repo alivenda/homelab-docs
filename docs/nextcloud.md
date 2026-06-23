@@ -1,5 +1,8 @@
 # Nextcloud
 
+!!! success "Status — Live"
+    Live in the cluster — files on NFS, database on NAS PostgreSQL.
+
 Self-hosted file sync, calendar, contacts — and later Notes, Bookmarks, and Collabora
 office editing on top of the same install. Architecturally it's the poster child of the
 [Storage & Data Architecture](storage-architecture.md#how-to-decompose-one-app): one app

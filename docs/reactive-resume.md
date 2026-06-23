@@ -1,5 +1,8 @@
 # Reactive Resume
 
+!!! info "Status — Planned (not yet deployed)"
+    Documented — not yet deployed in this build.
+
 Self-hosted resume builder with OIDC login, PDF export, and a polished editor.
 
 | | |

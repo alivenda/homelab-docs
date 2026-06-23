@@ -1,5 +1,8 @@
 # Authelia + lldap
 
+!!! success "Status — Live"
+    Live in the cluster — Authelia + lldap, the SSO/OIDC backbone every other service authenticates against.
+
 Single sign-on, two-factor authentication, and OIDC provider for all cluster services.
 
 | | |

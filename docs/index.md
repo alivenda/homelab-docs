@@ -60,24 +60,30 @@ ntfy                     ← push notifications for the whole stack
  ↓
 NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
 
-─── Apps · full runbooks (DB / multi-service / special model) ─
+─── Apps · full runbooks · live (DB / multi-service / special model) ─
  ├─→ Nextcloud       (cluster — DB on NAS Postgres)
  ├─→ Paperless-ngx   (cluster — DB on NAS Postgres + Redis)
  ├─→ Immich          (NAS-Docker — not on k3s, see runbook for why)
  ├─→ Home Assistant  (slate — Mac mini / Proxmox VM)
  ├─→ Homepage        (cluster — config-heavy dashboard)
- ├─→ Arr Stack       (cluster — 6 services + hardlinks; NAS after 16 GB)
- ├─→ BookStack       (cluster — MariaDB on NAS Postgres)
+ ├─→ Vikunja         (cluster — DB on NAS Postgres)
+ └─→ Miniflux        (cluster — DB on NAS Postgres, stateless app)
+
+─── Apps · full runbooks · planned & future ──────────────────
+ ├─→ Arr Stack       (shelved — physical-media-first library)
+ ├─→ BookStack       (cluster — MariaDB on NAS)
  ├─→ Syncthing       (per-device — not k3s)
  ├─→ RustDesk Server (cluster — TCP/UDP relay via MetalLB)
- ├─→ Reactive Resume (cluster — Postgres + Redis + MinIO)
- └─→ Ollama + WebUI  (NAS Docker — defer until 16 GB RAM upgrade)
+ ├─→ Reactive Resume (cluster — Postgres + Redis + object store)
+ └─→ Ollama + WebUI  (NAS Docker — after 16 GB RAM upgrade)
 
 ─── Apps · catalog (simple HTTP apps — one shared pattern) ────
  │  See: Deploying an App (pattern) + App Catalog
- └─→ Actual Budget · Audiobookshelf · Collabora · Donetick · FreshRSS ·
-     Kavita · linkding · Mealie · TriliumNext · Vikunja
+ ├─→ live:    Actual Budget · Audiobookshelf · Collabora · Donetick · linkding
+ └─→ planned: Kavita · Mealie · TriliumNext
 ```
+
+**Runbook or catalog row?** An app earns its own runbook when it has a relational database, multiple components, a non-cluster deployment model, a non-HTTP protocol, is config-heavy, or is an auth backbone. Everything simpler is a one-pattern HTTP app and lives as a row in the [App Catalog](apps-catalog.md). Each app/service page also carries a **Status** banner (Live / Planned / Shelved / Retired) at the top.
 
 ## How to use this guide
 
@@ -91,4 +97,4 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
 
 ## Version
 
-The current source set is v19. See the [Version History](version-history.md) for the prior PDF lineage and what each release added.
+The current source set is v20. See the [Version History](version-history.md) for the prior PDF lineage and what each release added.
