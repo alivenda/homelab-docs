@@ -34,7 +34,7 @@ This table is the authoritative source for every later runbook (Terraform `unifi
 - MetalLB pool: `10.0.20.200–.250` (reserved within Lab VLAN, outside DHCP)
 
 !!! note "Why NAS sits on Lab, not Trusted"
-    NAS (`10.0.20.50`) will provide NFS persistent volumes to in-cluster workloads (planned — no StorageClass exists yet). Cluster ↔ NAS traffic stays intra-VLAN with no firewall hop, keeping the storage path low-latency. Trusted devices reach SMB and the UGOS Pro web UI via the per-service `trusted-to-nas-smb` policy (Step 3c). Dual-NICing the UGREEN DXP6800 Pro across Lab+Trusted is an alternative if SMB performance from desktops ever bottlenecks; not chosen for v1.
+    The NAS (`10.0.20.50`) serves the cluster's S3 backup target (Garage), the shared PostgreSQL tier, and bulk media — in-cluster NFS PVs come from topaz's SATA SSD, not the NAS (see [Storage & Data Architecture](storage-architecture.md)). Cluster ↔ NAS traffic (S3, Postgres) stays intra-VLAN with no firewall hop, keeping those paths low-latency. Trusted devices reach SMB and the UGOS Pro web UI via the per-service `trusted-to-nas-smb` policy (Step 3c). Dual-NICing the UGREEN DXP6800 Pro across Lab+Trusted is an alternative if SMB performance from desktops ever bottlenecks; not chosen for v1.
 
 !!! note "Guest VLAN — deferred"
     2026 homelab best-practice typically adds a Guest VLAN (visitors get internet only, isolated from everything else). Skipped here to keep the initial scope tight. Easy 10-minute future addition: VLAN 40 `guest`, separate SSID with client isolation, zone-matrix Block to all other zones.
@@ -89,7 +89,7 @@ flowchart TB
         EMERALD["emerald · .11<br/>k3s worker<br/>Tailscale router · failover"]
         TOPAZ["topaz · .12 · k3s worker"]
         AMETHYST["amethyst · .13 · k3s worker"]
-        NAS["NAS · .50<br/>NFS PVs (planned) · Garage S3 · Plex · Immich"]
+        NAS["NAS · .50<br/>Garage S3 · Postgres · Plex · Immich"]
         METALLB["MetalLB pool · .200–.250<br/>Traefik VIP · .200"]
     end
 
@@ -298,7 +298,7 @@ UniFi auto-generates a matching `(Return)` policy for every Allow rule (it's sta
     Fix is Plex-side, not firewall-side: in Plex Web UI → **Settings → Network → "List of IP addresses and networks that are allowed without auth"**, add the Plex client subnets — `10.0.10.0/24, 10.0.30.0/24` for this setup. Plex then advertises its local IP to clients on those subnets and treats their streams as LAN-quality. The firewall policies above are correct regardless; this is just Plex's own LAN-detection logic.
 
 !!! note "Forward-looking: Lab → IoT for Home Assistant local control"
-    When Home Assistant is deployed (Traefik+), the best-practice integration for Philips Hue, Shelly, and other local-control smart devices is HA talking to them directly on the local network — faster and works offline, unlike cloud routing. That's a **Lab → IoT** flow, which the matrix above blocks by default.
+    Home Assistant is live (an HAOS VM on slate, `10.0.20.21`). The best-practice integration for Philips Hue, Shelly, and other local-control smart devices is HA talking to them directly on the local network — faster and works offline, unlike cloud routing. That's a **Lab → IoT** flow, which the matrix above blocks by default.
 
     Add a narrowly-scoped policy then (e.g. `lab-to-hue-bridge`: Lab → `10.0.30.x` of the bridge/controller, TCP `80` and/or `443`). Scope to the specific device IP, not whole IoT zone, to avoid HA being able to reach the printer's web UI or other unrelated IoT devices.
 

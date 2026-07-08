@@ -18,6 +18,12 @@ Local backups with a clearly-marked offsite TODO.
 
 The strategy above covers application data (DB dumps) and IaC (manifests). It does NOT cover Kubernetes objects themselves — PVCs, CRDs, secrets in non-Git-tracked namespaces, helm release state. For that, install Velero.
 
+!!! note "The tiers are the policy; the sections below are the implementation"
+    What actually runs: a daily Velero backup of every PVC (04:00), nightly per-database
+    dumps (04:30), the HA / Audiobookshelf / Immich sync timers, 12-hourly etcd snapshots,
+    and the daily controller-key dump — all landing in per-consumer Garage buckets on the
+    NAS.
+
 ## Secrets and key-material recovery
 
 This is **step zero of any real disaster recovery**. Velero and the database-dump jobs restore your *data*; this section restores the ability to *decrypt* it. After rebuilding a machine or the cluster, do this first — nothing else works until it's done.
@@ -81,6 +87,13 @@ A successful decrypt confirms the whole SOPS layer. Each repo unlocks a differen
 
 Only needed when the cluster was rebuilt. A fresh Sealed Secrets controller generates a **new** keypair and cannot decrypt secrets that were sealed against the old one — so every `SealedSecret` committed to `homelab-manifests` would be undecryptable. Restoring the backed-up signing key avoids re-sealing anything.
 
+!!! warning "Restore ALL keys, not just the day-zero one"
+    The controller rotates keys every 30 days, and each SealedSecret decrypts only under
+    the key it was sealed with. The authoritative source is the **automated Garage dump**
+    (all keys — restore drill in `homelab-manifests/infrastructure/sealed-secrets/README.md`);
+    the `homelab-secrets` file below is the day-zero fallback and only covers secrets
+    sealed before the first rotation.
+
 ```bash
 # 1. Ensure the controller exists (ArgoCD installs it into the sealed-secrets namespace).
 kubectl get deploy -n sealed-secrets sealed-secrets-controller
@@ -100,7 +113,20 @@ Re-syncing `homelab-manifests` in ArgoCD will now decrypt every existing SealedS
 
 ### Keep the signing-key backup current
 
-The controller rotates/renews its key on a schedule and on some upgrades, so the backup goes stale. Re-take it after any Sealed Secrets controller upgrade or key rotation, then commit via a branch + PR to `homelab-secrets`:
+The controller mints a **new key every 30 days** and keeps the old ones — every key ever
+created stays required, because each SealedSecret decrypts only under the key it was
+sealed with. A one-time export therefore goes stale at the first rotation.
+
+This build automates it: a daily in-cluster **CronJob dumps all controller keys to a
+dedicated Garage bucket** through an rclone `crypt` remote, so the bucket only ever holds
+ciphertext. The manifests, the crypt-password handling, and the restore drill live in
+`homelab-manifests/infrastructure/sealed-secrets/` — that dump is the authoritative
+ongoing backup.
+
+The `homelab-secrets` copy (`sealed-secrets-controller-key.enc.yaml`) is the **day-zero
+export**: the fallback if Garage itself is lost, covering only SealedSecrets sealed
+before the first rotation. Re-taking it manually is optional; if you do, this is the
+shape:
 
 ```sh
 kubectl get secret -n sealed-secrets \
@@ -209,6 +235,12 @@ This is the primary off-node etcd path (k3s also keeps local snapshots on ruby).
 ## Velero for k8s-native PVC backup
 
 Velero's filesystem backup (the **node-agent**, using the kopia uploader — the default since Velero 1.10) snapshots PVC contents and stores them in the Garage store above, in a dedicated `velero` bucket.
+
+!!! note "GitOps-managed in this build"
+    Velero runs as two ArgoCD Applications (`bootstrap/velero.yaml` — chart + manifests,
+    the same split Forgejo and Woodpecker use), with live values in
+    `infrastructure/velero/values.yaml`. The helm commands below are the imperative
+    bootstrap reference and the explanation of *what* the values mean.
 
 ### Create the Velero credentials file
 

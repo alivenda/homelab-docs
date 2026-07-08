@@ -147,7 +147,7 @@ spec:
 ```
 
 !!! note "Source of truth"
-    These manifests live at `homelab-manifests/infrastructure/metallb/{ipaddresspool,l2advertisement}.yaml`. Apply via `kubectl apply -f` from a clone of that repo; the YAML above is shown inline for learning context. Edit the repo, not your local copy, so the changes survive a rebuild.
+    These manifests live at `homelab-manifests/infrastructure/metallb/{ipaddresspool,l2advertisement}.yaml` and are applied by ArgoCD (the `metallb` Application) once GitOps is wired; the YAML above is shown inline for learning context. Edit the repo, not your local copy, so the changes survive a rebuild.
 
 !!! warning "MetalLB pool vs DHCP"
     MetalLB's pool (`10.0.20.200–10.0.20.250`) **must be excluded from the Lab VLAN DHCP scope**. Networking's Network Plan bounds Lab VLAN DHCP to `.100–.199` for exactly this reason — if you change either side, change both. Without the bound, UDM will eventually hand out an address in `.200–.250` to a random device and you'll get intermittent IP conflicts that are nightmare to debug. In UniFi Network: Settings → Networks → Lab → DHCP Range should stay `10.0.20.100–10.0.20.199`.
@@ -166,6 +166,12 @@ helm upgrade --install nfs-provisioner \
 ```
 
 ## Step 8: Install ArgoCD
+
+!!! note "If you ran Ansible"
+    The `argocd` play bootstraps ArgoCD via the **Helm chart** (`argo-cd`, version pinned
+    in `site.yml`) — skip the manual install below and go straight to retrieving the
+    initial admin secret. Once GitOps is wired ([Git Step 7](git.md#step-7-wire-argocd-to-homelab-manifests)),
+    ArgoCD manages itself from `homelab-manifests` and the chart pin there takes over.
 
 ```bash
 kubectl create namespace argocd
@@ -310,6 +316,11 @@ rm cf-token-plain.yaml   # never commit plaintext
 
     Store this file encrypted (with sops) in `homelab-secrets`. Losing it means losing the ability to decrypt anything you've sealed.
 
+    That manual export is the **day-zero** bootstrap only — the controller mints a new key
+    every 30 days, so a one-time copy goes stale. Ongoing backups are automated: a daily
+    in-cluster CronJob ships **all** controller keys to Garage (see
+    [Backups](backups.md#keep-the-signing-key-backup-current)).
+
 ## Verification
 
 - [ ] All 4 nodes Ready:
@@ -335,7 +346,9 @@ rm cf-token-plain.yaml   # never commit plaintext
 
     ```bash
     kubectl get pods -n argocd
-    # Expected: argocd-server, argocd-repo-server, argocd-application-controller, redis, dex-server all 1/1
+    # Expected: argocd-server, argocd-repo-server, argocd-application-controller,
+    # argocd-applicationset-controller, redis — all Running. (No dex in this build:
+    # it's disabled in the Helm values; Authelia is the OIDC provider.)
     ```
 
 - [ ] NFS provisioner Running:

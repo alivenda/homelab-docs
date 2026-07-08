@@ -2,6 +2,12 @@
 
 A comprehensive review of every awesome-selfhosted category mapped against your specific hardware, existing stack, and day-to-day needs. Written against the Turing Pi 2 cluster, UGREEN DXP6800 Pro NAS, slate (a Late-2014 Mac mini running Home Assistant OS as a Proxmox VM), and a dedicated Raspberry Pi for DNS (`pyrite`).
 
+!!! info "Planning snapshot (June 2026)"
+    This page is the gap analysis that chose the stack. The priority markers (🔴/🟡)
+    describe how much a service was *wanted at that moment*, not deployment state — many
+    "gaps" below are since **live**. Current status lives in the
+    [App Catalog](apps-catalog.md) and each service page's Status banner.
+
 ---
 
 ## Hardware Context

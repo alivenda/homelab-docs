@@ -149,10 +149,10 @@ One real disk means durability is **backups, not redundancy** — applied consis
 
 These predate this record and should be reconciled to it as each app is touched:
 
-- **Most SQLite apps are now on `local-path`** — Vaultwarden, lldap, linkding, Forgejo,
-  Actual Budget, Donetick, ntfy and Woodpecker all sit on it correctly (Forgejo was
-  migrated off `nfs-storage`). Audit the App Catalog so no remaining SQLite app is still
-  pinned to `nfs-storage`.
+- ~~Audit the App Catalog for SQLite apps still on `nfs-storage`~~ — **done (2026-07
+  audit):** every SQLite app sits on `local-path` — Vaultwarden, lldap, linkding,
+  Actual Budget, Donetick, ntfy, Woodpecker, and Forgejo's data volume (Forgejo's *repos*
+  deliberately stay on `nfs-storage`: flat git files, not SQLite).
 - **BookStack and Reactive Resume assume cluster-hosted databases** — revise their DB sections to the
   NAS server above when each app is deployed. (Nextcloud and Paperless-ngx are done —
   Nextcloud documents the four-tier decomposition this page uses as its worked example, and Paperless-ngx
