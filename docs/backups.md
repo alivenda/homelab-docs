@@ -33,18 +33,18 @@ This is **step zero of any real disaster recovery**. Velero and the database-dum
 Every secret in the homelab funnels through **one age keypair**:
 
 - The same recipient — `age164pxwzqulte2t6uh6vpkg4kd84uvk0cks5gzg3wc508lvs0x7syskmykd9` — encrypts every SOPS file across `homelab-ansible`, `homelab-terraform`, and `homelab-secrets`.
-- The private key lives at `~/.config/sops/age/keys.txt`. Its only off-machine copy is a secure-note item in your password manager (hosted Bitwarden).
+- The private key lives at `~/.config/sops/age/keys.txt`. Its only off-machine copy is a secure-note item in your **externally-hosted password manager** (a hosted service — deliberately not anything this homelab runs).
 - The Sealed Secrets controller's signing-key backup (`homelab-secrets/sealed-secrets-controller-key.enc.yaml`) is itself SOPS/age-encrypted — so it, too, is locked behind that one age key.
 
-Recovery therefore runs in a strict order, rooted on Bitwarden:
+Recovery therefore runs in a strict order, rooted on that external password manager:
 
 ```
-Bitwarden ──> age private key ──┬──> SOPS files (Ansible + Terraform secrets)
-                                └──> Sealed Secrets signing key ──> cluster SealedSecrets
+External password manager ──> age private key ──┬──> SOPS files (Ansible + Terraform secrets)
+                                                └──> Sealed Secrets signing key ──> cluster SealedSecrets
 ```
 
-!!! danger "Bitwarden is the keystone — make sure *it* is independently recoverable"
-    Everything below decrypts from one age key whose only off-machine copy is in Bitwarden. If you can't get into Bitwarden, nothing is recoverable. Confirm now: master password memorized (not stored only inside the vault), and the Bitwarden two-factor **recovery code** printed and kept offline (fireproof safe / second location). Note that **Vaultwarden runs inside this cluster** — never make the cluster's recovery depend on a secrets store the cluster itself hosts. The root of trust must be the externally-hosted Bitwarden (or an offline `bw export`), not Vaultwarden.
+!!! danger "The external password manager is the keystone — make sure *it* is independently recoverable"
+    Everything below decrypts from one age key whose only off-machine copy is in that manager. If you can't get into it, nothing is recoverable. Confirm now: master password memorized (not stored only inside the vault), and its two-factor **recovery code** printed and kept offline (fireproof safe / second location). Note that **Vaultwarden runs inside this cluster** — never make the cluster's recovery depend on a secrets store the cluster itself hosts. The root of trust must be an externally-hosted manager (or an offline vault export), not Vaultwarden.
 
 ### Step 1 — Restore the age private key
 
@@ -590,8 +590,8 @@ something real and check **content**, not exit codes:
 
 ## Verification
 
-- [ ] Bitwarden two-factor **recovery code** is printed and stored offline (the keystone — see [The single root of trust](#the-single-root-of-trust)).
-- [ ] age key restores from Bitwarden and derives the expected public key:
+- [ ] The external password manager's two-factor **recovery code** is printed and stored offline (the keystone — see [The single root of trust](#the-single-root-of-trust)).
+- [ ] age key restores from the external password manager and derives the expected public key:
 
     ```sh
     age-keygen -y ~/.config/sops/age/keys.txt
