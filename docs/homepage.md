@@ -257,15 +257,18 @@ kubectl create secret generic homepage-widget-tokens \
 | ArgoCD | dedicated `readonly` account — see below |
 | ntfy | read-only `homepage` publisher — see below |
 
-Rotating any widget token is reseal, merge, restart — in that order. `kubeseal`
-re-encrypts *all* keys each run, so the whole file changes even when only one token
-changed — have every widget's plaintext on hand, not just the one you're rotating, and
-store each in the password manager as you mint it. (The repo's gitleaks pre-commit hook
-flags every `encryptedData` blob as a generic API key; clear each with a per-line
-fingerprint in `.gitleaksignore` rather than weakening the hook.) Unlike widget *config*
-(URLs, fields — a ConfigMap whole-dir mount that lands on the next page refresh, no
-restart needed), widget *tokens* are env, read once at process start: after merging a
-SealedSecret change you must `kubectl -n homepage rollout restart deployment homepage`.
+Rotating any widget token is reseal, merge, restart — in that order.
+
+!!! warning "A reseal touches every key — and only a restart picks it up"
+    `kubeseal` re-encrypts *all* keys each run, so the whole file changes even when only
+    one token changed — have every widget's plaintext on hand, not just the one you're
+    rotating, and store each in the password manager as you mint it. (The repo's gitleaks
+    pre-commit hook flags every `encryptedData` blob as a generic API key; clear each with
+    a per-line fingerprint in `.gitleaksignore` rather than weakening the hook.) Widget
+    *config* (URLs, fields) is a ConfigMap whole-dir mount and lands on the next page
+    refresh with no restart — but widget *tokens* are env, read once at process start:
+    after merging a SealedSecret change you must
+    `kubectl -n homepage rollout restart deployment homepage`.
 
 !!! danger "Don't restart into the propagation race"
     Restarting the consumer *immediately* after merging a SealedSecret change races the sealed-secrets controller: the new pod can start **before** the controller has decrypted and written the plain Secret, so it loads stale creds and the widget 401s. Diagnose by comparing the pod's `startTime` against the Secret's write time (`kubectl get secret … -o jsonpath='{.metadata.managedFields[*].time}'`); the fix is to restart **again** once that write timestamp is in the past — not to reseal. (This bit both the ntfy and homepage rollouts.)
