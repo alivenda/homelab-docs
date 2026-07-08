@@ -28,6 +28,11 @@ for whatever orientation fits, but still open with the facts table and — where
 the chapter describes recurring jobs — a **quick-reference table** ("what runs
 when") before any prose.
 
+The landing page (`index.md`) is the one **showcase** page: at-a-glance
+tables — hardware, the five-repo map, pointers into the catalog — belong
+there. Service pages stay operational; the shop-window formatting doesn't
+spread.
+
 ## Core rules
 
 ### Facts go in tables, prose explains why
@@ -36,6 +41,10 @@ If a sentence's payload is a value — a port, path, schedule, version, bucket
 name — it belongs in a table or a code block, not a paragraph. Prose is for
 rationale, trade-offs, and failure modes: the things a table can't carry.
 A paragraph that survives the rewrite should answer *why*, not *what*.
+
+The best shape for why-prose is a heading that asks the question the reader
+would ask — "Why not a TCPRoute?", "Why Garage, not MinIO" — and answers it
+directly. Pre-empt the misconception; don't narrate the decision history.
 
 Keep paragraphs to roughly four rendered lines. No throat-clearing
 ("In this section we will…"); start with the point.
