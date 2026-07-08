@@ -53,53 +53,53 @@ and land in the [cold-shutdown export](cold-shutdown.md).
 
 ## Traefik HTTPRoute (optional, for HTTPS on the cluster domain)
 
-To resolve `https://immich.yourdomain.com` through Traefik on the cluster (instead of `http://<nas-ip>:2283`), front the NAS-hosted Immich with a selector-less `Service` + a manual `EndpointSlice` pointing at the NAS, then attach an `HTTPRoute`. This is exactly how `homelab-manifests/apps/immich/manifests/` already exposes it — TLS is handled by the Gateway's wildcard cert (see [Deploying an App](apps-deploy-pattern.md)):
+To resolve `https://immich.yourdomain.com` through Traefik on the cluster (instead of `http://<nas-ip>:2283`), front the NAS-hosted Immich with a selector-less `Service` + a manual `EndpointSlice` pointing at the NAS, then attach an `HTTPRoute`. This is exactly how `homelab-manifests/apps/immich/manifests/` already exposes it — TLS is handled by the Gateway's wildcard cert (see [Deploying an App](apps-deploy-pattern.md)). Otherwise just access it via the NAS IP.
 
-```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: immich-nas
-  namespace: immich
-spec:
-  ports:
-    - port: 2283
-      targetPort: 2283
----
-apiVersion: discovery.k8s.io/v1
-kind: EndpointSlice
-metadata:
-  name: immich-nas
-  namespace: immich
-  labels:
-    kubernetes.io/service-name: immich-nas
-addressType: IPv4
-endpoints:
-  - addresses: ["<nas-ip>"]
-    conditions:
-      ready: true
-ports:
-  - port: 2283
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: immich
-  namespace: immich
-spec:
-  parentRefs:
-    - name: traefik
-      namespace: traefik
-      sectionName: websecure
-  hostnames:
-    - immich.yourdomain.com
-  rules:
-    - backendRefs:
-        - name: immich-nas
-          port: 2283
-```
+??? example "Service + EndpointSlice + HTTPRoute manifests"
 
-Otherwise just access it via the NAS IP.
+    ```yaml
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: immich-nas
+      namespace: immich
+    spec:
+      ports:
+        - port: 2283
+          targetPort: 2283
+    ---
+    apiVersion: discovery.k8s.io/v1
+    kind: EndpointSlice
+    metadata:
+      name: immich-nas
+      namespace: immich
+      labels:
+        kubernetes.io/service-name: immich-nas
+    addressType: IPv4
+    endpoints:
+      - addresses: ["<nas-ip>"]
+        conditions:
+          ready: true
+    ports:
+      - port: 2283
+    ---
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
+    metadata:
+      name: immich
+      namespace: immich
+    spec:
+      parentRefs:
+        - name: traefik
+          namespace: traefik
+          sectionName: websecure
+      hostnames:
+        - immich.yourdomain.com
+      rules:
+        - backendRefs:
+            - name: immich-nas
+              port: 2283
+    ```
 
 ## Verification
 
