@@ -74,40 +74,6 @@ markdown_extensions:
 
 plugins:
   - search
-  # Keep the old numbered URLs (e.g. /00-prerequisites/) resolving after the
-  # rename to slug-based pages, so external bookmarks and inbound links don't 404.
-  - redirects:
-      redirect_maps:
-        '00-prerequisites.md': 'prerequisites.md'
-        '01-git.md': 'git.md'
-        '02-networking.md': 'networking.md'
-        '03-turing-pi.md': 'turing-pi.md'
-        '04-ansible.md': 'ansible.md'
-        '05-kubernetes.md': 'kubernetes.md'
-        '06-traefik.md': 'traefik.md'
-        '07-vaultwarden.md': 'vaultwarden.md'
-        '08-terraform.md': 'terraform.md'
-        '09-observability.md': 'observability.md'
-        '10-backups.md': 'backups.md'
-        '11-forgejo.md': 'forgejo.md'
-        '12-cicd.md': 'woodpecker.md'
-        '13-nextcloud.md': 'nextcloud.md'
-        '14-paperless.md': 'paperless.md'
-        '15-immich.md': 'immich.md'
-        '16-home-assistant.md': 'home-assistant.md'
-        '17-adguard-home.md': 'adguard-home.md'
-        '18-authelia.md': 'authelia.md'
-        '19-ntfy.md': 'ntfy.md'
-        '20-homepage.md': 'homepage.md'
-        '21-arr-stack.md': 'arr-stack.md'
-        '22-bookstack.md': 'bookstack.md'
-        '23-syncthing.md': 'syncthing.md'
-        '24-rustdesk.md': 'rustdesk.md'
-        '25-reactive-resume.md': 'reactive-resume.md'
-        '26-ollama.md': 'ollama.md'
-        '27-nas-postgres.md': 'nas-postgres.md'
-        '28-vikunja.md': 'vikunja.md'
-        '29-miniflux.md': 'miniflux.md'
 
 nav:
   - Home: index.md
