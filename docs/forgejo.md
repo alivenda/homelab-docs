@@ -7,12 +7,17 @@ Self-hosted Git server — the cluster's primary Git host.
 
 | | |
 |---|---|
+| **URL** | `https://git.yourdomain.com` — SSH: `git@git.yourdomain.com` (same IP, see Step 4) |
+| **Namespace** | `forgejo` |
+| **Chart** | `forgejo` from `code.forgejo.org/forgejo-helm` (OCI), version-pinned |
+| **ArgoCD Applications** | `forgejo` (chart) + `forgejo-manifests` (HTTPRoute, repos PVC, admin SealedSecret) |
+| **Storage** | DB + config on `local-path` (node-pinned); repos + LFS on `nfs-storage` |
+| **Auth** | Authelia OIDC (auto-registration from lldap); local `forgejo_admin` = break-glass |
+| **Depends On** | Traefik (Gateway + wildcard TLS), Authelia (SSO), MetalLB (SSH LoadBalancer) |
 | **Difficulty** | Intermediate |
 | **Time Estimate** | 45 minutes |
-| **Runs On** | k3s (pinned to the node holding its `local-path` DB) |
-| **Depends On** | Traefik (Gateway + wildcard TLS) and Authelia (for SSO) |
 
-Deploy Forgejo via the official Helm chart instead of docker-compose. This keeps the Git server inside the cluster's GitOps lifecycle: ArgoCD reconciles it, an HTTPRoute (Traefik) gives HTTPS off the shared Gateway, a MetalLB `LoadBalancer` carries Git-over-SSH on the *same* IP, and it authenticates against Authelia over OIDC so accounts come from your lldap directory.
+Deploying via the official Helm chart (not docker-compose) keeps the Git server inside the cluster's GitOps lifecycle: ArgoCD reconciles it, an HTTPRoute gives HTTPS off the shared Gateway, a MetalLB `LoadBalancer` carries Git-over-SSH on the *same* IP, and accounts come from your lldap directory via Authelia OIDC.
 
 !!! warning "Chart key naming"
     The Forgejo chart inherits Gitea's chart-internal `gitea.` value prefix (Forgejo forked it). This is not a bug — check the chart README at [code.forgejo.org/forgejo-helm](https://code.forgejo.org/forgejo-helm/forgejo-helm) for any value-name changes when you bump the chart.
@@ -143,16 +148,18 @@ spec:
       storage: 20Gi
 ```
 
-The chart is published as an OCI artifact — to bootstrap by hand (before GitOps adopts it):
+??? example "Bootstrap by hand (before GitOps adopts it)"
 
-```bash
-helm upgrade --install forgejo oci://code.forgejo.org/forgejo-helm/forgejo \
-  --version <X.Y.Z> \
-  --namespace forgejo --create-namespace \
-  --values values.yaml
-```
+    The chart is published as an OCI artifact:
 
-Pin `--version` to a current release on [code.forgejo.org/forgejo-helm](https://code.forgejo.org/forgejo-helm/forgejo-helm).
+    ```bash
+    helm upgrade --install forgejo oci://code.forgejo.org/forgejo-helm/forgejo \
+      --version <X.Y.Z> \
+      --namespace forgejo --create-namespace \
+      --values values.yaml
+    ```
+
+    Pin `--version` to a current release on [code.forgejo.org/forgejo-helm](https://code.forgejo.org/forgejo-helm/forgejo-helm).
 
 ## Step 3: GitOps-managed install (recommended)
 
@@ -164,7 +171,7 @@ spec:
   sources:
     - repoURL: code.forgejo.org/forgejo-helm   # OCI registry, no scheme prefix
       chart: forgejo
-      targetRevision: 17.1.0                    # pin a version; don't track latest
+      targetRevision: 17.1.1                    # pin a version; don't track latest
       helm:
         releaseName: forgejo
         valueFiles:
@@ -254,7 +261,7 @@ Forgejo keeps its own user system, so it's an **OIDC client** of Authelia (not F
 
 The group fields appear once Provider = OpenID Connect. The admin-group value keys on the lldap group **cn** (`homelab-admins`), not lldap's built-in `lldap_admin` — see the [deploy pattern](apps-deploy-pattern.md) for why.
 
-!!! tip "CLI alternative"
+??? tip "CLI alternative"
     ```bash
     forgejo admin auth add-oauth --name authelia --provider openidConnect \
       --key forgejo --secret '<plaintext>' \
