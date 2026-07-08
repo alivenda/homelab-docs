@@ -1,6 +1,6 @@
 # Traefik
 
-Foundational layer: clean URLs, automatic HTTPS via Let's Encrypt, and a single entry point for every service. Traffic flows MetalLB → Traefik (Gateway API provider) → `HTTPRoute`s, with TLS terminated by a cert-manager wildcard certificate on the `Gateway`.
+Foundational layer for clean URLs and automatic HTTPS via Let's Encrypt: traffic flows MetalLB → Traefik (Gateway API provider) → `HTTPRoute`s, with TLS terminated once by a cert-manager wildcard certificate on the `Gateway`.
 
 | | |
 |---|---|

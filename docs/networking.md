@@ -110,6 +110,9 @@ flowchart TB
 
 *Solid arrows are UDM's L3 routing between VLANs — every inter-VLAN hop is subject to the Policy Engine zone matrix (Step 3), with Lab unable to initiate to any other zone. Dotted lines are Tailscale: off-network devices reach the LAN through the tailnet, with ruby (primary) and emerald (failover) advertising the Default/Trusted/Lab subnets into it. The UDM's mDNS reflector (Auto) retransmits across all VLANs; see [VLAN Architecture](#vlan-architecture) for the per-zone rationale.*
 
+!!! note "UDM is in the data path for inter-VLAN traffic"
+    Because UDM is the L3 router between VLANs, every Trusted → Lab service request flows through UDM. Performance is fine for homelab scale (gigabit class), but it means firewall policies apply on every request and UDM CPU sees the load. The alternative (MetalLB in BGP mode with UDM peering) eliminates this but requires UDM Pro/SE with BGP enabled.
+
 ## VLAN Architecture
 
 Each VLAN has a distinct trust level and a deliberate reason for existing:
@@ -283,21 +286,20 @@ UniFi auto-generates a matching `(Return)` policy for every Allow rule (it's sta
 !!! note "Established/related is automatic"
     UniFi's Policy Engine is stateful — once a connection is allowed in one direction, return traffic is allowed automatically. You don't need a separate "allow established/related" rule (the legacy `LAN IN` firewall did require this). This is why "Trusted → Lab Allow + Lab → Trusted Block" works as expected: your desktop can reach the cluster API, the response gets back, but the cluster cannot initiate a connection to your desktop.
 
-!!! note "Why per-service instead of 'Trusted → Lab Allow all'"
-    A common shortcut is to make Trusted → Lab a blanket Allow and skip the per-service policies. It's less typing and easier to maintain. The argument against: if a daily-driver device on Trusted is ever compromised (browser zero-day, bad npm install, supply-chain attack on a desktop dependency), blanket Allow gives the attacker lateral access to kubelet, etcd, every internal admin UI on Lab. Per-service caps blast radius to the exact ports listed above. For a learning-focused homelab the extra friction is small and mirrors how production environments handle east-west traffic.
+### Why per-service policies, not a blanket Trusted → Lab allow?
 
-!!! note "Why the matrix-then-policies model is better"
-    With legacy `LAN IN` rules, the implicit "allow everything else" meant you had to remember to add catch-all drops for every flow you wanted restricted. Forget one and you had a silent hole. The zone matrix makes the default explicit: Block is the baseline, Allow requires a policy. Audit becomes "list the policies" instead of "spot the missing drop."
+A common shortcut is to make Trusted → Lab a blanket Allow and skip the per-service policies. It's less typing and easier to maintain. The argument against: if a daily-driver device on Trusted is ever compromised (browser zero-day, bad npm install, supply-chain attack on a desktop dependency), blanket Allow gives the attacker lateral access to kubelet, etcd, every internal admin UI on Lab. Per-service caps blast radius to the exact ports listed above. For a learning-focused homelab the extra friction is small and mirrors how production environments handle east-west traffic.
 
-!!! note "UDM is in the data path for inter-VLAN traffic"
-    Because UDM is the L3 router between VLANs, every Trusted → Lab service request flows through UDM. Performance is fine for homelab scale (gigabit class), but it means firewall policies apply on every request and UDM CPU sees the load. The alternative (MetalLB in BGP mode with UDM peering) eliminates this but requires UDM Pro/SE with BGP enabled.
+### Why the matrix-then-policies model, not legacy LAN IN rules?
 
-!!! note "Plex Server: tell it which client subnets count as LAN"
+With legacy `LAN IN` rules, the implicit "allow everything else" meant you had to remember to add catch-all drops for every flow you wanted restricted. Forget one and you had a silent hole. The zone matrix makes the default explicit: Block is the baseline, Allow requires a policy. Audit becomes "list the policies" instead of "spot the missing drop."
+
+!!! warning "Plex Server: tell it which client subnets count as LAN"
     Placing Plex Server (on the NAS in Lab) and Plex clients (Apple TV on IoT, desktop on Trusted) on different VLANs means Plex Server doesn't automatically recognize cross-VLAN clients as "local." Clients fall back to plex.tv relay or fail outright — Infuse on Apple TV is a common casualty.
 
     Fix is Plex-side, not firewall-side: in Plex Web UI → **Settings → Network → "List of IP addresses and networks that are allowed without auth"**, add the Plex client subnets — `10.0.10.0/24, 10.0.30.0/24` for this setup. Plex then advertises its local IP to clients on those subnets and treats their streams as LAN-quality. The firewall policies above are correct regardless; this is just Plex's own LAN-detection logic.
 
-!!! note "Forward-looking: Lab → IoT for Home Assistant local control"
+!!! tip "Forward-looking: Lab → IoT for Home Assistant local control"
     Home Assistant is live (an HAOS VM on slate, `10.0.20.21`). The best-practice integration for Philips Hue, Shelly, and other local-control smart devices is HA talking to them directly on the local network — faster and works offline, unlike cloud routing. That's a **Lab → IoT** flow, which the matrix above blocks by default.
 
     Add a narrowly-scoped policy then (e.g. `lab-to-hue-bridge`: Lab → `10.0.30.x` of the bridge/controller, TCP `80` and/or `443`). Scope to the specific device IP, not whole IoT zone, to avoid HA being able to reach the printer's web UI or other unrelated IoT devices.
@@ -401,27 +403,9 @@ In the Tailscale admin console → **Settings → Keys → Generate auth key**:
 
 Copy the `tskey-auth-...` value. Don't commit it. Store in Vaultwarden if you need it past today.
 
-### Step 5c: Install on ruby
+### Step 5c: Install Tailscale on both routers (ruby + emerald)
 
-A subnet router has to forward packets between the Tailnet and your LAN, so enable IP forwarding before bringing Tailscale up:
-
-```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-
-# Subnet routers must forward IP traffic — enable it persistently first
-echo 'net.ipv4.ip_forward = 1' | sudo tee -a /etc/sysctl.d/99-tailscale.conf
-echo 'net.ipv6.conf.all.forwarding = 1' | sudo tee -a /etc/sysctl.d/99-tailscale.conf
-sudo sysctl -p /etc/sysctl.d/99-tailscale.conf
-
-sudo tailscale up \
-  --authkey=tskey-auth-XXXXX \
-  --advertise-routes=10.0.0.0/24,10.0.10.0/24,10.0.20.0/24 \
-  --advertise-tags=tag:homelab-router
-```
-
-### Step 5d: Install on emerald for failover
-
-Same auth key (it's reusable), same routes, same IP-forwarding prerequisite. Tailscale will pick one router as primary and switch to the other automatically if the primary goes offline. Brief (~30s) blip during failover.
+A subnet router has to forward packets between the Tailnet and your LAN, so enable IP forwarding before bringing Tailscale up. Run this identically on **both** ruby and emerald — same reusable auth key, same routes, same prerequisite:
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
@@ -436,6 +420,8 @@ sudo tailscale up \
   --advertise-routes=10.0.0.0/24,10.0.10.0/24,10.0.20.0/24 \
   --advertise-tags=tag:homelab-router
 ```
+
+Tailscale picks one router as primary and switches to the other automatically if the primary goes offline — a brief (~30s) blip during failover.
 
 !!! tip "Subnet-router throughput: enable UDP GRO"
     Tailscale recommends enabling UDP segmentation offload on a Linux subnet router's physical NIC for better throughput. On both ruby and emerald (install `ethtool` first if needed):
@@ -449,7 +435,7 @@ sudo tailscale up \
 !!! note "Why a second subnet router matters"
     Ruby will reboot regularly — k3s upgrades, kernel updates, Ansible runs. Without a failover router, every reboot kills your remote access to the entire homelab until ruby comes back up. The failover takes five minutes to set up now and removes a sharp foot-gun forever.
 
-### Step 5e: Approve advertised routes
+### Step 5d: Approve advertised routes
 
 Pre-authorized auth keys join the Tailnet without manual approval, but **subnet routes still need per-machine approval**. In the admin console → Machines → ruby → **Edit route settings** → check all three subnets → Save. Repeat for emerald.
 

@@ -290,34 +290,34 @@ The mount task below references the filesystem by label, so future reboots resol
 
 ## Step 9: Assembled `site.yml`
 
-The four plays from Steps 6–8 concatenate into one file. Skeleton:
+The four plays from Steps 6–8 concatenate into one file — adding a `name:` to each play (which the verbatim Step 6–8 blocks omit for brevity) makes the `ansible-playbook` output much easier to scan.
 
-```yaml
----
-- name: Bootstrap all nodes (packages, cgroups, /etc/hosts)
-  hosts: all
-  become: true
-  tasks: [...]      # from Step 6
+??? example "Skeleton showing how the four plays fit together"
 
-- name: NFS server on topaz
-  hosts: topaz
-  become: true
-  tags: [nfs]
-  tasks: [...]      # from Step 7
-  handlers: [...]
+    ```yaml
+    ---
+    - name: Bootstrap all nodes (packages, cgroups, /etc/hosts)
+      hosts: all
+      become: true
+      tasks: [...]      # from Step 6
 
-- name: K3s control plane on ruby
-  hosts: k3s_server
-  become: true
-  tasks: [...]      # from Step 8 (server)
+    - name: NFS server on topaz
+      hosts: topaz
+      become: true
+      tags: [nfs]
+      tasks: [...]      # from Step 7
+      handlers: [...]
 
-- name: K3s agents on emerald, topaz, amethyst
-  hosts: k3s_agents
-  become: true
-  tasks: [...]      # from Step 8 (agents)
-```
+    - name: K3s control plane on ruby
+      hosts: k3s_server
+      become: true
+      tasks: [...]      # from Step 8 (server)
 
-Adding a `name:` to each play (which the verbatim Step 6–8 blocks omit for brevity) makes the `ansible-playbook` output much easier to scan.
+    - name: K3s agents on emerald, topaz, amethyst
+      hosts: k3s_agents
+      become: true
+      tasks: [...]      # from Step 8 (agents)
+    ```
 
 !!! note "The real `site.yml` has grown past this skeleton"
     Since this runbook was written, the assembled playbook gained plays for SSH hardening,
