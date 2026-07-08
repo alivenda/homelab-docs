@@ -9,10 +9,13 @@ pods, the NAS runs their databases.
 
 | | |
 |---|---|
-| **Difficulty** | Intermediate |
-| **Time Estimate** | 1–2 hours |
+| **Endpoint** | `10.0.20.50:5433` (LAN-only; UGOS's own Postgres keeps `5432`) |
+| **Image** | `postgres:18` (docker-compose on the NAS) |
+| **Backup** | nightly `04:30` → `postgres-backups` Garage bucket, 30-day retention |
 | **Runs On** | NAS (Docker — not k3s) |
 | **Depends On** | Backups (Garage S3), [Storage & Data Architecture](storage-architecture.md) |
+| **Difficulty** | Intermediate |
+| **Time Estimate** | 1–2 hours |
 
 ## Does your app even belong here?
 
@@ -205,58 +208,61 @@ secret_access_key = <secret>
 force_path_style = true
 ```
 
-`/volume1/docker/postgres/backup.sh` (`chmod 755`):
+??? example "`/volume1/docker/postgres/backup.sh` (`chmod 755`)"
 
-```bash
-#!/bin/bash
-# Nightly logical backups of the shared Postgres to Garage S3.
-set -euo pipefail
+    ```bash
+    #!/bin/bash
+    # Nightly logical backups of the shared Postgres to Garage S3.
+    set -euo pipefail
 
-STAMP=$(date +%F)
-TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+    STAMP=$(date +%F)
+    TMP=$(mktemp -d)
+    trap 'rm -rf "$TMP"' EXIT
 
-# Roles and grants live outside any single database — dump them separately,
-# or a restore onto a fresh server has databases but no logins.
-docker exec postgres pg_dumpall -U postgres --globals-only > "$TMP/globals-$STAMP.sql"
+    # Roles and grants live outside any single database — dump them separately,
+    # or a restore onto a fresh server has databases but no logins.
+    docker exec postgres pg_dumpall -U postgres --globals-only > "$TMP/globals-$STAMP.sql"
 
-# Each real database individually, custom format: pg_restore can then do
-# selective, per-app restores — pg_dumpall's plain SQL can't.
-for db in $(docker exec postgres psql -U postgres -At -c "SELECT datname FROM pg_database WHERE NOT datistemplate AND datname <> 'postgres'"); do
-  docker exec postgres pg_dump -U postgres -Fc "$db" > "$TMP/$db-$STAMP.dump"
-done
+    # Each real database individually, custom format: pg_restore can then do
+    # selective, per-app restores — pg_dumpall's plain SQL can't.
+    for db in $(docker exec postgres psql -U postgres -At -c "SELECT datname FROM pg_database WHERE NOT datistemplate AND datname <> 'postgres'"); do
+      docker exec postgres pg_dump -U postgres -Fc "$db" > "$TMP/$db-$STAMP.dump"
+    done
 
-docker run --rm --user root -v /etc/rclone:/config/rclone -v "$TMP":/backup rclone/rclone copy /backup garage-pg:postgres-backups -v
-docker run --rm --user root -v /etc/rclone:/config/rclone rclone/rclone delete garage-pg:postgres-backups --min-age 30d
-```
+    docker run --rm --user root -v /etc/rclone:/config/rclone -v "$TMP":/backup rclone/rclone copy /backup garage-pg:postgres-backups -v
+    docker run --rm --user root -v /etc/rclone:/config/rclone rclone/rclone delete garage-pg:postgres-backups --min-age 30d
+    ```
 
-`/etc/systemd/system/postgres-backup.service`:
+The timer runs at 04:30 — an hour before the HA sync, so the two backup jobs don't contend for NAS I/O:
 
-```ini
-[Unit]
-Description=Dump Postgres databases to Garage S3
-After=docker.service
-Requires=docker.service
+??? example "`postgres-backup` service + timer"
 
-[Service]
-Type=oneshot
-ExecStart=/volume1/docker/postgres/backup.sh
-```
+    `/etc/systemd/system/postgres-backup.service`:
 
-`/etc/systemd/system/postgres-backup.timer` — 04:30, an hour before the HA sync so the two
-backup jobs don't contend for NAS I/O:
+    ```ini
+    [Unit]
+    Description=Dump Postgres databases to Garage S3
+    After=docker.service
+    Requires=docker.service
 
-```ini
-[Unit]
-Description=Nightly Postgres backup to Garage
+    [Service]
+    Type=oneshot
+    ExecStart=/volume1/docker/postgres/backup.sh
+    ```
 
-[Timer]
-OnCalendar=*-*-* 04:30:00
-Persistent=true
+    `/etc/systemd/system/postgres-backup.timer`:
 
-[Install]
-WantedBy=timers.target
-```
+    ```ini
+    [Unit]
+    Description=Nightly Postgres backup to Garage
+
+    [Timer]
+    OnCalendar=*-*-* 04:30:00
+    Persistent=true
+
+    [Install]
+    WantedBy=timers.target
+    ```
 
 ```bash
 sudo systemctl daemon-reload && sudo systemctl enable --now postgres-backup.timer

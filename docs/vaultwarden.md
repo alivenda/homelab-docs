@@ -7,10 +7,15 @@ Lightweight self-hosted Bitwarden-compatible server. First service runbook after
 
 | | |
 |---|---|
+| **URL** | `https://vault.yourdomain.com` |
+| **Namespace** | `vaultwarden` |
+| **Chart** | `vaultwarden` (guerzon) |
+| **ArgoCD Applications** | `vaultwarden` (chart) + `vaultwarden-manifests` (HTTPRoute, admin-token SealedSecret) |
+| **Storage** | SQLite on `local-path`, 2Gi, pinned to `amethyst` (see Step 2) |
+| **Auth** | Native login; signups disabled after bootstrap (Step 5) |
+| **Depends On** | Traefik (HTTPS), plus the cluster baseline this guide stands up before any app: ArgoCD, the Sealed Secrets controller, and the standalone `local-path` provisioner |
 | **Difficulty** | Beginner (the GitOps pattern, walked slowly) |
 | **Time Estimate** | 45 minutes |
-| **Runs On** | `amethyst` (pinned via `nodeSelector` — see Step 2) |
-| **Depends On** | Traefik (HTTPS), plus the cluster baseline this guide stands up before any app: ArgoCD, the Sealed Secrets controller, and the standalone `local-path` provisioner |
 
 This runbook follows the [GitOps deploy pattern](apps-deploy-pattern.md) — nothing here is applied imperatively; every object is committed to `homelab-manifests` and ArgoCD reconciles it. What's *specific* to Vaultwarden, and worth slowing down for, is the **SQLite storage model**. Get that wrong and the vault silently runs on ephemeral disk — wiped on every restart.
 
@@ -114,6 +119,9 @@ spec:
 !!! warning "The manifests app must **not** use Server-Side Apply"
     The HTTPRoute is applied by the `vaultwarden-manifests` Application with client-side apply. `ServerSideApply=true` on an app that manages a Gateway API `HTTPRoute` leaves it permanently `OutOfSync` (Healthy but never reconciled). The Helm chart app keeps SSA; the manifests app does not.
 
+!!! tip "HTTPS is mandatory"
+    Vaultwarden requires HTTPS or browser extensions silently refuse to connect. The HTTPRoute above — TLS terminated by the Gateway's wildcard cert — handles this. If an extension reports "cannot reach server", verify the cert with `curl -v https://vault.yourdomain.com`.
+
 ## Step 4: Register the Applications and sync
 
 `bootstrap/vaultwarden.yaml` holds **two** ArgoCD Applications:
@@ -176,6 +184,3 @@ A healthy result is a `PodVolumeBackup` for the `vaultwarden-data` volume with `
 - [ ] Signups are disabled — `/register` shows the disabled message, no **Create Account** button.
 - [ ] Velero `PodVolumeBackup` for `vaultwarden-data` shows **bytes > 0** (Step 6).
 - [ ] Plaintext admin token saved to your bootstrap password manager.
-
-!!! tip "HTTPS is mandatory"
-    Vaultwarden requires HTTPS or browser extensions silently refuse to connect. The HTTPRoute above — TLS terminated by the Gateway's wildcard cert — handles this. If an extension reports "cannot reach server", verify the cert with `curl -v https://vault.yourdomain.com`.

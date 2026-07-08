@@ -7,10 +7,13 @@ DNS-level ad blocking and privacy protection for every device on the network.
 
 | | |
 |---|---|
-| **Difficulty** | Beginner |
-| **Time Estimate** | 1 hour |
+| **Primary** | `pyrite` — `10.0.0.20`, web UI `:8083` |
+| **Secondary (optional)** | `marcasite` — `10.0.0.21`, web UI `:8083` |
+| **OS** | DietPi (64-bit ARM) |
 | **Runs On** | 1× Raspberry Pi (OS-level service — not k3s). This build: a Pi 3 Model B (`pyrite`). |
 | **Depends On** | Networking (static IP on the Default VLAN) |
+| **Difficulty** | Beginner |
+| **Time Estimate** | 1 hour |
 
 AdGuard Home runs natively on a dedicated Raspberry Pi rather than in the k3s cluster: DNS must stay up independently of cluster reboots and upgrades. **One Pi is enough** for a working setup. Adding a **second** Pi is an optional upgrade for automatic failover — the UDM advertises both IPs as DNS servers via DHCP, so if one goes down clients fail over with no manual intervention.
 
