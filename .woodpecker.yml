@@ -1,0 +1,23 @@
+# Pre-merge docs gate, ported from .github/workflows/docs.yml. GitHub Actions
+# only ran on the GitHub push mirror, which never sees Forgejo (AGit) pull
+# requests — so the strict build gated nothing until after merge. Woodpecker
+# (the cluster's CI engine) hooks Forgejo PRs directly, same as the
+# homelab-manifests kubeconform gate.
+#
+# The check is preserved exactly: pip install -r requirements.txt, then
+# `mkdocs build --strict` (broken internal links/anchors fail the build).
+# python:slim is multi-arch (the agents are arm64 CM4s); mkdocs-material and
+# friends ship pure-Python wheels, so the install is quick even on a Pi.
+
+when:
+  - event: pull_request
+    branch: main
+  - event: push
+    branch: main
+
+steps:
+  mkdocs-strict:
+    image: python:3.13-slim
+    commands:
+      - pip install --quiet --root-user-action=ignore -r requirements.txt
+      - mkdocs build --strict
