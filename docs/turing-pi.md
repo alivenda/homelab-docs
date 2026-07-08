@@ -2,8 +2,6 @@
 
 Initial hardware assembly, firmware update, OS flashing, and network configuration for your Turing Pi 2 with 4× Raspberry Pi CM4 modules (mixed eMMC capacity).
 
-## Hardware Inventory
-
 | | |
 |---|---|
 | **Board** | Turing Pi 2 (mini-ITX cluster board) |
@@ -129,7 +127,11 @@ Node 3 connects to the SATA ports. This SSD will serve as NFS storage for the en
 
 A 4-node CM4 cluster plus a NAS draws modest power, but an unscheduled power loss can corrupt etcd, leave NFS exports in inconsistent state, and force fsck on every node next boot. A small UPS pays for itself the first time you have a brownout during a cluster upgrade.
 
-**Sizing rule of thumb:** a Turing Pi 2 with 4 CM4s + small SSD pulls 30–60 W under load. A 600–900 VA UPS gives 15–30 minutes of runtime — plenty for graceful shutdown of the cluster plus NAS. Common picks: APC Back-UPS BX700U, CyberPower CP900AVR.
+| | |
+|---|---|
+| **Typical load** | 30–60 W (Turing Pi 2, 4× CM4, + small SSD) |
+| **Sizing rule of thumb** | 600–900 VA UPS → 15–30 min runtime, plenty for a graceful cluster + NAS shutdown |
+| **Common picks** | APC Back-UPS BX700U, CyberPower CP900AVR |
 
 What you actually need from the UPS is not the runtime, it is the USB or network signal that the UPS sends when on battery. [Network UPS Tools (NUT)](https://networkupstools.org/) is the open-source daemon that listens for that signal and triggers shutdown scripts across multiple hosts.
 
