@@ -6,7 +6,7 @@ How to structure your homelab project across Git repositories, where to host the
 |---|---|
 | **Difficulty** | Beginner–Intermediate |
 | **Time Estimate** | 1–2 hours initial setup |
-| **Hosts** | GitHub primary → Forgejo mirror (recommended pattern) |
+| **Hosts** | Forgejo primary → GitHub push mirror (this build's end-state; the runbook starts on GitHub and migrates in Step 6) |
 | **DevOps Skills** | Git workflows, secret management, repo design |
 
 ## Repo Structure: Five Separate Repos
@@ -302,6 +302,15 @@ Once Forgejo is running, you have three migration paths:
 **Recommended:** push mirror. Forgejo becomes primary, GitHub becomes free offsite IaC backup.
 
 ## Step 7: Wire ArgoCD to homelab-manifests
+
+!!! note "What this build runs today"
+    After the Forgejo migration (Step 6), ArgoCD watches `homelab-manifests` **on Forgejo
+    over SSH** (a repo credential committed as a SealedSecret in
+    `infrastructure/argocd/manifests/`), not GitHub — and the discovery model is the
+    **app-of-apps** pattern (`bootstrap/root.yaml` reconciling one Application file per
+    component; see the `homelab-manifests` README), not the ApplicationSet below. The
+    GitHub + read-only-PAT wiring remains the correct day-zero path when nothing
+    self-hosted exists yet.
 
 **Come back to this step after Kubernetes.** Once your repos are set up and the cluster is running, point ArgoCD at `homelab-manifests` using the read-only Token 2 from Step 1:
 

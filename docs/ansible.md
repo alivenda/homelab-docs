@@ -319,6 +319,15 @@ The four plays from Steps 6–8 concatenate into one file. Skeleton:
 
 Adding a `name:` to each play (which the verbatim Step 6–8 blocks omit for brevity) makes the `ansible-playbook` output much easier to scan.
 
+!!! note "The real `site.yml` has grown past this skeleton"
+    Since this runbook was written, the assembled playbook gained plays for SSH hardening,
+    unattended upgrades, chrony, RAMlog sizing, LED quieting, node labels, kubeconfig
+    sync, UFW, an ArgoCD Helm bootstrap, Tailscale subnet routers, and the AdGuard DNS
+    appliance — and the cluster-shaped plays (bootstrap, UFW, RAMlog) now target a
+    `k3s_cluster` group instead of `all`, so the DNS Pi can share the inventory without
+    inheriting cluster assumptions. The four plays above remain the core;
+    `homelab-ansible`'s `site.yml` and README are the authoritative play inventory.
+
 ## Step 10: Secrets via sops + age
 
 The cluster token lives encrypted in `secrets/secrets.sops.yaml` and is decrypted at runtime by the `community.sops` lookup in the inventory — the **same sops + age mechanism** as the `homelab-secrets` repo (Git). That gives you one repo-side secrets tool, consistent with Kubernetes Step 12's two-layer model (sops + age repo-side, Sealed Secrets cluster-side).

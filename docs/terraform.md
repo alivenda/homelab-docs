@@ -37,14 +37,19 @@ sudo pacman -S terraform
 terraform version
 ```
 
+!!! note "This build runs OpenTofu"
+    The repo is applied with [OpenTofu](https://opentofu.org/) (`sudo pacman -S opentofu`),
+    the open-source Terraform fork — the CLI is a drop-in `tofu` for `terraform`, and the
+    pre-commit hooks are `tofu_fmt` / `tofu_validate`. Prose below says "Terraform" for the
+    tool category; commands in the build-specific sections use `tofu`.
+
 ## Project Structure
 
 ```
 homelab-terraform/
-├── backend.tf            # remote-state config (see below)
-├── cloudflare/
-├── unifi/
-├── cloud-practice/
+├── cloudflare/           # applied — one A record per published service
+│   └── versions.tf       # providers + the remote-state backend (see below)
+├── unifi/                # written, never applied (see the UniFi Module section)
 └── .gitignore
 ```
 
@@ -54,6 +59,11 @@ homelab-terraform/
 ## Remote State
 
 By default, Terraform writes state to `terraform.tfstate` in the working directory. That's local-only — every machine has a different view, and `.gitignore` blocks committing it. For a homelab this is fine if you only run Terraform from one host. For anything more, use a remote backend.
+
+**This build uses the Garage S3 backend** — the `backend "s3"` block lives in each
+module's `versions.tf` (bucket `tfstate`, one key prefix per module). State locking is
+deliberately off: OpenTofu's S3-native locking needs conditional writes, which Garage
+doesn't provide; with a single operator and single state writer that's acceptable.
 
 Two reasonable options:
 
@@ -131,6 +141,11 @@ resource "cloudflare_dns_record" "services" {
 
 ## UniFi Module
 
+!!! warning "Written, never applied"
+    This build's UDM was configured by hand ([Networking](networking.md)); the `unifi/`
+    module is a future codification target. Don't read its `.tf` as a description of live
+    UDM config — get live facts from the controller (or a `tofu plan`), not the code.
+
 The `paultyng/unifi` provider was archived in April 2026. The maintained drop-in successor is `ubiquiti-community/unifi` (v0.41.x schema-compatible). `filipowm/unifi` v1.x is a more aggressive refactor with schema changes — fine if you're starting fresh, but the drop-in is the safer first move.
 
 ```hcl
@@ -138,7 +153,7 @@ terraform {
   required_providers {
     unifi = {
       source  = "ubiquiti-community/unifi"
-      version = "~> 0.41"
+      version = "~> 0.42"   # match the pin in unifi/versions.tf
     }
   }
 }
@@ -156,23 +171,26 @@ provider "unifi" {
 
 ## Secret Handling
 
-Use sops + age ([Git Step 5](git.md#step-5-secret-management-with-sops-age)). Tfvars are encrypted as `secrets.enc.tfvars`, which is allowed through the `.gitignore` via the `!*.enc.tfvars` exception.
+Use sops + age ([Git Step 5](git.md#step-5-secret-management-with-sops-age)). This build
+reads secrets **directly through the
+[`carlpett/sops`](https://github.com/carlpett/terraform-provider-sops) provider**: each
+module keeps a `secrets.enc.yaml` (ciphertext, safe to commit) and a `data "sops_file"`
+block decrypts it in memory at plan/apply time — plaintext never lands on disk. Edit in
+place with `sops cloudflare/secrets.enc.yaml`. (Encrypted `*.enc.tfvars` passed via
+`-var-file` are the older fallback pattern; the `.gitignore` allows them through.)
 
 ## Workflow
 
 ```bash
 cd homelab-terraform/cloudflare
 
-# Decrypt tfvars at-need
-sops --decrypt secrets.enc.tfvars > secrets.tfvars
-
-terraform init     # uses backend.tf for remote state
-terraform plan -var-file=secrets.tfvars
-terraform apply -var-file=secrets.tfvars
-terraform fmt -recursive
-
-rm secrets.tfvars  # plaintext gone again
+tofu init          # backend: Garage S3 on the NAS (bucket `tfstate`)
+tofu plan          # the sops provider decrypts secrets.enc.yaml in memory
+tofu apply
 ```
+
+No decrypt or cleanup steps — the sops provider handles secrets at run time, and the
+pre-commit hooks run `tofu fmt` / `tofu validate` on every commit.
 
 !!! tip
     The single most impressive resume item from this runbook: "managed bare-metal network infrastructure (UniFi VLANs, firewall rules, DHCP) and DNS as code using Terraform, with CI-driven apply via Woodpecker."
@@ -182,7 +200,7 @@ rm secrets.tfvars  # plaintext gone again
 - [ ] Drift check: after the first apply, `plan` returns zero changes:
 
     ```bash
-    cd homelab-terraform/cloudflare && terraform plan
+    cd homelab-terraform/cloudflare && tofu plan
     # Expected: 'No changes. Your infrastructure matches the configuration.'
     ```
 

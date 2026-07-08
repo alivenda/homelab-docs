@@ -529,6 +529,26 @@ spec:
     applies cleanly, shows up in `kubectl get prometheusrules`, and is never
     evaluated.
 
+### Black-box probes (blackbox-exporter)
+
+Prometheus only scrapes `/metrics` — it can't dial an arbitrary TCP port or exercise a
+public URL end-to-end. A small **blackbox-exporter** Application
+(`infrastructure/blackbox-exporter`, raw manifests) fills both gaps with declarative
+`Probe` CRDs feeding the same rule → Alertmanager → ntfy pipeline:
+
+- **NAS Postgres reachability** — a bare TCP connect to the shared database server
+  every 30s. Five apps share that server, so `NasPostgresDown` (critical) turns
+  "everything just broke" into one root-cause alert. The probe never authenticates —
+  no DB credentials touch the monitoring path.
+- **Public endpoints** — an HTTPS GET of the published `*.yourdomain.com` URLs every
+  60s, exercising the full external path (DNS → Traefik → TLS → Authelia → app).
+  `PublicEndpointDown` and `PublicEndpointCertExpiringSoon` (both warning) catch broken
+  routes and the served wildcard cert nearing expiry. These probes replaced Uptime Kuma
+  — see the [App Catalog retirement note](apps-catalog.md#uptime-kuma).
+
+Like the custom rules above, `Probe` objects are only selected if they carry the
+`release: kube-prometheus-stack` label.
+
 ## Step 5: DNS + HTTPRoute
 
 1. Add `grafana` to the service list in the Cloudflare [Terraform](terraform.md) module
@@ -584,7 +604,8 @@ next pod restart.
     ```bash
     kubectl get pods -n monitoring
     # Expected: prometheus-*, alertmanager-*, grafana, operator,
-    # kube-state-metrics, node-exporter ×4, loki-0, alloy ×4 — all Running
+    # kube-state-metrics, node-exporter ×4, loki-0, alloy ×4,
+    # blackbox-exporter — all Running
     ```
 
 - [ ] Grafana reachable at `https://grafana.yourdomain.com`; login `admin` /

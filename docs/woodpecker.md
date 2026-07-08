@@ -1,7 +1,9 @@
 # Woodpecker CI/CD
 
 !!! success "Status — Live"
-    Live in the cluster — builds container images and reconciles them via GitOps.
+    Live in the cluster — the CI engine gating the homelab repos (today: manifest
+    validation on `homelab-manifests`). This runbook teaches the full pipeline through
+    image builds and GitOps deploys.
 
 End-to-end pipeline: push code, auto-build container images, deploy to k3s via GitOps.
 
