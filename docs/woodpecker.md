@@ -9,10 +9,15 @@ End-to-end pipeline: push code, auto-build container images, deploy to k3s via G
 
 | | |
 |---|---|
-| **Difficulty** | Intermediate–Advanced |
-| **Time Estimate** | 2–3 hours |
+| **URL** | `https://ci.yourdomain.com` |
+| **Namespace** | `woodpecker` |
+| **Chart** | `woodpecker/woodpecker` (umbrella: `server` + `agent` subcharts) |
+| **Storage** | SQLite on `local-path` (server, 2Gi) + `woodpecker-ci-scratch` (agent, per-pipeline) |
+| **Auth** | Forgejo OAuth2 (`WOODPECKER_ADMIN` gate) |
 | **Runs On** | k3s cluster (32 GB node) |
 | **Depends On** | Kubernetes, Traefik, Backups, Forgejo |
+| **Difficulty** | Intermediate–Advanced |
+| **Time Estimate** | 2–3 hours |
 
 ## Step 1: OAuth2 App in Forgejo
 

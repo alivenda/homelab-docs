@@ -7,10 +7,14 @@ Self-hosted push notifications for the entire homelab stack.
 
 | | |
 |---|---|
+| **URL** | `https://ntfy.yourdomain.com` |
+| **Namespace** | `ntfy` |
+| **Chart** | none — raw manifests (`apps/ntfy/manifests/`) |
+| **Storage** | SQLite on `local-path` ×2 — `ntfy-cache` (2Gi), `ntfy-data` (1Gi) |
+| **Auth** | Native (`deny-all` default; provisioned users/tokens) — no SSO |
+| **Depends On** | Kubernetes (k3s), Traefik, Terraform (DNS), [the deploy pattern](apps-deploy-pattern.md) |
 | **Difficulty** | Beginner |
 | **Time Estimate** | 45–60 minutes |
-| **Runs On** | k3s (cluster) |
-| **Depends On** | Kubernetes (k3s), Traefik, Terraform (DNS), [the deploy pattern](apps-deploy-pattern.md) |
 
 ntfy is a pub/sub notification service — services publish messages to named topics and your phone (or any HTTP client) subscribes to receive them. Every other service in this stack can send notifications through it: Prometheus Alertmanager, CI pipeline results, Home Assistant automations.
 
@@ -123,17 +127,6 @@ Save each token to your password manager — you'll paste them into the publishi
 !!! note "No Authelia in front of ntfy"
     ntfy has **no OIDC support**, and ForwardAuth would break the phone apps and every publishing integration (they authenticate directly against ntfy's own users/tokens). ntfy joins Vaultwarden and Home Assistant on the no-SSO list; its `deny-all` native auth is the gate.
 
-## Verification
-
-- [ ] `kubectl get pods -n ntfy` — Running 1/1, 0 restarts (provisioning parsed)
-- [ ] Decode the live token Secret and confirm it holds real `user:tk_...` values, not placeholders:
-  `kubectl -n ntfy get secret ntfy-tokens -o jsonpath='{.data.NTFY_AUTH_TOKENS}' | base64 -d`
-- [ ] `https://ntfy.yourdomain.com` loads the web UI; your admin login works
-- [ ] Anonymous publish rejected: `curl -d test https://ntfy.yourdomain.com/uptime` → 401/403
-- [ ] Token publish arrives on the phone:
-  `curl -H "Authorization: Bearer tk_..." -d "ntfy is live" https://ntfy.yourdomain.com/uptime`
-- [ ] **Backup captured real bytes** — run an on-demand velero backup of the namespace and check `PodVolumeBackup` progress for **non-zero** `totalBytes` on *both* volumes. `Completed` alone proves nothing (see [Backups & DR](backups.md)).
-
 ## Mobile app
 
 Install the ntfy [Android](https://play.google.com/store/apps/details?id=io.heckel.ntfy) or [iOS](https://apps.apple.com/app/ntfy/id1625396347) app. Add your server (`https://ntfy.yourdomain.com`), log in as your admin user, and subscribe to the topics (`uptime`, `alerts`, `ci`, `home`). Per-topic subscriptions mean per-channel notification settings on the phone. iOS delivery depends on `upstream-base-url` being set (above).
@@ -168,3 +161,14 @@ Each service uses *its own* token against *its own* topic:
   (token injected as a CI secret, never committed).
 
 Adding a publisher later = one `auth-users` hash + one `auth-access` line + re-sealing the token Secret with the extra entry, then a rollout restart.
+
+## Verification
+
+- [ ] `kubectl get pods -n ntfy` — Running 1/1, 0 restarts (provisioning parsed)
+- [ ] Decode the live token Secret and confirm it holds real `user:tk_...` values, not placeholders:
+  `kubectl -n ntfy get secret ntfy-tokens -o jsonpath='{.data.NTFY_AUTH_TOKENS}' | base64 -d`
+- [ ] `https://ntfy.yourdomain.com` loads the web UI; your admin login works
+- [ ] Anonymous publish rejected: `curl -d test https://ntfy.yourdomain.com/uptime` → 401/403
+- [ ] Token publish arrives on the phone:
+  `curl -H "Authorization: Bearer tk_..." -d "ntfy is live" https://ntfy.yourdomain.com/uptime`
+- [ ] **Backup captured real bytes** — run an on-demand velero backup of the namespace and check `PodVolumeBackup` progress for **non-zero** `totalBytes` on *both* volumes. `Completed` alone proves nothing (see [Backups & DR](backups.md)).

@@ -7,10 +7,13 @@ Single sign-on, two-factor authentication, and OIDC provider for all cluster ser
 
 | | |
 |---|---|
+| **URL** | `https://auth.yourdomain.com` (Authelia) · `https://lldap.yourdomain.com` (lldap admin UI) |
+| **Namespaces** | `authelia`, `lldap` |
+| **Chart** | `authelia/authelia` (Helm); lldap is raw manifests (Deployment/PVC/Service) |
+| **Storage** | SQLite on `local-path` for both — Authelia `/config` (1Gi), lldap `/data` (1Gi) |
+| **Depends On** | Kubernetes (k3s), Traefik, Vaultwarden |
 | **Difficulty** | Intermediate |
 | **Time Estimate** | 2–3 hours |
-| **Runs On** | k3s (cluster) |
-| **Depends On** | Kubernetes (k3s), Traefik, Vaultwarden |
 
 This runbook deploys two services:
 
@@ -21,16 +24,13 @@ This runbook deploys two services:
 
 Authelia protects services in two fundamentally different ways. Using the wrong mode causes double-login prompts and breaks API/sync clients:
 
-| Mode | When to use | How it works |
-|------|-------------|-------------|
-| **ForwardAuth** | Apps with **no** login page of their own | Traefik intercepts every request, asks Authelia "is this user authenticated?", and either passes the request through or redirects to the Authelia login portal |
-| **OIDC** | Apps with **their own** user system (Nextcloud, Forgejo, Vikunja, etc.) | The app redirects to Authelia for login, receives a token, and manages its own session — Traefik is not involved in the auth check |
+| Mode | When to use | How it works | Apps using it |
+|------|-------------|-------------|----------------|
+| **ForwardAuth** | Apps with **no** login page of their own | Traefik intercepts every request, asks Authelia "is this user authenticated?", and either passes the request through or redirects to the Authelia login portal | Homepage, and any service without its own login screen |
+| **OIDC** | Apps with **their own** user system | The app redirects to Authelia for login, receives a token, and manages its own session — Traefik is not involved in the auth check | Nextcloud, Forgejo, Paperless-ngx, Vikunja, Actual Budget, Mealie, Audiobookshelf, BookStack, and any app with a built-in user system |
 
-**Do not put ForwardAuth in front of Nextcloud, Forgejo, or Paperless.** Their API clients (desktop sync, git CLI, mobile apps) send credentials directly and cannot handle an intermediate redirect. Configure those apps as OIDC clients instead — each app's runbook covers its own OIDC setup.
-
-**Apps that use ForwardAuth in this stack:** Homepage, any service without its own login screen.
-
-**Apps that use OIDC in this stack:** Nextcloud, Forgejo, Paperless-ngx, Vikunja, Actual Budget, Mealie, Audiobookshelf, BookStack, and any app with a built-in user system.
+!!! warning "Never put ForwardAuth in front of an app with its own API clients"
+    Nextcloud, Forgejo, and Paperless have desktop sync, git CLI, or mobile clients that send credentials directly and cannot handle an intermediate redirect — ForwardAuth breaks them. Configure those apps as OIDC clients instead; each app's runbook covers its own OIDC setup.
 
 ---
 
