@@ -4,9 +4,7 @@
     Live in the cluster — files on NFS, database on NAS PostgreSQL.
 
 Self-hosted file sync, calendar, contacts — and later Notes, Bookmarks, and Collabora
-office editing on top of the same install. Architecturally it's the poster child of the
-[Storage & Data Architecture](storage-architecture.md#how-to-decompose-one-app): one app
-that touches **every** storage tier, decomposed so each part lands on the right one.
+office editing on top of the same install.
 
 | | |
 |---|---|
@@ -15,11 +13,14 @@ that touches **every** storage tier, decomposed so each part lands on the right 
 | **Runs On** | k3s — any node. Nothing pins it: files are on NFS, the DB is on the NAS, so the pod can reschedule freely |
 | **Depends On** | Traefik (Gateway), Authelia, NAS PostgreSQL, and the [GitOps deploy pattern](apps-deploy-pattern.md) |
 
-This runbook follows the [deploy pattern](apps-deploy-pattern.md) — everything is
-committed to `homelab-manifests` and reconciled by ArgoCD; the manifests are the source
-of truth and this page documents the decisions. What's *specific* to Nextcloud: the data
-decomposition, a chart that tempts you into three bundled subcharts you don't want, PHP
-reverse-proxy config, background jobs, and OIDC.
+Architecturally it's the poster child of the
+[Storage & Data Architecture](storage-architecture.md#how-to-decompose-one-app): one app
+that touches **every** storage tier, decomposed so each part lands on the right one. This
+runbook follows the [deploy pattern](apps-deploy-pattern.md) — everything is committed to
+`homelab-manifests` and reconciled by ArgoCD; the manifests are the source of truth and
+this page documents the decisions. What's *specific* to Nextcloud: the data decomposition,
+a chart that tempts you into three bundled subcharts you don't want, PHP reverse-proxy
+config, background jobs, and OIDC.
 
 ## The data layout — four parts, four homes
 
