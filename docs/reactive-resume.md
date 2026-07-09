@@ -12,11 +12,10 @@ Self-hosted resume builder with OIDC login, PDF export, and a polished editor.
 | **Runs On** | k3s (cluster) |
 | **Depends On** | Kubernetes (k3s), Traefik, Authelia (OIDC) |
 
-Reactive Resume ([rxresu.me](https://rxresu.me)) is a feature-complete resume builder with real-time editing, multiple templates, and PDF export. ARM64 ✅ — the image is based on `node:24-slim` (multi-arch), and `FLAG_DISABLE_IMAGE_PROCESSING=true` reduces load on ARM hardware. See the [self-hosting docs](https://docs.rxresu.me/overview/self-hosting) for full reference.
+Reactive Resume ([rxresu.me](https://rxresu.me)) is a feature-complete resume builder with real-time editing, multiple templates, and PDF export. ARM64 ✅ — the image is based on `node:24-slim` (multi-arch), and `FLAG_DISABLE_IMAGE_PROCESSING=true` reduces load on ARM hardware. See the [self-hosting docs](https://docs.rxresu.me/overview/self-hosting) for full reference. Reactive Resume requires PostgreSQL and Redis in addition to the app container.
 
-**Auth mode:** OIDC client (Authelia). Reactive Resume has its own user accounts and OIDC integration via standard env vars. Do **not** use ForwardAuth.
-
-Reactive Resume requires PostgreSQL and Redis in addition to the app container.
+!!! warning "OIDC only — not ForwardAuth"
+    Reactive Resume has its own user accounts and OIDC integration via standard env vars. Use the OIDC client below — not ForwardAuth.
 
 ## Step 1: SealedSecrets
 

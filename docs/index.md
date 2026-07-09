@@ -6,18 +6,32 @@ A runbook guide for building a 4-node k3s cluster on a Turing Pi 2, learning Dev
 
 ## Target build
 
-- Turing Pi 2 cluster board (mini-ITX) + 4× Raspberry Pi CM4 with 8 GB RAM
-- Ubiquiti UDM rackmount for VLANs, firewall, DHCP
-- UGREEN DXP6800 Pro NAS (x86, 8 GB DDR5) for bulk media and Immich
-- slate — repurposed Late-2014 Mac mini (16 GB RAM, 256 GB SSD), Proxmox host running Home Assistant OS in a VM (2 vCPU, 4 GB)
-- 1× Raspberry Pi for AdGuard Home DNS (`pyrite` — this build: Pi 3 Model B; add a 2nd for optional failover)
-- Cloudflare-registered domain (~$10/yr)
+| Component | Spec |
+|---|---|
+| Cluster | Turing Pi 2 (mini-ITX) + 4× Raspberry Pi CM4, 8 GB RAM each |
+| Network | Ubiquiti UDM rackmount — VLANs, firewall, DHCP |
+| NAS | UGREEN DXP6800 Pro (x86, 8 GB DDR5) — bulk media and Immich |
+| Home Assistant host | `slate` — repurposed Late-2014 Mac mini (16 GB RAM, 256 GB SSD), Proxmox host running Home Assistant OS in a VM (2 vCPU, 4 GB) |
+| DNS | 1× Raspberry Pi for AdGuard Home (`pyrite` — this build: Pi 3 Model B; add a 2nd for optional failover) |
+| Domain | Cloudflare-registered domain (~$10/yr) |
 
 You can substitute hardware, but commands are written against this exact build. Full parts list (PSU, SSD, UPS, and the rest) is in [Prerequisites](prerequisites.md).
 
 ## What you end up with
 
 A 4-node k3s cluster running self-hosted Git (Forgejo), password manager (Vaultwarden), SSO gateway (Authelia), file sync (Nextcloud), photo library (Immich), document archive (Paperless-ngx), smart-home hub (Home Assistant), monitoring (Prometheus / Grafana / Loki / Alloy), nightly backups (Velero + Garage S3), CI (Woodpecker, gating the repos — the runbook teaches the full image-build pipeline), and GitOps deployment (ArgoCD watching `homelab-manifests`). Plus a full personal cloud layer covering notes, tasks, finance, media automation, books, recipes, and more.
+
+## The five repos
+
+Everything is split across five Git repositories, each with its own purpose, security boundary, and consumer — see [Git Foundation](git.md) for the full rationale and setup steps.
+
+| Repo | Purpose | Consumer |
+|---|---|---|
+| `homelab-docs` | These runbooks, diagrams, decisions log | You (humans) |
+| `homelab-ansible` | OS provisioning playbooks | Your machine |
+| `homelab-manifests` | k3s YAML, Helm values, HTTPRoutes | ArgoCD |
+| `homelab-terraform` | Cloudflare DNS, UniFi config, cloud practice | Your machine → Woodpecker |
+| `homelab-secrets` | Encrypted secrets (sops/age) — **PRIVATE** | Your machine (sops); Sealed Secrets controller for in-cluster manifests |
 
 ## How the runbooks fit together
 
@@ -85,6 +99,14 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
 
 **Runbook or catalog row?** An app earns its own runbook when it has a relational database, multiple components, a non-cluster deployment model, a non-HTTP protocol, is config-heavy, or is an auth backbone. Everything simpler is a one-pattern HTTP app and lives as a row in the [App Catalog](apps-catalog.md). Each app/service page also carries a **Status** banner (Live / Planned / Shelved / Retired) at the top.
 
+| Status | Apps |
+|---|---|
+| Live | Actual Budget · Audiobookshelf · Collabora Online · Donetick · linkding |
+| Planned | Kavita · Mealie · TriliumNext Notes |
+| Retired | Uptime Kuma |
+
+→ [App Catalog](apps-catalog.md) for the per-app deltas, [Deploying an App](apps-deploy-pattern.md) for the shared pattern.
+
 ## How to use this guide
 
 - Read each runbook fully before starting it. Several reference "come back to this after the such-and-such runbook" patterns — skim first so you don't get stuck mid-step.
@@ -97,4 +119,4 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
 
 ## Version
 
-The current source set is v20. See the [Version History](version-history.md) for the prior PDF lineage and what each release added.
+The current source set is v21. See the [Version History](version-history.md) for the prior PDF lineage and what each release added.

@@ -21,6 +21,12 @@ Media automation: **Prowlarr** (indexer manager), **Sonarr** (TV), **Radarr**
 (films), **Lidarr** (music), and **qBittorrent** behind a **gluetun** VPN. The
 stack runs on the cluster and feeds **Plex**, which runs on the NAS.
 
+| | |
+|---|---|
+| **Difficulty** | Intermediate |
+| **Runs On** | k3s (cluster); media + Plex on the NAS |
+| **Depends On** | Kubernetes (k3s), Traefik (Gateway + wildcard TLS), Authelia (ForwardAuth), Terraform (Cloudflare DNS), a VPN provider account |
+
 !!! note "No request UI"
     This stack intentionally omits a request portal (Seerr/Jellyseerr) — content
     is added directly in the arr apps. A Plex-facing request UI can be added
@@ -28,12 +34,6 @@ stack runs on the cluster and feeds **Plex**, which runs on the NAS.
     arm64, listens on 5055, SQLite config in `/app/config` → `local-path`) would
     drop in as another Deployment, with an **unauthenticated** HTTPRoute (it has
     its own Plex login).
-
-| | |
-|---|---|
-| **Difficulty** | Intermediate |
-| **Runs On** | k3s (cluster); media + Plex on the NAS |
-| **Depends On** | Kubernetes (k3s), Traefik (Gateway + wildcard TLS), Authelia (ForwardAuth), Terraform (Cloudflare DNS), a VPN provider account |
 
 !!! note "Source of truth is the manifest"
     The deployed state lives in `homelab-manifests/apps/arr/manifests/` and
@@ -270,6 +270,16 @@ secret) are done.
    Lidarr `/data/media/music`; confirm "Use Hardlinks instead of Copy" is on.
 5. Save every app's API key to Vaultwarden.
 
+## Optional future — move the stack to the NAS
+
+If you later run the arr stack in NAS-side Docker (e.g. after a NAS RAM upgrade),
+hardlinks become node-local with no NFS hop. Stop the cluster Deployments, copy
+the `local-path` configs to NAS local storage, recreate the unified `/data`
+layout in a compose file, and front each NAS UI through Traefik with a
+selector-less `Service` + `EndpointSlice` (the Immich pattern), re-creating the
+ForwardAuth `Middleware` in that namespace. Not required — the cluster + NFS
+design above works today.
+
 ## Verification
 
 - [ ] `kubectl get pods -n arr` — all Running (qbittorrent has 2/2: gluetun + app).
@@ -284,13 +294,3 @@ secret) are done.
 - [ ] `PodVolumeBackup` for each `config` volume shows **bytes > 0** after the
       04:00 UTC velero run (not just `Completed`).
 - [ ] All API keys + the qBittorrent password + the VPN config in Vaultwarden.
-
-## Optional future — move the stack to the NAS
-
-If you later run the arr stack in NAS-side Docker (e.g. after a NAS RAM upgrade),
-hardlinks become node-local with no NFS hop. Stop the cluster Deployments, copy
-the `local-path` configs to NAS local storage, recreate the unified `/data`
-layout in a compose file, and front each NAS UI through Traefik with a
-selector-less `Service` + `EndpointSlice` (the Immich pattern), re-creating the
-ForwardAuth `Middleware` in that namespace. Not required — the cluster + NFS
-design above works today.
