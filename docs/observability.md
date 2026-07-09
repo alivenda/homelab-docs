@@ -225,59 +225,60 @@ One Application (`bootstrap/loki.yaml`), chart `loki` from
 same namespace as the stack so Grafana reaches it without cross-namespace DNS.
 `prune: false` again — pruning would drop the StatefulSet mid-flight.
 
-```yaml
-# infrastructure/loki/values.yaml
-deploymentMode: Monolithic   # the chart's current name for SingleBinary
+??? example "infrastructure/loki/values.yaml"
 
-loki:
-  commonConfig:
-    replication_factor: 1
-  storage:
-    type: filesystem
-  auth_enabled: false
-  schemaConfig:
-    configs:
-      - from: "2024-04-01"
-        store: tsdb
-        object_store: filesystem
-        schema: v13
-        index:
-          prefix: loki_index_
-          period: 24h
-  compactor:
-    retention_enabled: true
-    delete_request_store: filesystem   # mandatory once retention is on
-  limits_config:
-    retention_period: 14d
+    ```yaml
+    deploymentMode: Monolithic   # the chart's current name for SingleBinary
 
-singleBinary:
-  replicas: 1
-  persistence:
-    enabled: true
-    storageClass: local-path
-    size: 10Gi
-  nodeSelector:
-    kubernetes.io/hostname: topaz
+    loki:
+      commonConfig:
+        replication_factor: 1
+      storage:
+        type: filesystem
+      auth_enabled: false
+      schemaConfig:
+        configs:
+          - from: "2024-04-01"
+            store: tsdb
+            object_store: filesystem
+            schema: v13
+            index:
+              prefix: loki_index_
+              period: 24h
+      compactor:
+        retention_enabled: true
+        delete_request_store: filesystem   # mandatory once retention is on
+      limits_config:
+        retention_period: 14d
 
-# Scaled-out components don't run in Monolithic mode — zero them out.
-read:
-  replicas: 0
-write:
-  replicas: 0
-backend:
-  replicas: 0
-chunksCache:
-  enabled: false
-resultsCache:
-  enabled: false
+    singleBinary:
+      replicas: 1
+      persistence:
+        enabled: true
+        storageClass: local-path
+        size: 10Gi
+      nodeSelector:
+        kubernetes.io/hostname: topaz
 
-gateway:
-  enabled: false
-lokiCanary:
-  enabled: false
-test:
-  enabled: false
-```
+    # Scaled-out components don't run in Monolithic mode — zero them out.
+    read:
+      replicas: 0
+    write:
+      replicas: 0
+    backend:
+      replicas: 0
+    chunksCache:
+      enabled: false
+    resultsCache:
+      enabled: false
+
+    gateway:
+      enabled: false
+    lokiCanary:
+      enabled: false
+    test:
+      enabled: false
+    ```
 
 The decisions, briefly:
 
@@ -300,95 +301,96 @@ One Application (`bootstrap/alloy.yaml`), chart `alloy` from
 rolls the DaemonSet across every node at once. Alloy tails `/var/log/pods` on each
 node and pushes to Loki:
 
-```yaml
-# infrastructure/alloy/values.yaml
-alloy:
-  configMap:
-    content: |
-      // Discover pods on THIS node only — each DaemonSet pod tails its own
-      // node's files. K8S_NODE_NAME is injected by the chart (downward API).
-      discovery.kubernetes "pods" {
-        role = "pod"
-        selectors {
-          role  = "pod"
-          field = "spec.nodeName=" + sys.env("K8S_NODE_NAME")
-        }
-      }
+??? example "infrastructure/alloy/values.yaml"
 
-      discovery.relabel "pods" {
-        targets = discovery.kubernetes.pods.targets
+    ```yaml
+    alloy:
+      configMap:
+        content: |
+          // Discover pods on THIS node only — each DaemonSet pod tails its own
+          // node's files. K8S_NODE_NAME is injected by the chart (downward API).
+          discovery.kubernetes "pods" {
+            role = "pod"
+            selectors {
+              role  = "pod"
+              field = "spec.nodeName=" + sys.env("K8S_NODE_NAME")
+            }
+          }
 
-        rule {
-          source_labels = ["__meta_kubernetes_namespace"]
-          target_label  = "namespace"
-        }
-        rule {
-          source_labels = ["__meta_kubernetes_pod_name"]
-          target_label  = "pod"
-        }
-        rule {
-          source_labels = ["__meta_kubernetes_pod_container_name"]
-          target_label  = "container"
-        }
-        rule {
-          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
-          target_label  = "app"
-        }
-        rule {
-          source_labels = ["__meta_kubernetes_pod_node_name"]
-          target_label  = "node"
-        }
-        // Map each container to its log file on the host:
-        // /var/log/pods/<namespace>_<pod>_<uid>/<container>/*.log
-        rule {
-          source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
-          separator     = "/"
-          replacement   = "/var/log/pods/*$1/*.log"
-          target_label  = "__path__"
-        }
-      }
+          discovery.relabel "pods" {
+            targets = discovery.kubernetes.pods.targets
 
-      local.file_match "pods" {
-        path_targets = discovery.relabel.pods.output
-      }
+            rule {
+              source_labels = ["__meta_kubernetes_namespace"]
+              target_label  = "namespace"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_name"]
+              target_label  = "pod"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_container_name"]
+              target_label  = "container"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+              target_label  = "app"
+            }
+            rule {
+              source_labels = ["__meta_kubernetes_pod_node_name"]
+              target_label  = "node"
+            }
+            // Map each container to its log file on the host:
+            // /var/log/pods/<namespace>_<pod>_<uid>/<container>/*.log
+            rule {
+              source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+              separator     = "/"
+              replacement   = "/var/log/pods/*$1/*.log"
+              target_label  = "__path__"
+            }
+          }
 
-      loki.source.file "pods" {
-        targets    = local.file_match.pods.targets
-        forward_to = [loki.process.pods.receiver]
-      }
+          local.file_match "pods" {
+            path_targets = discovery.relabel.pods.output
+          }
 
-      loki.process "pods" {
-        // k3s uses containerd → CRI log format; strip the wrapper.
-        stage.cri {}
-        forward_to = [loki.write.loki.receiver]
-      }
+          loki.source.file "pods" {
+            targets    = local.file_match.pods.targets
+            forward_to = [loki.process.pods.receiver]
+          }
 
-      loki.write "loki" {
-        endpoint {
-          url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
-        }
-      }
+          loki.process "pods" {
+            // k3s uses containerd → CRI log format; strip the wrapper.
+            stage.cri {}
+            forward_to = [loki.write.loki.receiver]
+          }
 
-  mounts:
-    varlog: true
-    extra:
-      - name: positions
-        mountPath: /var/lib/alloy
+          loki.write "loki" {
+            endpoint {
+              url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
+            }
+          }
 
-  securityContext:
-    runAsUser: 0          # pod log files on the host are root-owned
+      mounts:
+        varlog: true
+        extra:
+          - name: positions
+            mountPath: /var/lib/alloy
 
-  storagePath: /var/lib/alloy
+      securityContext:
+        runAsUser: 0          # pod log files on the host are root-owned
 
-controller:
-  type: daemonset         # the config above only works one-collector-per-node
-  volumes:
-    extra:
-      - name: positions
-        hostPath:
-          path: /var/lib/alloy
-          type: DirectoryOrCreate
-```
+      storagePath: /var/lib/alloy
+
+    controller:
+      type: daemonset         # the config above only works one-collector-per-node
+      volumes:
+        extra:
+          - name: positions
+            hostPath:
+              path: /var/lib/alloy
+              type: DirectoryOrCreate
+    ```
 
 What's deliberate here:
 
@@ -413,41 +415,42 @@ Alertmanager is configured in the same kube-prometheus-stack `values.yaml`. The
 routing: everything lands on ntfy (topic `alerts`) except the `Watchdog`
 heartbeat, which is *meant* to fire forever and goes to a null receiver.
 
-```yaml
-# values.yaml (Alertmanager section)
-alertmanager:
-  config:
-    route:
-      group_by: ['namespace', 'alertname']
-      group_wait: 30s
-      group_interval: 5m
-      repeat_interval: 12h
-      receiver: ntfy
-      routes:
-        - receiver: 'null'
-          matchers:
-            - alertname = "Watchdog"
-    receivers:
-      - name: 'null'
-      - name: ntfy
-        webhook_configs:
-          - url: http://ntfy.ntfy.svc.cluster.local/alerts?template=alertmanager
-            send_resolved: true
-            http_config:
-              authorization:
-                type: Bearer
-                credentials_file: /etc/alertmanager/secrets/alertmanager-ntfy-token/token
-  alertmanagerSpec:
-    secrets:
-      - alertmanager-ntfy-token   # mounted at /etc/alertmanager/secrets/<name>/
-    storage:
-      volumeClaimTemplate:
-        spec:
-          storageClassName: nfs-storage
-          resources:
-            requests:
-              storage: 2Gi
-```
+??? example "values.yaml (Alertmanager section)"
+
+    ```yaml
+    alertmanager:
+      config:
+        route:
+          group_by: ['namespace', 'alertname']
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 12h
+          receiver: ntfy
+          routes:
+            - receiver: 'null'
+              matchers:
+                - alertname = "Watchdog"
+        receivers:
+          - name: 'null'
+          - name: ntfy
+            webhook_configs:
+              - url: http://ntfy.ntfy.svc.cluster.local/alerts?template=alertmanager
+                send_resolved: true
+                http_config:
+                  authorization:
+                    type: Bearer
+                    credentials_file: /etc/alertmanager/secrets/alertmanager-ntfy-token/token
+      alertmanagerSpec:
+        secrets:
+          - alertmanager-ntfy-token   # mounted at /etc/alertmanager/secrets/<name>/
+        storage:
+          volumeClaimTemplate:
+            spec:
+              storageClassName: nfs-storage
+              resources:
+                requests:
+                  storage: 2Gi
+    ```
 
 The details that matter:
 
@@ -483,44 +486,45 @@ scrape-target down. What they *can't* know about is your backup jobs and
 certificates — a `PrometheusRule` in the manifests Application fills the gap
 (deploy it after Backups, which provides the velero metrics):
 
-```yaml
-# manifests/alert-rules.yaml (abridged)
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: homelab-alerts
-  namespace: monitoring
-  labels:
-    release: kube-prometheus-stack   # REQUIRED — see warning below
-spec:
-  groups:
-    - name: homelab.velero
-      rules:
-        - alert: VeleroBackupFailed
-          # 1 = last run Completed; 0 covers Failed and PartiallyFailed.
-          expr: velero_backup_last_status{schedule!=""} == 0
-          for: 15m
-          labels:
-            severity: critical
-        - alert: VeleroBackupOverdue
-          # Daily schedule → >26h without a success means a missed/failing run.
-          # The > 0 guard skips the gauge's uninitialized state after a restart.
-          expr: >-
-            velero_backup_last_successful_timestamp{schedule!=""} > 0
-            and time() - velero_backup_last_successful_timestamp{schedule!=""} > 26 * 3600
-          for: 15m
-          labels:
-            severity: warning
-    - name: homelab.cert-manager
-      rules:
-        - alert: CertManagerCertNotReady
-          # Renewal hiccups self-heal in minutes; 1h of not-Ready is a stuck
-          # issuer/challenge that needs a human.
-          expr: max by(namespace, name) (certmanager_certificate_ready_status{condition="False"}) == 1
-          for: 1h
-          labels:
-            severity: warning
-```
+??? example "manifests/alert-rules.yaml (abridged)"
+
+    ```yaml
+    apiVersion: monitoring.coreos.com/v1
+    kind: PrometheusRule
+    metadata:
+      name: homelab-alerts
+      namespace: monitoring
+      labels:
+        release: kube-prometheus-stack   # REQUIRED — see warning below
+    spec:
+      groups:
+        - name: homelab.velero
+          rules:
+            - alert: VeleroBackupFailed
+              # 1 = last run Completed; 0 covers Failed and PartiallyFailed.
+              expr: velero_backup_last_status{schedule!=""} == 0
+              for: 15m
+              labels:
+                severity: critical
+            - alert: VeleroBackupOverdue
+              # Daily schedule → >26h without a success means a missed/failing run.
+              # The > 0 guard skips the gauge's uninitialized state after a restart.
+              expr: >-
+                velero_backup_last_successful_timestamp{schedule!=""} > 0
+                and time() - velero_backup_last_successful_timestamp{schedule!=""} > 26 * 3600
+              for: 15m
+              labels:
+                severity: warning
+        - name: homelab.cert-manager
+          rules:
+            - alert: CertManagerCertNotReady
+              # Renewal hiccups self-heal in minutes; 1h of not-Ready is a stuck
+              # issuer/challenge that needs a human.
+              expr: max by(namespace, name) (certmanager_certificate_ready_status{condition="False"}) == 1
+              for: 1h
+              labels:
+                severity: warning
+    ```
 
 !!! warning "Rules without the release label silently never load"
     kube-prometheus-stack's default `ruleSelector` only loads PrometheusRules
