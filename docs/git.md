@@ -447,7 +447,7 @@ Workflow even for solo work:
     This sounds like overkill solo, but it's exactly the workflow you'd use professionally. The muscle memory transfers directly. It also catches mistakes — "oh that PR plan shows it would delete prod" — before they happen.
 
 !!! note "Once you're on Forgejo"
-    Step 2 above becomes the AGit push — `git push origin HEAD:refs/for/main -o topic=<short-topic>` creates the branch and opens the PR in one command; there's no separate "push, then click New Pull Request" step. See [As-built: AGit](#agit-pushing-a-pr-without-a-fork-or-a-branch-button) above.
+    Item 2 of the workflow above becomes the AGit push — `git push origin HEAD:refs/for/main -o topic=<short-topic>` creates the branch and opens the PR in one command; there's no separate "push, then click New Pull Request" step. See [As-built: AGit](#agit-pushing-a-pr-without-a-fork-or-a-branch-button) above.
 
 ## Verification
 
