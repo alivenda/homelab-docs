@@ -4,7 +4,7 @@ Powering down the **entire stack** — cluster, NAS, Home Assistant host, networ
 
 | | |
 |---|---|
-| **Difficulty** | Easy–Intermediate |
+| **Difficulty** | Beginner–Intermediate |
 | **Time Estimate** | 1–2 hours down, 1–2 hours up (plus however long it stays dark) |
 | **Runs On** | Everything |
 

@@ -4,7 +4,7 @@ What to have and understand before you start: the hardware to buy, the accounts 
 
 | | |
 |---|---|
-| **Difficulty** | Easy |
+| **Difficulty** | Beginner |
 | **Time Estimate** | Varies — shopping + account setup, before any deploy work starts |
 | **See Also** | [Home overview](index.md) for how the runbooks fit together and what you end up with |
 | **Skip If** | You already run a homelab — no later runbook treats this one as a hard dependency |
