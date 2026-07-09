@@ -1,14 +1,14 @@
 # Cold Shutdown & Storage
 
-Powering down the **entire stack** — cluster, NAS, Home Assistant host, network gear — for **more than a day**: a house move, extended travel, electrical work, long-term storage. An overnight power-down is just [Turing Pi's Planned Shutdown & Startup](turing-pi.md#shutdown); longer than that and the secondary effects start to bite — backup jobs silently miss their windows, RTC-less boards drift, and the Sealed Secrets key can cross its rotation boundary while the controller is off.
-
-Turing Pi owns the cluster-internal ordering (etcd snapshot, NFS clients before the NFS server). This page is the layer above it: final data captures while everything is still running, the cross-device ordering, transporting the hardware if it's moving, and a cold-start sequence plus verification checklist for the day it all comes back.
+Powering down the **entire stack** — cluster, NAS, Home Assistant host, network gear — for **more than a day**: a house move, extended travel, electrical work, long-term storage.
 
 | | |
 |---|---|
-| **Difficulty** | Easy–Intermediate |
+| **Difficulty** | Beginner–Intermediate |
 | **Time Estimate** | 1–2 hours down, 1–2 hours up (plus however long it stays dark) |
 | **Runs On** | Everything |
+
+An overnight power-down is just [Turing Pi's Planned Shutdown & Startup](turing-pi.md#shutdown); longer than that and the secondary effects start to bite — backup jobs silently miss their windows, RTC-less boards drift, and the Sealed Secrets key can cross its rotation boundary while the controller is off. Turing Pi owns the cluster-internal ordering (etcd snapshot, NFS clients before the NFS server); this page is the layer above it: final data captures while everything is still running, the cross-device ordering, transporting the hardware if it's moving, and a cold-start sequence plus verification checklist for the day it all comes back.
 
 ## Before you power anything down
 

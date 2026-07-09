@@ -1,31 +1,42 @@
 # Prerequisites
 
-Read this before Git — it covers what you need to **have and understand** before you start: the hardware to buy, the accounts to create, and the platform realities (ARM64 images, namespace conventions, resource budget) that shape every later runbook. For the big picture — how the runbooks fit together and what you end up with — see the [Home overview](index.md). You can skip this runbook if you already run a homelab; none of the later runbooks reference it as a hard dependency.
+What to have and understand before you start: the hardware to buy, the accounts to create, and the platform realities that shape every later runbook.
+
+| | |
+|---|---|
+| **Difficulty** | Beginner |
+| **Time Estimate** | Varies — shopping + account setup, before any deploy work starts |
+| **See Also** | [Home overview](index.md) for how the runbooks fit together and what you end up with |
+| **Skip If** | You already run a homelab — no later runbook treats this one as a hard dependency |
 
 ## Hardware Shopping List
 
 This guide is written against a specific build. You can substitute (an x86 mini-PC cluster, a single beefy node, an existing NAS, etc.), but the runbook commands assume this exact hardware:
 
-- Turing Pi 2 cluster board (mini-ITX)
-- 4× Raspberry Pi CM4 modules with 8 GB RAM and WiFi — 2× with 32 GB eMMC (ruby (Node 1), topaz (Node 3)), 2× with 16 GB eMMC (emerald (Node 2), amethyst (Node 4))
-- 1× SATA III SSD (any size 250 GB+) for cluster NFS storage — connected to topaz (Node 3)
-- PicoPSU (24-pin), **120 W** — the cluster pulls 30–60 W under load, so 120 W leaves comfortable headroom while staying tiny and silent. A standard ATX PSU works too, but it's bulky and runs inefficiently at this low draw.
-- Ubiquiti UDM-Pro or UDM-SE for VLANs, firewall, DHCP
-- UGREEN DXP6800 Pro NAS (or any NAS that runs Docker) for bulk media + Immich + offsite-friendly bulk storage
-- 1× dedicated host for Home Assistant OS — this build uses **slate**, a repurposed Late-2014 Mac mini (16 GB RAM, 256 GB SSD) running Proxmox, with HAOS as a VM (2 vCPU, 4 GB RAM). Kept off the cluster so the smart-home hub survives cluster reboots and upgrades. 4 GB for the VM matches HA's own reference spec; only raise it for Frigate NVR or long-retention history. (A Raspberry Pi 5 (4 GB) running HAOS bare-metal is an equally good dedicated host if you're buying new rather than repurposing.)
-- 1× Raspberry Pi for AdGuard Home DNS (`pyrite`; this build uses a Pi 3 Model B — add a 2nd for optional failover) — run natively rather than on k3s so DNS stays up independently of the cluster
-- Domain name registered through Cloudflare (~$10/yr for `.com` / `.net` / etc.)
-- Optional: UPS — recommended once you start storing real data on the cluster ([sizing in Turing Pi](turing-pi.md#power-ups-nut-for-graceful-shutdown))
+| Component | Spec | Notes |
+|---|---|---|
+| Turing Pi 2 cluster board | mini-ITX | |
+| 4× Raspberry Pi CM4 modules | 8 GB RAM + WiFi each — 2× 32 GB eMMC (ruby / Node 1, topaz / Node 3), 2× 16 GB eMMC (emerald / Node 2, amethyst / Node 4) | |
+| SATA III SSD | any size 250 GB+ | Cluster NFS storage — connects to topaz (Node 3) |
+| PicoPSU (24-pin) | 120 W | The cluster pulls 30–60 W under load, so 120 W leaves comfortable headroom while staying tiny and silent. A standard ATX PSU works too, but it's bulky and runs inefficiently at this low draw. |
+| Ubiquiti UDM-Pro or UDM-SE | — | VLANs, firewall, DHCP |
+| UGREEN DXP6800 Pro NAS | or any NAS that runs Docker | Bulk media + Immich + offsite-friendly bulk storage |
+| Dedicated Home Assistant OS host | this build uses **slate**, a repurposed Late-2014 Mac mini (16 GB RAM, 256 GB SSD) running Proxmox, with HAOS as a VM (2 vCPU, 4 GB RAM) | Kept off the cluster so the smart-home hub survives cluster reboots and upgrades. 4 GB for the VM matches HA's own reference spec; only raise it for Frigate NVR or long-retention history. A Raspberry Pi 5 (4 GB) running HAOS bare-metal is an equally good dedicated host if you're buying new rather than repurposing. |
+| Raspberry Pi for AdGuard Home DNS | `pyrite`; this build uses a Pi 3 Model B — add a 2nd for optional failover | Run natively rather than on k3s so DNS stays up independently of the cluster |
+| Domain name | registered through Cloudflare, ~$10/yr for `.com` / `.net` / etc. | |
+| UPS (optional) | | Recommended once you start storing real data on the cluster — [sizing in Turing Pi](turing-pi.md#power-ups-nut-for-graceful-shutdown) |
 
 ## Accounts You'll Need
 
 Create these before starting Git. All free tiers are sufficient.
 
-- **GitHub** — primary Git host (Git, Kubernetes, Forgejo, Home Assistant)
-- **Cloudflare** — DNS + free TLS via DNS-01 (Traefik, Terraform)
-- **Tailscale** — free tier covers up to 100 devices
-- **Docker Hub** (optional) — for pulling public images without rate limits
-- **A bootstrap password manager** (1Password, Bitwarden Cloud, KeePassXC) — you will replace this with self-hosted Vaultwarden later, but you need somewhere to store PATs and API tokens during the bootstrap weeks
+| Account | Why |
+|---|---|
+| **GitHub** | Primary Git host (Git, Kubernetes, Forgejo, Home Assistant) |
+| **Cloudflare** | DNS + free TLS via DNS-01 (Traefik, Terraform) |
+| **Tailscale** | Free tier covers up to 100 devices |
+| **Docker Hub** (optional) | Pulling public images without rate limits |
+| **A bootstrap password manager** (1Password, Bitwarden Cloud, KeePassXC) | You will replace this with self-hosted Vaultwarden later, but you need somewhere to store PATs and API tokens during the bootstrap weeks |
 
 ## Namespace Strategy
 

@@ -8,6 +8,27 @@ once and a per-app storage line never reads as arbitrary again.
     The deployed StorageClasses live in `homelab-manifests/infrastructure/`. This page
     is the *rationale and the rules*; it deliberately doesn't restate YAML.
 
+## The four storage tiers
+
+| Tier | Backing | Where | Use it for |
+|---|---|---|---|
+| **Bulk / flat / RWX** | topaz SATA SSD over NFS | `nfs-storage` (default class) | Media, Nextcloud *files*, document blobs, config dirs — anything that isn't a live database |
+| **Embedded DB (node-local)** | each node's local disk | `local-path` (standalone provisioner) | SQLite app data — node-pinned, POSIX-correct |
+| **Relational DB** | NAS (x86), Docker | Postgres / MariaDB server on the NAS | Nextcloud, Paperless, Reactive Resume, BookStack, … |
+| **Cache (ephemeral)** | node memory | in-cluster Redis/Valkey pod | Caches for Paperless, Reactive Resume — not a system of record, no durable PVC |
+
+!!! note "Implementation status (2026-06)"
+    - `nfs-storage` — **live** (`infrastructure/nfs-provisioner`).
+    - `local-path` standalone provisioner — **live** (`infrastructure/local-path-provisioner`).
+      k3s was installed with `--disable local-storage`, so the built-in class is gone; this
+      separate provisioner gives SQLite apps a correct home. The SQLite apps (Vaultwarden,
+      lldap, Forgejo, linkding, …) live on it, and a backup→restore drill confirmed
+      local-path volumes round-trip through velero (see [below](#the-local-path-tier)).
+    - NAS relational DB — **live** (PostgreSQL 18 on the NAS at `10.0.20.50:5433`, see
+      [NAS PostgreSQL](nas-postgres.md)); databases are provisioned per app at each app's
+      bring-up. MariaDB stays unbuilt until an app forces it. Immich's own Postgres
+      predates the shared server and stays separate.
+
 ## The one-paragraph version
 
 The cluster nodes are ARM CM4s with eMMC plus a single shared SATA SSD — strong at
@@ -29,27 +50,6 @@ Two hardware facts drive every choice below:
    writes; the nodes have only eMMC (slow, write-endurance-limited, *and the boot medium*)
    plus the one SATA SSD on topaz that already serves NFS. Real relational databases belong
    on x86 hardware with a proper disk.
-
-## The four storage tiers
-
-| Tier | Backing | Where | Use it for |
-|---|---|---|---|
-| **Bulk / flat / RWX** | topaz SATA SSD over NFS | `nfs-storage` (default class) | Media, Nextcloud *files*, document blobs, config dirs — anything that isn't a live database |
-| **Embedded DB (node-local)** | each node's local disk | `local-path` (standalone provisioner) | SQLite app data — node-pinned, POSIX-correct |
-| **Relational DB** | NAS (x86), Docker | Postgres / MariaDB server on the NAS | Nextcloud, Paperless, Reactive Resume, BookStack, … |
-| **Cache (ephemeral)** | node memory | in-cluster Redis/Valkey pod | Caches for Paperless, Reactive Resume — not a system of record, no durable PVC |
-
-!!! warning "Implementation status (2026-06)"
-    - `nfs-storage` — **live** (`infrastructure/nfs-provisioner`).
-    - `local-path` standalone provisioner — **live** (`infrastructure/local-path-provisioner`).
-      k3s was installed with `--disable local-storage`, so the built-in class is gone; this
-      separate provisioner gives SQLite apps a correct home. The SQLite apps (Vaultwarden,
-      lldap, Forgejo, linkding, …) live on it, and a backup→restore drill confirmed
-      local-path volumes round-trip through velero (see [below](#the-local-path-tier)).
-    - NAS relational DB — **live** (PostgreSQL 18 on the NAS at `10.0.20.50:5433`, see
-      [NAS PostgreSQL](nas-postgres.md)); databases are provisioned per app at each app's
-      bring-up. MariaDB stays unbuilt until an app forces it. Immich's own Postgres
-      predates the shared server and stays separate.
 
 ## How to decompose one app
 

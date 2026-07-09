@@ -1,12 +1,14 @@
 # Deploying an App — the GitOps Pattern
 
-Every user-facing service on the cluster is deployed the same way. This is that procedure, written **once**. Per-app specifics live either in the [App Catalog](apps-catalog.md) (simple services — just the deltas) or in a dedicated runbook (services with real complexity: Arr stack, Authelia, Immich, Home Assistant, Ollama, ntfy).
+Every user-facing service on the cluster is deployed the same way. This is that procedure, written **once**.
 
 | | |
 |---|---|
 | **Difficulty** | Intermediate |
 | **Runs On** | k3s (cluster) |
 | **Depends On** | A working [Traefik](traefik.md) `Gateway` + wildcard TLS, and [Authelia](authelia.md) for auth |
+
+Per-app specifics live either in the [App Catalog](apps-catalog.md) (simple services — just the deltas) or in a dedicated runbook (services with real complexity: Arr stack, Authelia, Immich, Home Assistant, Ollama, ntfy).
 
 !!! note "Source of truth is the manifest, not this page"
     The deployed state lives in `homelab-manifests/apps/<app>/`. This runbook documents the *procedure*; it deliberately does not restate per-app YAML. App-specific values (chart version, env, hostname) belong in the manifest plus the catalog row — not duplicated into prose that drifts.
