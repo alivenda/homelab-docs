@@ -1,12 +1,15 @@
 # Personal Cloud Stack — Complete Service Guide
 
-A comprehensive review of every awesome-selfhosted category mapped against your specific hardware, existing stack, and day-to-day needs. Written against the Turing Pi 2 cluster, UGREEN DXP6800 Pro NAS, slate (a Late-2014 Mac mini running Home Assistant OS as a Proxmox VM), and a dedicated Raspberry Pi for DNS (`pyrite`).
+A comprehensive review of every awesome-selfhosted category mapped against your specific hardware, existing stack, and day-to-day needs — written against the Turing Pi 2 cluster, UGREEN DXP6800 Pro NAS, slate (a Late-2014 Mac mini running Home Assistant OS as a Proxmox VM), and a dedicated Raspberry Pi for DNS (`pyrite`).
 
-!!! info "Planning snapshot (June 2026)"
-    This page is the gap analysis that chose the stack. The priority markers (🔴/🟡)
-    describe how much a service was *wanted at that moment*, not deployment state — many
-    "gaps" below are since **live**. Current status lives in the
-    [App Catalog](apps-catalog.md) and each service page's Status banner.
+!!! note "Decision record, not the status page"
+    This page is the gap analysis that chose the stack (2026-05/06) — it stays as
+    the record of what was decided and why. Priority markers (🔴/🟡) describe how
+    much a service was *wanted at that moment*, not what's deployed today; for
+    current status see the [App Catalog](apps-catalog.md) and the
+    Live/Planned/Retired table on [the home page](index.md). When a decision
+    below has since changed — a service shelved, a fork picked over its rival —
+    the entry says so rather than being silently rewritten.
 
 ---
 
@@ -19,7 +22,13 @@ A comprehensive review of every awesome-selfhosted category mapped against your 
 | **Home Assistant node (slate — Mac mini)** | x86-64, 16 GB RAM / 256 GB SSD, Proxmox | Home Assistant OS (VM: 2 vCPU, 4 GB) |
 | **DNS node (`pyrite` — Pi 3 Model B)** | ARM64, 1 GB RAM | AdGuard Home (optional 2nd, `marcasite`, for failover) |
 
-> **NAS RAM is a meaningful constraint.** At 8 GB, Plex + Immich can consume 2.5–6 GB under load, leaving 2–5.5 GB headroom. Enough to run the Arr stack locally (if you prefer), but not enough for Ollama without a RAM upgrade. The DXP6800 Pro accepts standard DDR5 SO-DIMMs — upgrading to 16 GB (~$35–50) opens up AI workloads and makes the NAS more comfortable overall. This doc marks services that require the upgrade `⚠️ NAS RAM upgrade recommended`.
+!!! note "NAS RAM is a meaningful constraint"
+    At 8 GB, Plex + Immich can consume 2.5–6 GB under load, leaving 2–5.5 GB
+    headroom — comfortable for Audiobookshelf (the one service from this stack
+    that landed NAS-side), but not enough for Ollama without a RAM upgrade. The
+    DXP6800 Pro accepts standard DDR5 SO-DIMMs — upgrading to 16 GB (~$35–50)
+    opens up AI workloads and makes the NAS more comfortable overall. Services
+    that need the upgrade are marked `⚠️ NAS RAM upgrade recommended`.
 
 ### Cluster RAM Budget
 
@@ -46,6 +55,7 @@ Headroom is comfortable. OCR (Paperless) and CI builds (Woodpecker) are still th
 | 🔴 **High priority gap** | Common daily-driver cloud replacement |
 | 🟡 **Good addition** | Worthwhile, lower urgency |
 | ⚪ **Skip / edge case** | Niche, heavy, ARM issues, or not relevant |
+| ⬛ **Shelved / retired** | Decided against or removed after this page was written — see the entry for why |
 | 🖥️ **Cluster** | Run on k3s |
 | 💾 **NAS** | Run via Docker Compose on DXP6800 |
 | 🌐 **DNS** | Run on a dedicated Raspberry Pi (`pyrite`; optional 2nd) |
@@ -103,7 +113,8 @@ You already have Traefik. Authelia adds a single login + 2FA layer, wired two di
 
 **Why before everything else:** every new service you add will want auth. Doing it now means each future service gets SSO for free.
 
-> **Authentik** is the heavier alternative (~600 MB Python). **Authelia** (Go, ~100 MB) is the right fit for your cluster.
+!!! tip "Authentik is the heavier alternative"
+    ~600 MB Python vs. Authelia's ~100 MB Go — Authelia is the right fit for your cluster.
 
 ### 🔴 Push Notifications — ntfy
 **Category:** Communication | **Run:** 🖥️ Cluster | **RAM:** ~50 MB | **ARM64:** ✅ Official | **Runbook:** [ntfy](ntfy.md)
@@ -152,7 +163,8 @@ The most complete self-hosted task app: lists, kanban, Gantt, calendar view, tea
 
 **Replaces:** Todoist, TickTick, Apple Reminders, Notion tasks.
 
-> **AppFlowy** is the Notion alternative but is significantly heavier and ARM builds are less polished. Skip unless you specifically want a Notion replacement rather than a task manager.
+!!! tip "AppFlowy is the Notion alternative"
+    Significantly heavier and ARM builds are less polished. Skip unless you specifically want a Notion replacement rather than a task manager.
 
 ### 🔴 Finance — Actual Budget
 **Category:** Money & Budgeting | **Run:** 🖥️ Cluster | **RAM:** ~100–200 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](apps-catalog.md#actual-budget)
@@ -163,8 +175,17 @@ The most complete self-hosted task app: lists, kanban, Gantt, calendar view, tea
 
 **Replaces:** YNAB ($14/mo), Mint (defunct), spreadsheets.
 
-### 🔴 Media Feeder Stack (Arr Suite + Downloader)
+### ⬛ Media Feeder Stack (Arr Suite + Downloader) *(shelved here)*
 **Category:** Media Management | **Run:** 💾 NAS or 🖥️ Cluster (pointing at NAS NFS storage) | **ARM64:** ✅ All official | **Runbook:** [Arr Stack](arr-stack.md)
+
+!!! warning "Decision revised — shelved 2026-06-16, never deployed"
+    Scoped here as a 🔴 high-priority gap; on reflection it doesn't fit the actual
+    need. The library is physical-media-first (ripped straight into Plex, which
+    handles its own metadata), and the only downloads wanted are titles the public
+    torrent indexers reachable without a private tracker don't carry. Manifests
+    were written but never applied. The full reasoning, the revival decision
+    tree, and the as-designed shape (**without** a Seerr request portal) live in
+    [Arr Stack](arr-stack.md).
 
 This is the automation layer that feeds Plex. Without it, adding new shows/movies/music is manual.
 
@@ -174,12 +195,12 @@ This is the automation layer that feeds Plex. Without it, adding new shows/movie
 | **Radarr** | Movie automation | ~200–400 MB |
 | **Lidarr** | Music automation | ~150–300 MB |
 | **Prowlarr** | Indexer management (replaces Jackett) | ~100–200 MB |
-| **Seerr** (Overseerr/Jellyseerr) | Request portal UI | ~200–300 MB |
+| ~~**Seerr**~~ (Overseerr/Jellyseerr) | Request portal UI — dropped from the eventual design | ~200–300 MB |
 | **qBittorrent** or **SABnzbd** | Actual downloading | ~100–300 MB |
 
 **At 8 GB NAS RAM:** run on the cluster pointing to NFS — all four arr apps handle NFS paths fine and this keeps the NAS comfortable under load.
 
-**At 16 GB NAS RAM (recommended):** run everything on the NAS via Docker Compose. This is the better architecture because Sonarr/Radarr can **hardlink** completed downloads directly into the Plex library — a second directory entry pointing at the same inode, with no data copied, rather than a full NFS transfer. Keep all paths under a single root (e.g. `/data/downloads/` and `/data/media/`) so hardlinks work across the same filesystem.
+**At 16 GB NAS RAM:** run everything on the NAS via Docker Compose. This is the better architecture because Sonarr/Radarr can **hardlink** completed downloads directly into the Plex library — a second directory entry pointing at the same inode, with no data copied, rather than a full NFS transfer. Keep all paths under a single root (e.g. `/data/downloads/` and `/data/media/`) so hardlinks work across the same filesystem.
 
 ```
 /data/
@@ -300,7 +321,12 @@ Web dashboard to wake sleeping machines (your desktop, NAS if asleep, etc.) via 
 
 **Only practical after NAS RAM upgrade to 16 GB.**
 
-> **Consider the desktop instead.** Your daily-driver desktop (RTX 3080) would run 7–13B models an order of magnitude faster than the NAS's CPU. You already deploy **Upsnap** (WOL) in this doc — wake the desktop on demand, reach it over Tailscale, and point a cluster-hosted Open-WebUI at it. Tradeoff: the desktop isn't always on, so it suits interactive use, not 24/7 background tasks.
+!!! tip "Consider the desktop instead"
+    Your daily-driver desktop (RTX 3080) would run 7–13B models an order of
+    magnitude faster than the NAS's CPU. You already deploy **Upsnap** (WOL) in
+    this doc — wake the desktop on demand, reach it over Tailscale, and point a
+    cluster-hosted Open-WebUI at it. Tradeoff: the desktop isn't always on, so
+    it suits interactive use, not 24/7 background tasks.
 
 **Replaces:** ChatGPT subscription (partially — local models are less capable but private).
 
@@ -359,7 +385,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Learning / Courses** | ⚪ Skip | Personal use; heavy platforms (Canvas) |
 | **Manufacturing** | ⚪ Skip | |
 | **Maps + GPS** | 🟡 Dawarich + OwnTracks | See Part 4 |
-| **Media Management** | 🔴 Arr stack (Sonarr/Radarr/Lidarr/Prowlarr + Seerr) | See Part 3 |
+| **Media Management** | ⬛ Arr stack — shelved, never deployed | See Part 3; [Arr Stack](arr-stack.md) has the full reasoning |
 | **Media Streaming — Audio** | ✅ Plex/Plexamp, 🔴 Audiobookshelf | Navidrome redundant — Plexamp covers the same ground |
 | **Media Streaming — Multimedia** | ✅ Plex; 🟡 Jellyfin NAS-side if transcoding limits hit | The 8505's Intel Quick Sync handles hardware transcoding for either Plex or Jellyfin |
 | **Media Streaming — Video** | ✅ Plex | PeerTube only if you want public video hosting |
@@ -444,7 +470,7 @@ If starting fresh, add services in this sequence. AdGuard Home goes on the dedic
 8.  Actual Budget             (catalog)        → financial tracking
 9.  Vikunja                   (runbook)        → task management
 10. Donetick                  (catalog)        → recurring chores and habits
-11. Arr stack + Seerr         (runbook)        → Plex automation (Sonarr/Radarr/Lidarr/Prowlarr)
+11. Arr stack                 (shelved)        → decided against 2026-06-16, see runbook
 12. Audiobookshelf            (catalog)        → audiobooks + podcasts
 13. Kavita                    (catalog)        → e-book library
 14. Mealie                    (catalog)        → recipes
@@ -467,12 +493,12 @@ At 8 GB RAM, your NAS can sustain:
 - Immich (2–4 GB)
 - **Total: 2.5–6 GB → 2–5.5 GB headroom**
 
-The Arr stack (1–1.5 GB total) *can* run on the NAS at 8 GB, but it will be tight during Plex transcode + Immich ML processing spikes. Running arr on the cluster (pointing to NFS) is safer and keeps the NAS headroom available. Upgrading to **16 GB DDR5 SO-DIMM** ($35–50) makes everything comfortable and unlocks:
-- Arr stack on NAS (direct disk access, no NFS hop for downloads)
+The Arr-stack RAM math below predates its shelving (see Part 3) — kept in case revival is ever back on the table. Ollama is the upgrade's actual live driver today. Upgrading to **16 GB DDR5 SO-DIMM** ($35–50) unlocks:
 - Ollama with small models (Phi-3 mini, Llama 3.2 3B)
 - Jellyfin as a hardware-transcoding backup to Plex
+- Arr stack on NAS, if ever revived (direct disk access, no NFS hop for downloads; at 8 GB it would have been tight during Plex transcode + Immich ML spikes, so cluster+NFS was the planned fallback)
 
-Until then, run the Arr stack on the cluster pointing at NFS — it works fine.
+Without the upgrade, Ollama isn't practical and the NAS stays at Plex + Immich (+ Audiobookshelf) only.
 
 ---
 
@@ -487,7 +513,7 @@ Until then, run the Arr stack on the cluster pointing at NFS — it works fine.
 | 🔴 High | linkding | Browser cloud bookmarks |
 | 🔴 High | Vikunja | Todoist, TickTick |
 | 🔴 High | Actual Budget | YNAB |
-| 🔴 High | Arr stack + Seerr | Manual Plex library management |
+| ⬛ Shelved | Arr stack | Manual Plex library management — decided against, see [Arr Stack](arr-stack.md) |
 | 🔴 High | Audiobookshelf | Audible, podcast apps |
 | 🔴 High | Kavita | Kindle, Calibre desktop |
 | 🔴 High | Homepage | Browser tab chaos |
