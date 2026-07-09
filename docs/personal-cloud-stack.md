@@ -6,10 +6,10 @@ A comprehensive review of every awesome-selfhosted category mapped against your 
     This page is the gap analysis that chose the stack (2026-05/06) — it stays as
     the record of what was decided and why. Priority markers (🔴/🟡) describe how
     much a service was *wanted at that moment*, not what's deployed today; for
-    current status see the [App Catalog](apps-catalog.md) and the Live/Planned/
-    Retired table on [the home page](index.md). When a decision below has since
-    changed — a service shelved, a fork picked over its rival — the entry says so
-    rather than being silently rewritten.
+    current status see the [App Catalog](apps-catalog.md) and the
+    Live/Planned/Retired table on [the home page](index.md). When a decision
+    below has since changed — a service shelved, a fork picked over its rival —
+    the entry says so rather than being silently rewritten.
 
 ---
 
@@ -24,8 +24,8 @@ A comprehensive review of every awesome-selfhosted category mapped against your 
 
 !!! note "NAS RAM is a meaningful constraint"
     At 8 GB, Plex + Immich can consume 2.5–6 GB under load, leaving 2–5.5 GB
-    headroom — comfortable for Audiobookshelf (the one NAS-Docker app actually
-    running today), but not enough for Ollama without a RAM upgrade. The
+    headroom — comfortable for Audiobookshelf (the one service from this stack
+    that landed NAS-side), but not enough for Ollama without a RAM upgrade. The
     DXP6800 Pro accepts standard DDR5 SO-DIMMs — upgrading to 16 GB (~$35–50)
     opens up AI workloads and makes the NAS more comfortable overall. Services
     that need the upgrade are marked `⚠️ NAS RAM upgrade recommended`.
