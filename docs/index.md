@@ -31,7 +31,7 @@ Everything is split across five Git repositories, each with its own purpose, sec
 | `homelab-ansible` | OS provisioning playbooks | Your machine |
 | `homelab-manifests` | k3s YAML, Helm values, HTTPRoutes | ArgoCD |
 | `homelab-terraform` | Cloudflare DNS, UniFi config, cloud practice | Your machine → Woodpecker |
-| `homelab-secrets` | Encrypted secrets (sops/age) — **PRIVATE** | Your machine (sops); Sealed Secrets controller for in-cluster manifests |
+| `homelab-secrets` | Encrypted secrets (sops/age) — **PRIVATE** | Your machine (via sops) |
 
 ## How the runbooks fit together
 
