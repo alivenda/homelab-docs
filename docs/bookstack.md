@@ -12,11 +12,10 @@ Self-hosted wiki and knowledge base with OIDC login and role-based access.
 | **Runs On** | k3s (cluster) |
 | **Depends On** | Kubernetes (k3s), Traefik, Authelia (OIDC) |
 
-BookStack ([bookstackapp.com](https://www.bookstackapp.com)) is a structured wiki platform organised around Shelves → Books → Chapters → Pages. ARM64 ✅ (`lscr.io/linuxserver/bookstack` ships multiarch via LinuxServer.io). See the [official documentation](https://www.bookstackapp.com/docs/) for full reference.
+BookStack ([bookstackapp.com](https://www.bookstackapp.com)) is a structured wiki platform organised around Shelves → Books → Chapters → Pages. ARM64 ✅ (`lscr.io/linuxserver/bookstack` ships multiarch via LinuxServer.io). See the [official documentation](https://www.bookstackapp.com/docs/) for full reference. BookStack requires a **MariaDB** database — both are deployed here.
 
-**Auth mode:** OIDC client (Authelia). BookStack has its own user and role system. Do **not** use ForwardAuth.
-
-BookStack requires a **MariaDB** database — both are deployed here.
+!!! warning "OIDC only — not ForwardAuth"
+    BookStack has its own user and role system. Use the OIDC client below — not ForwardAuth.
 
 ## Step 1: MariaDB
 
