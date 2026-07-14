@@ -270,7 +270,6 @@ The mount task below references the filesystem by label, so future reboots resol
           --disable servicelb \
           --disable traefik \
           --disable local-storage \
-          --disable-cloud-controller \
           --token {{ k3s_token }} \
           --node-ip {{ k3s_server_ip }}
       args:
