@@ -94,33 +94,115 @@ A successful decrypt confirms the whole SOPS layer. Each repo unlocks a differen
 | `homelab-terraform` | `cloudflare/secrets.enc.yaml` | Cloudflare API token — needed for `tofu apply` |
 | `homelab-secrets` | `sealed-secrets-controller-key.enc.yaml` | the cluster's Sealed Secrets signing key (Step 3) |
 
-### Step 3 — Restore the Sealed Secrets signing key (cluster rebuild only)
+### Step 3 — Restore the Sealed Secrets signing keys (cluster rebuild only)
 
-Only needed when the cluster was rebuilt. A fresh Sealed Secrets controller generates a **new** keypair and cannot decrypt secrets that were sealed against the old one — so every `SealedSecret` committed to `homelab-manifests` would be undecryptable. Restoring the backed-up signing key avoids re-sealing anything.
+Only needed when the cluster was rebuilt. A fresh Sealed Secrets controller generates a **new** keypair and cannot decrypt secrets that were sealed against the old one — so every `SealedSecret` committed to `homelab-manifests` would be undecryptable. Restoring the backed-up signing keys avoids re-sealing anything.
 
 !!! warning "Restore ALL keys, not just the day-zero one"
     The controller rotates keys every 30 days, and each SealedSecret decrypts only under
     the key it was sealed with. The authoritative source is the **automated Garage dump**
-    (all keys — restore drill in `homelab-manifests/infrastructure/sealed-secrets/README.md`);
-    the `homelab-secrets` file below is the day-zero fallback and only covers secrets
-    sealed before the first rotation.
+    (every key ever minted, shipped daily by the CronJob in
+    `homelab-manifests/infrastructure/sealed-secrets/`); the `homelab-secrets` file is the
+    day-zero fallback and only covers secrets sealed before the first rotation.
+
+The dump sits in the `sealed-secrets-keys` bucket behind an rclone `crypt` remote, and nothing needed to open it lives in the cluster — that circularity is deliberate. Rebuild access from two sources:
+
+**S3 credentials** — recover them from the Garage admin CLI on the NAS:
+
+```sh
+docker exec -ti garage /garage bucket info sealed-secrets-keys    # shows which key has access
+docker exec -ti garage /garage key info <key-name> --show-secret  # prints the Key ID (GK…) + Secret
+```
+
+**crypt password** — retrieve it from your password manager, then encode it the way rclone configs expect. Reading from stdin keeps it out of shell history:
+
+```sh
+rclone obscure -    # type the password, Enter, then Ctrl-D; copy the printed token
+```
+
+Write both into a throwaway `rclone.conf` (the crypt remote uses rclone's default filename encryption, so no other settings are needed):
+
+```ini
+[garage]
+type = s3
+provider = Other
+access_key_id = GK…
+secret_access_key = …
+endpoint = http://10.0.20.50:9000
+region = us-east-1
+force_path_style = true
+
+[crypt]
+type = crypt
+remote = garage:sealed-secrets-keys
+password = …    # the obscured token, not the raw password
+```
+
+Then restore:
 
 ```bash
 # 1. Ensure the controller exists (ArgoCD installs it into the sealed-secrets namespace).
 kubectl get deploy -n sealed-secrets sealed-secrets-controller
 
-# 2. Decrypt the backed-up signing key on your machine and apply it to the cluster.
-sops --decrypt sealed-secrets-controller-key.enc.yaml | kubectl apply -f -
+# 2. Pick the newest dump and apply ALL keys (strip server-side metadata first).
+rclone --config rclone.conf ls crypt:
+rclone --config rclone.conf cat crypt:sealing-keys-<date>.json \
+  | jq 'del(.items[].metadata.resourceVersion, .items[].metadata.uid, .items[].metadata.creationTimestamp, .items[].metadata.managedFields)' \
+  | kubectl apply -f -
 
-# 3. Restart the controller so it loads the restored key.
+# 3. Restart the controller so it loads the restored keys.
 kubectl delete pod -n sealed-secrets -l app.kubernetes.io/name=sealed-secrets
 
-# 4. Confirm the restored key is present and active.
+# 4. Confirm: one kubernetes.io/tls Secret per key ever minted — ALL of them
+#    labelled =active (old keys stay active for unsealing; never filter on it).
 kubectl get secret -n sealed-secrets -l sealedsecrets.bitnami.com/sealed-secrets-key
-# Expected: a kubernetes.io/tls secret labelled ...sealed-secrets-key=active
 ```
 
-Re-syncing `homelab-manifests` in ArgoCD will now decrypt every existing SealedSecret normally — no manifest changes required.
+Re-syncing `homelab-manifests` in ArgoCD will now decrypt every existing SealedSecret normally — no manifest changes required. Shred the throwaway `rclone.conf` when done.
+
+If Garage itself is gone, fall back to the day-zero export — it only unlocks secrets sealed before the first rotation:
+
+```sh
+sops --decrypt homelab-secrets/sealed-secrets-controller-key.enc.yaml | kubectl apply -f -
+```
+
+### Drill the whole chain — no dead machine required
+
+A restore path that has never been exercised is a hope, not a backup. The chain above drills read-only in about twenty minutes, with the live cluster untouched.
+
+**1 — Simulate the dead machine.** Move the real key aside and confirm decryption actually breaks. A passing drill proves nothing if a stale on-disk key was quietly filling in:
+
+```sh
+mv ~/.config/sops/age/keys.txt ~/.config/sops/age/keys.txt.aside
+sops --decrypt homelab-secrets/sealed-secrets-controller-key.enc.yaml   # MUST fail
+```
+
+**2 — Restore from the password manager alone.** Paste the saved key into a throwaway file on tmpfs (RAM-backed — never touches disk, gone on reboot), point SOPS at it, then re-run Steps 1–2 above: `age-keygen -y` must print the expected recipient, and one file from each repo must decrypt.
+
+```sh
+mkdir -m 700 /tmp/age-drill
+vim /tmp/age-drill/keys.txt         # paste the AGE-SECRET-KEY-1… line
+export SOPS_AGE_KEY_FILE=/tmp/age-drill/keys.txt
+```
+
+**3 — Prove the Garage path.** Rebuild the throwaway `rclone.conf` exactly as in Step 3, then stop short of `kubectl apply` — list the bucket and inspect the newest dump offline, key names only:
+
+```sh
+rclone --config /tmp/age-drill/rclone.conf ls crypt:
+rclone --config /tmp/age-drill/rclone.conf cat crypt:sealing-keys-<date>.json \
+  | jq '[.items[].metadata | {name, created: .creationTimestamp}]'
+```
+
+Success = the dump lists every key the controller has ever minted, including ones newer than the day-zero export. To pin it down completely, compare cert fingerprints between the dump and the day-zero export (`.data["tls.crt"]` → `base64 -d` → `openssl x509 -noout -fingerprint -sha256`) — certs are public, so this leaks nothing.
+
+**4 — Tear down.** `shred -u` everything in `/tmp/age-drill`, remove the directory, `unset SOPS_AGE_KEY_FILE`, move the real `keys.txt` back, and confirm a normal decrypt works again.
+
+!!! success "Last drilled: 2026-07-17 — full pass"
+    With the on-disk key moved aside: all three repos decrypted from the password-manager
+    copy alone; a `rclone.conf` rebuilt from only the Garage admin CLI + the stored crypt
+    password opened the dump; the dump held both the day-zero and the post-rotation key,
+    and the day-zero cert's SHA-256 fingerprint matched the `homelab-secrets` export
+    exactly. The documented `jq` strip command was validated against the real dump.
 
 ### Keep the signing-key backup current
 
