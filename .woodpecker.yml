@@ -21,3 +21,28 @@ steps:
     commands:
       - pip install --quiet --root-user-action=ignore -r requirements.txt
       - mkdocs build --strict
+
+  # Push-notify on failure: ntfy topic `ci`, publisher `woodpecker` (write-only,
+  # topic-scoped). `ntfy_token` is an org-level Woodpecker secret shared by all
+  # four repos — it must be enabled for push AND pull_request events, or
+  # renovate-PR failures stay silent. Everything is $$-escaped so the shell
+  # expands at runtime; Woodpecker's parse-time substitution would splice the
+  # raw commit message into the command line. Digest-pinned: a mutable-tag
+  # rebuild has already broken a green pipeline (homelab-manifests kubeconform).
+  notify-failure:
+    image: docker.io/curlimages/curl:8.21.0@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13
+    when:
+      - status: [failure]
+    environment:
+      NTFY_TOKEN:
+        from_secret: ntfy_token
+    commands:
+      - |
+        curl -fsS \
+          -H "Authorization: Bearer $${NTFY_TOKEN}" \
+          -H "Title: CI failed: $${CI_REPO_NAME} #$${CI_PIPELINE_NUMBER} ($${CI_PIPELINE_EVENT})" \
+          -H "Priority: high" \
+          -H "Tags: rotating_light" \
+          -H "Click: $${CI_PIPELINE_URL}" \
+          -d "$${CI_COMMIT_BRANCH}: $${CI_COMMIT_MESSAGE}" \
+          https://ntfy.alivenda.dev/ci
