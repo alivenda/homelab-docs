@@ -90,6 +90,7 @@ nav:
       - Storage & Data Architecture: storage-architecture.md
       - Observability: observability.md
       - Backups & DR: backups.md
+      - Disaster Recovery: disaster-recovery.md
       - Cold Shutdown: cold-shutdown.md
   - Platform Services:
       - Vaultwarden: vaultwarden.md
