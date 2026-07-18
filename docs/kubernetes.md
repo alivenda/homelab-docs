@@ -234,20 +234,36 @@ Get the snapshots off-node too: k3s can upload them straight to the Garage S3 st
 
 ## Step 11: Restore procedure (when ruby dies)
 
-If ruby is unrecoverable: reflash DietPi (per [Turing Pi](turing-pi.md)), re-bootstrap with [Ansible](ansible.md), then restore etcd from your latest snapshot instead of running k3s server fresh:
+If ruby is unrecoverable: reflash DietPi (per [Turing Pi](turing-pi.md)), then re-bootstrap with [Ansible](ansible.md) — `site.yml` reinstalls the **pinned** k3s version (`k3s_version` in `inventory.yml`, so the new server matches the surviving agents) and re-renders `/etc/rancher/k3s/config.yaml`, including the `etcd-s3` credentials the restore needs. Then replace the fresh empty etcd with your latest snapshot:
 
 ```bash
-# On the new ruby, copy the latest snapshot from your NAS to:
-# /var/lib/rancher/k3s/server/db/snapshots/
+# List snapshots — the etcd-s3 config makes this show the Garage copies too
+sudo k3s etcd-snapshot list          # pick the newest s3://etcd-snapshots/… row
 
-# Install k3s with --cluster-reset --cluster-reset-restore-path
-curl -sfL https://get.k3s.io | sh -s - server \
+# Stop the freshly-installed server and restore. For an S3 snapshot the restore
+# path is the bare filename — the connection details come from config.yaml.
+sudo systemctl stop k3s
+sudo k3s server \
   --cluster-reset \
-  --cluster-reset-restore-path=/var/lib/rancher/k3s/server/db/snapshots/<latest>
+  --cluster-reset-restore-path=<snapshot-filename>
 
-# Once it's up, the worker agents (emerald, topaz, amethyst) need to be re-joined with the
-# same K3S_TOKEN they used before.
+# Wait for: "Managed etcd cluster membership has been reset,
+#            restart without --cluster-reset flag now."
+sudo systemctl start k3s
 ```
+
+The agents (emerald, topaz, amethyst) rejoin on their own: ruby keeps its static IP and Ansible pins the same `k3s_token`, so their existing config still points at a server that answers. The restored state is as old as the snapshot (up to 12 h) — ArgoCD's self-heal replays anything that changed in Git since then, but anything applied imperatively with `kubectl` after the snapshot is gone.
+
+Post-restore checks:
+
+```bash
+kubectl get nodes                        # all four Ready
+kubectl get pods -A | grep -v Running    # settles to nothing crash-looping
+# Sealed Secrets signing keys are back — they live in etcd, so the snapshot carries them
+kubectl get secret -n sealed-secrets -l sealedsecrets.bitnami.com/sealed-secrets-key
+```
+
+Finish with ArgoCD: every Application `Synced`/`Healthy`.
 
 !!! tip
     Document your K3S_TOKEN in your password manager the day you stand the cluster up. Losing it on top of losing ruby turns a 2-hour rebuild into a full cluster rebuild.
