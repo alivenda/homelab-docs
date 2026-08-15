@@ -1,6 +1,6 @@
 # Backups & DR
 
-Local backups with a clearly-marked offsite TODO.
+Local backups on the NAS, mirrored off-site to Backblaze B2 nightly.
 
 | | |
 |---|---|
@@ -21,9 +21,10 @@ Every job lands in its own bucket on the [Garage S3 store](#s3-object-storage-on
 | Immich DB sync | 03:00 daily | Immich's own DB dumps → `immich-backups` | NAS timer — [below](#immich-database-garage) |
 | Home Assistant sync | 05:30 daily | HA's native backups (SMB pull) → `ha-backups` | NAS timer — [below](#home-assistant-backups-garage) |
 | Audiobookshelf sync | 06:00 daily | ABS's native backups → `audiobookshelf-backups` | NAS timer — [below](#audiobookshelf-config-garage) |
+| Off-site sync | 07:00 daily | photo library + **the whole Garage store** + Plex config → Backblaze B2 | NAS timer — [below](#offsite-b2) |
 
-!!! warning "Off-site backup is still a TODO"
-    Everything above lands on the NAS — that protects against disk failure but NOT fire/theft/flood. Options: friend's house with Tailscale + Restic, cycled external drives, second location you control. Schedule a calendar reminder within 3 months.
+!!! note "Everything above is one box; the 07:00 job is what makes it two"
+    Every row but the last lands on the NAS — and Garage itself lives on the same volume as the data it backs up (`/volume1/docker/garage` next to `/volume1/photos`). That covers disk failure and fumbled deletes, not fire/theft/flood. The [off-site job](#offsite-b2) closes it by shipping both the photo library and the entire Garage store to Backblaze B2, so every bucket above inherits an off-site copy without needing its own cloud target.
 
 ## Strategy: the tiers
 
@@ -381,8 +382,8 @@ velero backup-location get
 velero backup create homelab-$(date +%Y%m%d)
 ```
 
-!!! tip "Off-site backup target"
-    Velero (and the etcd S3 upload) can point at any S3-compatible target, not just the NAS — Backblaze B2, Wasabi, or Cloudflare R2 for off-site storage. R2's free tier is generous for homelab volumes — point the same config at R2 and you get cloud-hosted backups for free.
+!!! tip "Velero's backups reach B2 without a second target"
+    Velero (and the etcd S3 upload) can point at any S3-compatible target, not just the NAS — Backblaze B2, Wasabi, or Cloudflare R2. This build doesn't do that: Velero writes to Garage on the NAS, and the nightly [off-site job](#offsite-b2) mirrors the whole Garage store to B2. One cloud credential covers every bucket instead of one per consumer, and Velero keeps writing to a LAN-speed target.
 
 ## Relational database dumps → Garage
 
@@ -575,6 +576,34 @@ systemctl list-timers audiobookshelf-backup-sync.timer
 docker exec -ti garage /garage bucket info audiobookshelf-backups     # Objects ≥ 1 after the first run
 ```
 
+## Off-site: photos + Garage → Backblaze B2 { #offsite-b2 }
+
+Everything so far is one building. `offsite-backup-sync.timer` on the NAS is the second copy: a nightly 07:00 oneshot that pushes three sources to an **encrypted** Backblaze B2 remote (`offsite:`, an rclone `crypt` wrapping the B2 remote, defined in the same root-owned `/etc/rclone/rclone.conf` as every other remote here).
+
+| Step | Source | Destination | Mode |
+|---|---|---|---|
+| 1 | `/volume1/photos` minus `thumbs/`, `encoded-video/` | `offsite:photos` | `copy` |
+| 2 | `/volume1/docker/garage` | `offsite:garage` | `sync` |
+| 3 | Plex config, minus caches/transcodes/logs | `offsite:plex-config` | `copy` |
+
+Step 2 is why the other jobs need no cloud target of their own: it takes the entire Garage store off-site, so every bucket in [What runs when](#what-runs-when) — Velero, etcd snapshots, the Postgres dumps, the sealed-secrets keys, the per-app syncs — inherits an off-site copy. Step 1 covers what Garage never sees: the photo library originals, which are bulk data no database dump contains. The `thumbs/` and `encoded-video/` exclusions are regenerable derivatives, so they'd only inflate the bill.
+
+!!! warning "Step 2 uses `sync`, which breaks the copy-never-sync rule above — deliberately"
+    The per-app jobs use `rclone copy` so an empty source can never wipe the Garage copy. Step 2 is the exception: Garage holds retention-managed buckets that *should* shrink when Velero expires a backup, and `copy` would grow the B2 bill forever. The trade is real — anything that wipes Garage locally propagates to B2 at the next 07:00 run. Enable B2 **object lifecycle rules** (keep prior versions ~30 days) so a bad sync is recoverable; B2 versioning is the safety net that makes `sync` acceptable here. Step 1 stays `copy`, so deleting a photo never deletes its off-site original.
+
+!!! danger "The crypt passphrase is the whole backup"
+    `offsite:` is an rclone `crypt` remote — B2 holds ciphertext with obscured filenames. Lose the passphrase and the off-site copy is unrecoverable noise. It belongs in the external password manager beside the age key ([The single root of trust](#the-single-root-of-trust)), **not** only in `/etc/rclone/rclone.conf` on the machine the backup exists to survive. Restoring means recreating the remote from the passphrase first — see the drill below.
+
+Because this is a NAS host unit, the [UGOS-update caveat](#nas-side-sync-jobs-the-rclone-garage-pattern) applies: a major firmware update can reset it. Check the timer after every UGOS upgrade.
+
+```bash
+systemctl list-timers offsite-backup-sync.timer
+systemctl status offsite-backup-sync.service        # all three ExecStart steps 0/SUCCESS
+sudo docker run --rm -v /etc/rclone:/config/rclone rclone/rclone size offsite:photos
+```
+
+That last command is the real gate — the same "prove the bytes" discipline as the Velero `PodVolumeBackup` check. A green timer only says rclone ran; a non-zero object count at the far end says the data is actually in B2.
+
 ## Test your restores
 
 A backup that has never been restored is a hypothesis, not a backup. Once a month, restore something real and check **content**, not exit codes:
@@ -620,4 +649,21 @@ A backup that has never been restored is a hypothesis, not a backup. Once a mont
     ```bash
     velero backup get
     # Expected: STATUS=Completed for your latest backup
+    ```
+
+- [ ] Off-site sync ran and the far end holds real bytes:
+
+    ```bash
+    systemctl status offsite-backup-sync.service    # all three ExecStart steps 0/SUCCESS
+    sudo docker run --rm -v /etc/rclone:/config/rclone rclone/rclone size offsite:photos
+    # Expected: object count and total size matching the library, not 0
+    ```
+
+- [ ] `offsite:` really is encrypted, and its passphrase is in the external password
+  manager — an off-site copy you cannot decrypt is not a backup:
+
+    ```bash
+    sudo grep -E '^\[|^type|^remote' /etc/rclone/rclone.conf
+    # Expected: an [offsite] stanza with type = crypt whose remote = the b2 remote
+    # (prints no credentials — keep it that way)
     ```
