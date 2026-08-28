@@ -1,0 +1,669 @@
+# Backups & DR
+
+Local backups on the NAS, mirrored off-site to Backblaze B2 nightly.
+
+| | |
+|---|---|
+| **Difficulty** | Intermediate |
+| **Time Estimate** | 2–4 hours |
+| **Runs On** | NAS (primary backup target), cluster nodes |
+
+## What runs when
+
+Every job lands in its own bucket on the [Garage S3 store](#s3-object-storage-on-the-nas-garage) on the NAS, each with its own least-privilege key:
+
+| Job | Schedule | What → bucket | Defined in |
+|---|---|---|---|
+| Velero `daily-cluster` | 04:00 UTC daily (7-day TTL) | every PVC (kopia filesystem backup) → `velero` | `homelab-manifests` — `infrastructure/velero/` |
+| etcd snapshots | every 12 h | k3s etcd → local on ruby **and** `etcd-snapshots` | `homelab-ansible` — k3s `config.yaml` |
+| Sealed-secrets key dump | 03:30 daily | all controller signing keys (rclone `crypt`) → `sealed-secrets-keys` | `homelab-manifests` — `infrastructure/sealed-secrets/` |
+| Postgres dumps | 04:30 nightly | per-DB `pg_dump -Fc` + globals → `postgres-backups` | NAS timer — drill in [NAS PostgreSQL](../deploy/nas-postgres.md) |
+| Immich DB sync | 03:00 daily | Immich's own DB dumps → `immich-backups` | NAS timer — [below](#immich-database-garage) |
+| Home Assistant sync | 05:30 daily | HA's native backups (SMB pull) → `ha-backups` | NAS timer — [below](#home-assistant-backups-garage) |
+| Audiobookshelf sync | 06:00 daily | ABS's native backups → `audiobookshelf-backups` | NAS timer — [below](#audiobookshelf-config-garage) |
+| Off-site sync | 07:00 daily | photo library + **the whole Garage store** + Plex config → Backblaze B2 | NAS timer — [below](#offsite-b2) |
+
+!!! note "Everything above is one box; the 07:00 job is what makes it two"
+    Every row but the last lands on the NAS — and Garage itself lives on the same volume as the data it backs up (`/volume1/docker/garage` next to `/volume1/photos`). That covers disk failure and fumbled deletes, not fire/theft/flood. The [off-site job](#offsite-b2) closes it by shipping both the photo library and the entire Garage store to Backblaze B2, so every bucket above inherits an off-site copy without needing its own cloud target.
+
+## Strategy: the tiers
+
+| Tier | What | Where |
+|---|---|---|
+| Tier 1 — Critical | Vaultwarden, Immich DB, Nextcloud DB, Paperless DB, k3s manifests | NAS daily + retained 90d |
+| Tier 2 — Important | Service configs, ArgoCD state, Grafana dashboards | NAS daily + retained 30d |
+| Tier 3 — Replaceable | Container images, media | NAS weekly + retained 14d |
+
+The tiers are the policy; [What runs when](#what-runs-when) is the implementation. The tiers cover application data (DB dumps) and IaC (manifests) but not Kubernetes objects themselves — PVCs, CRDs, secrets in non-Git-tracked namespaces, helm release state. That gap is what [Velero](#velero-for-k8s-native-pvc-backup) closes.
+
+## Secrets and key-material recovery
+
+This is **step zero of any real disaster recovery**. Velero and the database-dump jobs restore your *data*; this section restores the ability to *decrypt* it. After rebuilding a machine or the cluster, do this first — nothing else works until it's done.
+
+### The single root of trust
+
+Every secret in the homelab funnels through **one age keypair**:
+
+- The same recipient — `age164pxwzqulte2t6uh6vpkg4kd84uvk0cks5gzg3wc508lvs0x7syskmykd9` — encrypts every SOPS file across `homelab-ansible`, `homelab-terraform`, and `homelab-secrets`.
+- The private key lives at `~/.config/sops/age/keys.txt`. Its only off-machine copy is a secure-note item in your **externally-hosted password manager** (a hosted service — deliberately not anything this homelab runs).
+- The Sealed Secrets controller's signing-key backup (`homelab-secrets/sealed-secrets-controller-key.enc.yaml`) is itself SOPS/age-encrypted — so it, too, is locked behind that one age key.
+
+Recovery therefore runs in a strict order, rooted on that external password manager:
+
+```
+External password manager ──> age private key ──┬──> SOPS files (Ansible + Terraform secrets)
+                                                └──> Sealed Secrets signing key ──> cluster SealedSecrets
+```
+
+!!! danger "The external password manager is the keystone — make sure *it* is independently recoverable"
+    Everything below decrypts from one age key whose only off-machine copy is in that manager. If you can't get into it, nothing is recoverable. Confirm now: master password memorized (not stored only inside the vault), and its two-factor **recovery code** printed and kept offline (fireproof safe / second location). Note that **Vaultwarden runs inside this cluster** — never make the cluster's recovery depend on a secrets store the cluster itself hosts. The root of trust must be an externally-hosted manager (or an offline vault export), not Vaultwarden.
+
+### Step 1 — Restore the age private key
+
+On your machine (or any host that will run `sops`/`tofu`/`ansible`):
+
+```sh
+mkdir -p ~/.config/sops/age
+```
+
+Open your password manager and retrieve the saved homelab age key — the secure note holding the `AGE-SECRET-KEY-1…` line plus its `# public key:` comment — and save it into `~/.config/sops/age/keys.txt`. Pasting into an editor avoids any shell-quoting pitfalls. Then lock the file down:
+
+```sh
+chmod 600 ~/.config/sops/age/keys.txt
+```
+
+Verify it is the correct key — the derived public key must equal the recipient in every repo's `.sops.yaml`:
+
+```sh
+age-keygen -y ~/.config/sops/age/keys.txt
+# Expected: age164pxwzqulte2t6uh6vpkg4kd84uvk0cks5gzg3wc508lvs0x7syskmykd9
+```
+
+If that matches, the repo-side secret layer is recoverable. SOPS reads `~/.config/sops/age/keys.txt` automatically; if you keep the key elsewhere, point `SOPS_AGE_KEY_FILE` at it.
+
+### Step 2 — Confirm you can decrypt the repos
+
+```sh
+sops --decrypt homelab-secrets/sealed-secrets-controller-key.enc.yaml | head
+```
+
+A successful decrypt confirms the whole SOPS layer. Each repo unlocks a different part of the rebuild:
+
+| Repo | File | Unlocks |
+|---|---|---|
+| `homelab-ansible` | `secrets/secrets.sops.yaml` | `k3s_token`, `tailscale_authkey` — needed to re-bootstrap the cluster and Tailscale routers |
+| `homelab-terraform` | `cloudflare/secrets.enc.yaml` | Cloudflare API token — needed for `tofu apply` |
+| `homelab-secrets` | `sealed-secrets-controller-key.enc.yaml` | the cluster's Sealed Secrets signing key (Step 3) |
+
+### Step 3 — Restore the Sealed Secrets signing keys (cluster rebuild only)
+
+Only needed when the cluster was rebuilt. A fresh Sealed Secrets controller generates a **new** keypair and cannot decrypt secrets that were sealed against the old one — so every `SealedSecret` committed to `homelab-manifests` would be undecryptable. Restoring the backed-up signing keys avoids re-sealing anything.
+
+!!! warning "Restore ALL keys, not just the day-zero one"
+    The controller rotates keys every 30 days, and each SealedSecret decrypts only under
+    the key it was sealed with. The authoritative source is the **automated Garage dump**
+    (every key ever minted, shipped daily by the CronJob in
+    `homelab-manifests/infrastructure/sealed-secrets/`); the `homelab-secrets` file is the
+    day-zero fallback and only covers secrets sealed before the first rotation.
+
+The dump sits in the `sealed-secrets-keys` bucket behind an rclone `crypt` remote, and nothing needed to open it lives in the cluster — that circularity is deliberate. Rebuild access from two sources:
+
+**S3 credentials** — recover them from the Garage admin CLI on the NAS:
+
+```sh
+docker exec -ti garage /garage bucket info sealed-secrets-keys    # shows which key has access
+docker exec -ti garage /garage key info <key-name> --show-secret  # prints the Key ID (GK…) + Secret
+```
+
+**crypt password** — retrieve it from your password manager, then encode it the way rclone configs expect. Reading from stdin keeps it out of shell history:
+
+```sh
+rclone obscure -    # type the password, Enter, then Ctrl-D; copy the printed token
+```
+
+Write both into a throwaway `rclone.conf` (the crypt remote uses rclone's default filename encryption, so no other settings are needed):
+
+```ini
+[garage]
+type = s3
+provider = Other
+access_key_id = GK…
+secret_access_key = …
+endpoint = http://10.0.20.50:9000
+region = us-east-1
+force_path_style = true
+
+[crypt]
+type = crypt
+remote = garage:sealed-secrets-keys
+password = …    # the obscured token, not the raw password
+```
+
+Then restore:
+
+```bash
+# 1. Ensure the controller exists (ArgoCD installs it into the sealed-secrets namespace).
+kubectl get deploy -n sealed-secrets sealed-secrets-controller
+
+# 2. Pick the newest dump and apply ALL keys (strip server-side metadata first).
+rclone --config rclone.conf ls crypt:
+rclone --config rclone.conf cat crypt:sealing-keys-<date>.json \
+  | jq 'del(.items[].metadata.resourceVersion, .items[].metadata.uid, .items[].metadata.creationTimestamp, .items[].metadata.managedFields)' \
+  | kubectl apply -f -
+
+# 3. Restart the controller so it loads the restored keys.
+kubectl delete pod -n sealed-secrets -l app.kubernetes.io/name=sealed-secrets
+
+# 4. Confirm: one kubernetes.io/tls Secret per key ever minted — ALL of them
+#    labelled =active (old keys stay active for unsealing; never filter on it).
+kubectl get secret -n sealed-secrets -l sealedsecrets.bitnami.com/sealed-secrets-key
+```
+
+Re-syncing `homelab-manifests` in ArgoCD will now decrypt every existing SealedSecret normally — no manifest changes required. Shred the throwaway `rclone.conf` when done.
+
+If Garage itself is gone, fall back to the day-zero export — it only unlocks secrets sealed before the first rotation:
+
+```sh
+sops --decrypt homelab-secrets/sealed-secrets-controller-key.enc.yaml | kubectl apply -f -
+```
+
+### Drill the whole chain — no dead machine required
+
+A restore path that has never been exercised is a hope, not a backup. The chain above drills read-only in about twenty minutes, with the live cluster untouched.
+
+**1 — Simulate the dead machine.** Move the real key aside and confirm decryption actually breaks. A passing drill proves nothing if a stale on-disk key was quietly filling in:
+
+```sh
+mv ~/.config/sops/age/keys.txt ~/.config/sops/age/keys.txt.aside
+sops --decrypt homelab-secrets/sealed-secrets-controller-key.enc.yaml   # MUST fail
+```
+
+**2 — Restore from the password manager alone.** Paste the saved key into a throwaway file on tmpfs (RAM-backed — never touches disk, gone on reboot), point SOPS at it, then re-run Steps 1–2 above: `age-keygen -y` must print the expected recipient, and one file from each repo must decrypt.
+
+```sh
+mkdir -m 700 /tmp/age-drill
+vim /tmp/age-drill/keys.txt         # paste the AGE-SECRET-KEY-1… line
+export SOPS_AGE_KEY_FILE=/tmp/age-drill/keys.txt
+```
+
+**3 — Prove the Garage path.** Rebuild the throwaway `rclone.conf` exactly as in Step 3, then stop short of `kubectl apply` — list the bucket and inspect the newest dump offline, key names only:
+
+```sh
+rclone --config /tmp/age-drill/rclone.conf ls crypt:
+rclone --config /tmp/age-drill/rclone.conf cat crypt:sealing-keys-<date>.json \
+  | jq '[.items[].metadata | {name, created: .creationTimestamp}]'
+```
+
+Success = the dump lists every key the controller has ever minted, including ones newer than the day-zero export. To pin it down completely, compare cert fingerprints between the dump and the day-zero export (`.data["tls.crt"]` → `base64 -d` → `openssl x509 -noout -fingerprint -sha256`) — certs are public, so this leaks nothing.
+
+**4 — Tear down.** `shred -u` everything in `/tmp/age-drill`, remove the directory, `unset SOPS_AGE_KEY_FILE`, move the real `keys.txt` back, and confirm a normal decrypt works again.
+
+!!! success "Last drilled: 2026-07-17 — full pass"
+    With the on-disk key moved aside: all three repos decrypted from the password-manager
+    copy alone; a `rclone.conf` rebuilt from only the Garage admin CLI + the stored crypt
+    password opened the dump; the dump held both the day-zero and the post-rotation key,
+    and the day-zero cert's SHA-256 fingerprint matched the `homelab-secrets` export
+    exactly. The documented `jq` strip command was validated against the real dump.
+
+### Keep the signing-key backup current
+
+The controller mints a **new key every 30 days** and keeps the old ones — every key ever created stays required, because each SealedSecret decrypts only under the key it was sealed with. A one-time export therefore goes stale at the first rotation.
+
+This build automates it: the daily in-cluster **CronJob dumps all controller keys to a dedicated Garage bucket** through an rclone `crypt` remote, so the bucket only ever holds ciphertext. The manifests, the crypt-password handling, and the restore drill live in `homelab-manifests/infrastructure/sealed-secrets/` — that dump is the authoritative ongoing backup.
+
+The `homelab-secrets` copy (`sealed-secrets-controller-key.enc.yaml`) is the **day-zero export**: the fallback if Garage itself is lost, covering only SealedSecrets sealed before the first rotation. Re-taking it manually is optional; if you do, this is the shape:
+
+```sh
+kubectl get secret -n sealed-secrets \
+  -l sealedsecrets.bitnami.com/sealed-secrets-key -o yaml > controller-key.yaml
+sops --encrypt controller-key.yaml > sealed-secrets-controller-key.enc.yaml
+rm controller-key.yaml   # never commit the plaintext
+```
+
+## S3 object storage on the NAS (Garage)
+
+This S3-compatible store on the NAS backs every job in [What runs when](#what-runs-when), at `http://10.0.20.50:9000`. Each consumer — etcd, Velero, the Terraform state backend, the NAS-side sync jobs — gets its own bucket and its own scoped key.
+
+!!! warning "Why Garage, not MinIO"
+    MinIO's Community Edition is effectively end-of-life: the `minio/minio` repo was archived (read-only) in **April 2026**, free Docker/Quay image publishing stopped in **October 2025** (last tag `RELEASE.2025-10-15T17-29-55Z`), and the admin console was stripped from CE in **May 2025**. This runbook uses [Garage](https://garagehq.deuxfleurs.fr/) — a maintained, Rust, self-host-focused S3 store — instead.
+
+### Stand up Garage
+
+Garage's S3 API is plain HTTP, so clients connect with `etcd-s3-insecure` / `s3ForcePathStyle`. Binding on `:9000` with `s3_region = "us-east-1"` matches k3s's default `--etcd-s3-region`, so the Ansible etcd config needs no endpoint/region overrides.
+
+??? example "`/volume1/docker/garage/garage.toml`"
+
+    Generate the two secrets with `openssl rand -hex 32` and `openssl rand -base64 32`:
+
+    ```toml
+    replication_factor = 1
+    metadata_dir = "/var/lib/garage/meta"
+    data_dir     = "/var/lib/garage/data"
+    db_engine    = "lmdb"
+
+    rpc_bind_addr   = "[::]:3901"
+    rpc_public_addr = "127.0.0.1:3901"   # single-node self-reference
+    rpc_secret      = "<openssl rand -hex 32>"
+
+    [s3_api]
+    api_bind_addr = "[::]:9000"   # bind S3 on :9000 …
+    s3_region     = "us-east-1"   # … with region us-east-1 to match k3s's default
+
+    [admin]
+    api_bind_addr = "127.0.0.1:3903"
+    admin_token   = "<openssl rand -base64 32>"
+    ```
+
+??? example "`/volume1/docker/garage/docker-compose.yml`"
+
+    ```yaml
+    services:
+      garage:
+        image: dxflrs/garage:v2.3.0
+        container_name: garage
+        command: ["/garage", "server"]
+        volumes:
+          - /volume1/docker/garage/garage.toml:/etc/garage.toml:ro
+          - /volume1/docker/garage/meta:/var/lib/garage/meta
+          - /volume1/docker/garage/data:/var/lib/garage/data
+        ports:
+          - "9000:9000"   # S3 API
+        restart: unless-stopped
+    ```
+
+```bash
+mkdir -p /volume1/docker/garage/meta /volume1/docker/garage/data
+docker compose -f /volume1/docker/garage/docker-compose.yml up -d
+docker logs garage   # confirm: "S3 API server listening on http://[::]:9000"
+```
+
+### Initialize the cluster + per-consumer keys
+
+A one-time single-node layout, then a dedicated bucket and least-privilege key per consumer:
+
+```bash
+docker exec -ti garage /garage status                               # copy the node ID
+docker exec -ti garage /garage layout assign -z nas -c 10G <NODE_ID>
+docker exec -ti garage /garage layout apply --version 1
+
+# One bucket + scoped key per consumer (example: etcd snapshots)
+docker exec -ti garage /garage bucket create etcd-snapshots
+docker exec -ti garage /garage key create etcd-backup               # copy the Key ID (GK…) and Secret
+docker exec -ti garage /garage bucket allow --read --write etcd-snapshots --key etcd-backup
+```
+
+Repeat the bucket/key/allow trio for `velero` (and any other consumer) so each gets its own credentials.
+
+### Off-node etcd snapshots (k3s-native)
+
+k3s uploads scheduled etcd snapshots straight to Garage — no extra tooling. It's codified in `homelab-ansible` (`site.yml` renders `/etc/rancher/k3s/config.yaml`); the access/secret key live in that repo's SOPS file as `etcd_s3_access_key` / `etcd_s3_secret_key`:
+
+```yaml
+etcd-snapshot-schedule-cron: "0 */12 * * *"
+etcd-snapshot-retention: 10
+etcd-s3: true
+etcd-s3-endpoint: "10.0.20.50:9000"
+etcd-s3-insecure: true          # Garage serves plain HTTP on :9000
+etcd-s3-bucket: "etcd-snapshots"
+etcd-s3-access-key: "<from SOPS>"
+etcd-s3-secret-key: "<from SOPS>"
+```
+
+k3s keeps **both** copies — local (`file://`) and off-node (`s3://`) — with retention applied to each. The save succeeds locally even if the S3 upload fails, so confirm the off-node copy explicitly:
+
+```bash
+sudo k3s etcd-snapshot save
+sudo k3s etcd-snapshot list                               # expect an s3://etcd-snapshots/… row
+docker exec -ti garage /garage bucket info etcd-snapshots # expect Objects ≥ 1
+```
+
+This is the primary off-node etcd path (k3s also keeps local snapshots on ruby).
+
+## Velero for k8s-native PVC backup
+
+Velero's filesystem backup (the **node-agent**, using the kopia uploader — the default since Velero 1.10) snapshots PVC contents and stores them in the Garage store above, in a dedicated `velero` bucket.
+
+!!! note "GitOps-managed in this build"
+    Velero runs as two ArgoCD Applications (`bootstrap/velero.yaml` — chart + manifests,
+    the same split Forgejo and Woodpecker use), with live values in
+    `infrastructure/velero/values.yaml`. The values below are the reference for *what*
+    the settings mean; the collapsed block holds the imperative bootstrap for a
+    pre-GitOps install.
+
+The Velero chart's schema changed in v3.0.0+: `backupStorageLocation` is now an array, `provider` lives inside each entry, and the old `deployRestic` flag was renamed `deployNodeAgent`.
+
+`velero-values.yaml`:
+
+```yaml
+configuration:
+  backupStorageLocation:
+    - name: default
+      provider: aws       # use 'aws' provider for any S3-compatible target
+      bucket: velero
+      default: true
+      config:
+        region: us-east-1               # matches Garage's s3_region
+        s3Url: http://10.0.20.50:9000   # NAS (Networking static-IP table)
+        s3ForcePathStyle: "true"        # Garage uses path-style addressing
+
+deployNodeAgent: true       # replaces deployRestic; needed for PVC-content backups
+
+credentials:
+  useSecret: true
+  # secretContents.cloud comes in via --set-file at install time
+```
+
+??? example "Imperative bootstrap (credentials file + helm install)"
+
+    ```bash
+    # On your machine (wherever you'll run the helm commands)
+    cat > velero-creds <<EOF
+    [default]
+    aws_access_key_id = <GARAGE_VELERO_KEY_ID>
+    aws_secret_access_key = <GARAGE_VELERO_SECRET>
+    EOF
+
+    helm repo add vmware-tanzu https://vmware-tanzu.github.io/helm-charts
+
+    helm upgrade --install velero vmware-tanzu/velero \
+      --version <X.Y.Z> \
+      --namespace velero --create-namespace \
+      --values velero-values.yaml \
+      --set-file credentials.secretContents.cloud=./velero-creds
+    ```
+
+    Pin `--version` to a current release listed on [vmware-tanzu/helm-charts](https://github.com/vmware-tanzu/helm-charts/tree/main/charts/velero).
+
+```bash
+# Verify
+velero backup-location get
+
+# Take a full cluster backup
+velero backup create homelab-$(date +%Y%m%d)
+```
+
+!!! tip "Velero's backups reach B2 without a second target"
+    Velero (and the etcd S3 upload) can point at any S3-compatible target, not just the NAS — Backblaze B2, Wasabi, or Cloudflare R2. This build doesn't do that: Velero writes to Garage on the NAS, and the nightly [off-site job](#offsite-b2) mirrors the whole Garage store to B2. One cloud credential covers every bucket instead of one per consumer, and Velero keeps writing to a LAN-speed target.
+
+## Relational database dumps → Garage
+
+The relational database tier lives on the NAS, not the cluster (see the [Storage & Data Architecture](../concepts/storage.md)), so database backups run **on the NAS**, next to the server: nightly per-database `pg_dump -Fc` plus a `pg_dumpall --globals-only`, pushed to a dedicated `postgres-backups` Garage bucket by a `postgres-backup.timer` (04:30, an hour before the HA sync so the jobs don't contend for NAS I/O). The full pipeline — script, units, and the seeded restore drill that gates it — is in [NAS PostgreSQL](../deploy/nas-postgres.md).
+
+Two things stay out of this shared job, each for its own reason:
+
+- **Immich** keeps its own dump path — its bundled Postgres on the NAS predates the shared server ([Immich](../deploy/immich.md)), and Immich's built-in scheduled backup already dumps the database itself. Getting those dumps **off-box** is its own sync job — see [Immich database → Garage](#immich-database-garage) below.
+- **Embedded-SQLite apps** — their volumes live on `local-path`, which Velero's node-agent already captures above. One data tier, one backup mechanism; no double-coverage. (Audiobookshelf used to be in this set; it moved to the NAS and now has its own job — see below.)
+
+## NAS-side sync jobs: the rclone → Garage pattern
+
+Three apps run on NAS-adjacent hosts outside both Velero's and the Postgres job's reach. Each follows the same shape: **the app writes its own consistent backups locally, and a NAS systemd timer ships them to a per-app Garage bucket with rclone, pruning the bucket to a rolling 30-day window.** Letting each app produce the backup itself avoids copying live databases mid-write.
+
+| Job | App writes to | Timer | Bucket | rclone remote |
+|---|---|---|---|---|
+| [Immich](#immich-database-garage) | `/volume1/photos/backups` (NAS-local) | 03:00 | `immich-backups` | `[garage-immich]` |
+| [Home Assistant](#home-assistant-backups-garage) | HA `/backup` on slate — pulled over SMB | 05:30 | `ha-backups` | `[garage]` + `[hasmb]` |
+| [Audiobookshelf](#audiobookshelf-config-garage) | `/volume1/docker/audiobookshelf/metadata/backups` (NAS-local) | 06:00 | `audiobookshelf-backups` | `[garage-abs]` |
+
+!!! warning "Copy, never sync — and mind UGOS updates"
+    Use `rclone copy` (plus the age-based `delete`), never `rclone sync`: `sync` mirrors deletions, so if the app's backup directory is ever empty (reinstall, disk loss) it would wipe the Garage copy too. And because the NAS runs **UGOS Pro** (an appliance OS), these host units live outside Ansible's reach — a major UGOS update can reset them, so the sections below are the recovery reference.
+
+Each job gets the standard Garage consumer (the bucket/key/allow trio from [above](#initialize-the-cluster-per-consumer-keys)) and an S3 remote of the same shape in the NAS's `/etc/rclone/rclone.conf` (root-owned, `chmod 600`):
+
+```ini
+[garage-<consumer>]
+type = s3
+provider = Other
+endpoint = http://10.0.20.50:9000
+region = us-east-1          # must match garage.toml's s3_region
+access_key_id = GK…
+secret_access_key = <secret>
+force_path_style = true     # Garage requires path-style
+```
+
+(The Home Assistant job predates the naming convention and calls its S3 remote plain `[garage]`; it also needs the extra `[hasmb]` SMB remote — see its section.)
+
+### Immich database → Garage
+
+Immich [runs as Docker on the NAS](../deploy/immich.md) with its **own** bundled Postgres, separate from the shared server above. It already backs that database up on a schedule — Immich's built-in job writes a version-stamped dump to `${UPLOAD_LOCATION}/backups/` (e.g. `/volume1/photos/backups/immich-db-backup-20260617T020000-v2.7.5-pg14.19.sql.gz`) nightly at 02:00. What that leaves open is **off-box** durability: those dumps land on the same volume as the photo library, so one volume failure loses the originals *and* their database together, and the [cold-shutdown export](../operate/cold-shutdown.md) only sweeps Garage buckets.
+
+First confirm Immich's built-in backup is on: **Administration → Settings → Backup Settings → Database Backups** (enabled by default). The library/originals themselves are the bulk data on `${UPLOAD_LOCATION}` — re-uploadable from your devices, not part of this database job.
+
+Garage consumer + `[garage-immich]` remote per the pattern above. The dumps are a local NAS directory, so rclone copies straight off disk.
+
+??? example "`immich-backup-sync` service + timer"
+
+    `/etc/systemd/system/immich-backup-sync.service`:
+
+    ```ini
+    [Unit]
+    Description=Sync Immich database backups to Garage
+    After=network-online.target
+    Wants=network-online.target
+
+    [Service]
+    Type=oneshot
+    ExecStart=/usr/bin/docker run --rm --user root -v /etc/rclone:/config/rclone -v /volume1/photos/backups:/immich-backups:ro rclone/rclone copy /immich-backups garage-immich:immich-backups -v
+    ExecStart=/usr/bin/docker run --rm --user root -v /etc/rclone:/config/rclone rclone/rclone delete garage-immich:immich-backups --min-age 30d
+    ```
+
+    `/etc/systemd/system/immich-backup-sync.timer`:
+
+    ```ini
+    [Unit]
+    Description=Daily Immich backup sync to Garage
+
+    [Timer]
+    OnCalendar=*-*-* 03:00:00      # after Immich's 02:00 database-backup window
+    Persistent=true
+
+    [Install]
+    WantedBy=timers.target
+    ```
+
+```bash
+systemctl daemon-reload && systemctl enable --now immich-backup-sync.timer
+systemctl list-timers immich-backup-sync.timer
+docker exec -ti garage /garage bucket info immich-backups          # Objects ≥ 1 after the first run
+```
+
+### Home Assistant backups → Garage
+
+Home Assistant runs off-cluster — an HAOS VM on **slate** (`10.0.20.21`, see [Home Assistant](../deploy/home-assistant.md)). Its native backups are local; getting them off-box to Garage is done by **pulling from the NAS with rclone**, not by an in-HA S3 integration.
+
+!!! note "Why pull from the NAS instead of an HA S3 backup-agent integration"
+    Home Assistant's S3-compatible backup-agent integrations are `botocore`-based, and on current HA they break on an `aiobotocore`↔`botocore` version skew (the integration's newer `aiobotocore` passes an argument the bundled `botocore` doesn't accept). Decoupling — HA writes local backups, the NAS ships them to Garage — sidesteps HA's Python entirely and survives HA core updates, which is the better DR posture regardless.
+
+On the HA side:
+
+1. Install the official **Samba share** add-on; set a username + password and scope **Allowed Hosts** to the Lab VLAN (`10.0.20.0/24`) — only it should reach the shares (this exposes `/config` too). HA's `/backup` is then readable as the `backup` share.
+2. Settings → System → **Backups** → automatic backup: daily, keep 7. These write to `/backup`.
+3. **Store the backup encryption key in Vaultwarden** (and on paper), alongside the age key. HA encrypts every backup; without the key the Garage copy is unrecoverable.
+
+On the NAS side, this job needs an SMB remote in addition to its S3 one — obscure the Samba password with `docker run --rm rclone/rclone obscure '<password>'`:
+
+```ini
+[hasmb]
+type = smb
+host = 10.0.20.21
+user = <ha-samba-user>
+pass = <obscured>
+```
+
+Test the connection, then copy:
+
+```bash
+docker run --rm --user root -v /etc/rclone:/config/rclone rclone/rclone lsd hasmb:           # lists shares → SMB auth works
+docker run --rm --user root -v /etc/rclone:/config/rclone rclone/rclone copy hasmb:backup garage:ha-backups -v
+docker exec -ti garage /garage bucket info ha-backups                                        # Objects ≥ 1
+```
+
+??? example "`ha-backup-sync` service + timer"
+
+    `/etc/systemd/system/ha-backup-sync.service`:
+
+    ```ini
+    [Unit]
+    Description=Sync Home Assistant backups to Garage
+    After=network-online.target
+    Wants=network-online.target
+
+    [Service]
+    Type=oneshot
+    ExecStart=/usr/bin/docker run --rm --user root -v /etc/rclone:/config/rclone rclone/rclone copy hasmb:backup garage:ha-backups -v
+    ExecStart=/usr/bin/docker run --rm --user root -v /etc/rclone:/config/rclone rclone/rclone delete garage:ha-backups --min-age 30d
+    ```
+
+    `/etc/systemd/system/ha-backup-sync.timer`:
+
+    ```ini
+    [Unit]
+    Description=Daily HA backup sync to Garage
+
+    [Timer]
+    OnCalendar=*-*-* 05:30:00      # after HA's automatic-backup window
+    Persistent=true
+
+    [Install]
+    WantedBy=timers.target
+    ```
+
+```bash
+systemctl daemon-reload && systemctl enable --now ha-backup-sync.timer
+systemctl list-timers ha-backup-sync.timer     # confirm a NEXT run
+```
+
+### Audiobookshelf config → Garage
+
+Audiobookshelf [runs as a Docker container on the NAS](../reference/app-catalog.md#audiobookshelf), so — unlike the embedded-SQLite apps in the cluster — its `/config` database is **not** on `local-path` and is **not** covered by Velero.
+
+In ABS **Settings → Backups**, enable scheduled backups (daily; keep ~7). ABS writes a consistent archive to `BACKUP_PATH` (default `/metadata/backups`, i.e. `/volume1/docker/audiobookshelf/metadata/backups`) containing the **`/config` database** (users, libraries, OIDC config, the mobile-redirect whitelist) plus item/author images from `/metadata`. The library audio itself is **not** included — that's the original media on `/volume1/media`, re-scannable.
+
+Garage consumer + `[garage-abs]` remote per the pattern above. The backups are a local NAS directory, so rclone copies straight off disk.
+
+??? example "`audiobookshelf-backup-sync` service + timer"
+
+    `/etc/systemd/system/audiobookshelf-backup-sync.service`:
+
+    ```ini
+    [Unit]
+    Description=Sync Audiobookshelf backups to Garage
+    After=network-online.target
+    Wants=network-online.target
+
+    [Service]
+    Type=oneshot
+    ExecStart=/usr/bin/docker run --rm --user root -v /etc/rclone:/config/rclone -v /volume1/docker/audiobookshelf/metadata/backups:/abs-backups:ro rclone/rclone copy /abs-backups garage-abs:audiobookshelf-backups -v
+    ExecStart=/usr/bin/docker run --rm --user root -v /etc/rclone:/config/rclone rclone/rclone delete garage-abs:audiobookshelf-backups --min-age 30d
+    ```
+
+    `/etc/systemd/system/audiobookshelf-backup-sync.timer`:
+
+    ```ini
+    [Unit]
+    Description=Daily Audiobookshelf backup sync to Garage
+
+    [Timer]
+    OnCalendar=*-*-* 06:00:00      # after ABS's own backup window
+    Persistent=true
+
+    [Install]
+    WantedBy=timers.target
+    ```
+
+```bash
+systemctl daemon-reload && systemctl enable --now audiobookshelf-backup-sync.timer
+systemctl list-timers audiobookshelf-backup-sync.timer
+docker exec -ti garage /garage bucket info audiobookshelf-backups     # Objects ≥ 1 after the first run
+```
+
+## Off-site: photos + Garage → Backblaze B2 { #offsite-b2 }
+
+Everything so far is one building. `offsite-backup-sync.timer` on the NAS is the second copy: a nightly 07:00 oneshot that pushes three sources to an **encrypted** Backblaze B2 remote (`offsite:`, an rclone `crypt` wrapping the B2 remote, defined in the same root-owned `/etc/rclone/rclone.conf` as every other remote here).
+
+| Step | Source | Destination | Mode |
+|---|---|---|---|
+| 1 | `/volume1/photos` minus `thumbs/`, `encoded-video/` | `offsite:photos` | `copy` |
+| 2 | `/volume1/docker/garage` | `offsite:garage` | `sync` |
+| 3 | Plex config, minus caches/transcodes/logs | `offsite:plex-config` | `copy` |
+
+Step 2 is why the other jobs need no cloud target of their own: it takes the entire Garage store off-site, so every bucket in [What runs when](#what-runs-when) — Velero, etcd snapshots, the Postgres dumps, the sealed-secrets keys, the per-app syncs — inherits an off-site copy. Step 1 covers what Garage never sees: the photo library originals, which are bulk data no database dump contains. The `thumbs/` and `encoded-video/` exclusions are regenerable derivatives, so they'd only inflate the bill.
+
+!!! warning "Step 2 uses `sync`, which breaks the copy-never-sync rule above — deliberately"
+    The per-app jobs use `rclone copy` so an empty source can never wipe the Garage copy. Step 2 is the exception: Garage holds retention-managed buckets that *should* shrink when Velero expires a backup, and `copy` would grow the B2 bill forever. The trade is real — anything that wipes Garage locally propagates to B2 at the next 07:00 run. Enable B2 **object lifecycle rules** (keep prior versions ~30 days) so a bad sync is recoverable; B2 versioning is the safety net that makes `sync` acceptable here. Step 1 stays `copy`, so deleting a photo never deletes its off-site original.
+
+!!! danger "The crypt passphrase is the whole backup"
+    `offsite:` is an rclone `crypt` remote — B2 holds ciphertext with obscured filenames. Lose the passphrase and the off-site copy is unrecoverable noise. It belongs in the external password manager beside the age key ([The single root of trust](#the-single-root-of-trust)), **not** only in `/etc/rclone/rclone.conf` on the machine the backup exists to survive. Restoring means recreating the remote from the passphrase first — see the drill below.
+
+Because this is a NAS host unit, the [UGOS-update caveat](#nas-side-sync-jobs-the-rclone-garage-pattern) applies: a major firmware update can reset it. Check the timer after every UGOS upgrade.
+
+```bash
+systemctl list-timers offsite-backup-sync.timer
+systemctl status offsite-backup-sync.service        # all three ExecStart steps 0/SUCCESS
+sudo docker run --rm -v /etc/rclone:/config/rclone rclone/rclone size offsite:photos
+```
+
+That last command is the real gate — the same "prove the bytes" discipline as the Velero `PodVolumeBackup` check. A green timer only says rclone ran; a non-zero object count at the far end says the data is actually in B2.
+
+## Test your restores
+
+A backup that has never been restored is a hypothesis, not a backup. Once a month, restore something real and check **content**, not exit codes:
+
+- A Velero `PodVolumeBackup` must show non-zero bytes — `Completed` alone proves nothing (see the [storage architecture](../concepts/storage.md#the-local-path-tier) for how that failure mode was caught).
+- A database dump must restore from the **Garage copy** into a scratch database with matching row counts — [NAS PostgreSQL](../deploy/nas-postgres.md) has the drill.
+
+!!! tip "Schedule a restore drill"
+    The first time you discover backups are corrupt should NOT be when you need them.
+
+## Verification
+
+- [ ] The external password manager's two-factor **recovery code** is printed and stored offline (the keystone — see [The single root of trust](#the-single-root-of-trust)).
+- [ ] age key restores from the external password manager and derives the expected public key:
+
+    ```sh
+    age-keygen -y ~/.config/sops/age/keys.txt
+    # Expected: age164pxwzqulte2t6uh6vpkg4kd84uvk0cks5gzg3wc508lvs0x7syskmykd9
+    ```
+
+- [ ] `sops --decrypt` succeeds on a known encrypted file (e.g. `homelab-secrets/sealed-secrets-controller-key.enc.yaml`).
+- [ ] Database backup timer is active on the NAS, and the bucket holds real objects:
+
+    ```bash
+    systemctl list-timers postgres-backup.timer            # a NEXT run is scheduled
+    docker exec -ti garage /garage bucket info postgres-backups
+    # Expected: Objects ≥ 1 with non-trivial sizes
+    ```
+
+- [ ] Restore test (do this monthly): restore a dump from the Garage copy into a scratch
+  database and compare row counts against the source — the drill in
+  [NAS PostgreSQL](../deploy/nas-postgres.md) is the template.
+
+- [ ] Off-node etcd snapshot present in Garage:
+
+    ```bash
+    docker exec -ti garage /garage bucket info etcd-snapshots
+    # Expected: Objects ≥ 1
+    ```
+
+- [ ] Velero backup completed (if installed):
+
+    ```bash
+    velero backup get
+    # Expected: STATUS=Completed for your latest backup
+    ```
+
+- [ ] Off-site sync ran and the far end holds real bytes:
+
+    ```bash
+    systemctl status offsite-backup-sync.service    # all three ExecStart steps 0/SUCCESS
+    sudo docker run --rm -v /etc/rclone:/config/rclone rclone/rclone size offsite:photos
+    # Expected: object count and total size matching the library, not 0
+    ```
+
+- [ ] `offsite:` really is encrypted, and its passphrase is in the external password
+  manager — an off-site copy you cannot decrypt is not a backup:
+
+    ```bash
+    sudo grep -E '^\[|^type|^remote' /etc/rclone/rclone.conf
+    # Expected: an [offsite] stanza with type = crypt whose remote = the b2 remote
+    # (prints no credentials — keep it that way)
+    ```

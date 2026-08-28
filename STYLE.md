@@ -5,8 +5,8 @@ narrative you read: facts land in tables at the top, prose is reserved for
 *why*, and long reference material collapses out of the way. Two pages are the
 reference implementations — copy their shape, not just their rules:
 
-- **[`docs/backups.md`](docs/backups.md)** — infrastructure chapter (multi-system, schedules, DR order)
-- **[`docs/forgejo.md`](docs/forgejo.md)** — service/app runbook (deploy steps, SSO, verification)
+- **[`docs/build/backups.md`](docs/build/backups.md)** — infrastructure chapter (multi-system, schedules, DR order)
+- **[`docs/deploy/forgejo.md`](docs/deploy/forgejo.md)** — service/app runbook (deploy steps, SSO, verification)
 
 ## Page anatomy
 
