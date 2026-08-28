@@ -339,6 +339,106 @@ rm cf-token-plain.yaml   # never commit plaintext
     in-cluster CronJob ships **all** controller keys to Garage (see
     [Backups](backups.md#keep-the-signing-key-backup-current)).
 
+## Upgrading k3s
+
+Bumping `k3s_version` in `homelab-ansible/inventory.yml` **does not upgrade a running
+cluster**. The install task carries `creates: /usr/local/bin/k3s`, so Ansible skips it
+on any node that already has k3s. The pin governs fresh installs and rebuilds — keeping
+a reflashed node on the same version as its neighbours — while the live roll is manual
+and deliberate. Bump the pin and roll in the same sitting, or a later rebuild silently
+lands on a different version than the running fleet.
+
+### Order: control plane first
+
+Servers go first, one at a time, then agents. This is the **opposite** of the DietPi
+OS-update order (agents first, `ruby` last), and getting it backwards is the one way to
+actually break the cluster: the Kubernetes version-skew policy lets a kubelet lag the
+API server by up to three minors, but a kubelet must **never lead it**. Upgrade an agent
+first and it may refuse to register with the older control plane.
+
+### Pre-flight
+
+```bash
+# 1. What's actually running, and what are you going to?
+kubectl get nodes -o wide            # note the current version on every node
+
+# 2. Audit the target release's removals against this cluster. Check the
+#    upstream "Deprecated API Migration Guide" for the target minor, then:
+kubectl get --raw /metrics | grep apiserver_requested_deprecated_apis
+#    Anything with a non-empty removed_release= must be migrated BEFORE upgrading.
+
+# 3. Fresh etcd snapshot — the only real rollback for a control-plane upgrade
+sudo k3s etcd-snapshot save --name pre-upgrade
+
+# 4. Confirm the nightly Velero backup actually completed
+velero backup get
+```
+
+### Roll the server (ruby)
+
+The install script **regenerates the systemd unit from the arguments you pass it**. Pass
+nothing and you lose `--disable traefik`, `--disable servicelb`, `--disable local-storage`
+and the rest — the cluster comes back up fighting itself over the ingress. Re-supply the
+*exact* argument list Ansible installed with:
+
+```bash
+# Drain first: workloads keep running while k3s restarts, but the API server is
+# briefly gone, and anything mid-write would rather be elsewhere.
+kubectl drain ruby --ignore-daemonsets --delete-emptydir-data
+
+# On ruby. K3S_TOKEN comes from homelab-ansible's sops secrets (k3s_token) —
+# the same value the agents joined with.
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=vX.Y.Z+k3s1 sh -s - \
+  --cluster-init \
+  --write-kubeconfig-mode 644 \
+  --disable servicelb \
+  --disable traefik \
+  --disable local-storage \
+  --token "$K3S_TOKEN" \
+  --node-ip 10.0.20.10
+
+kubectl uncordon ruby
+kubectl get nodes            # ruby should report the new version, Ready
+```
+
+`/etc/rancher/k3s/config.yaml` (the etcd snapshot schedule and the S3 credentials) is
+**not** touched by the install script — it persists across the upgrade.
+
+### Roll the agents, one at a time
+
+```bash
+kubectl drain emerald --ignore-daemonsets --delete-emptydir-data
+
+# On the agent:
+curl -sfL https://get.k3s.io | \
+  INSTALL_K3S_VERSION=vX.Y.Z+k3s1 \
+  K3S_URL=https://10.0.20.10:6443 \
+  K3S_TOKEN="$K3S_TOKEN" sh -
+
+kubectl uncordon emerald
+```
+
+Repeat for `topaz` and `amethyst`. Wait for each node to return `Ready` at the new
+version before starting the next — `emerald` carries the `app-state=true` local-path
+apps, so draining two at once has nowhere to put them.
+
+!!! warning "Single control plane: the snapshot is the rollback"
+    There is one server node. If the control plane fails to come back, there is no
+    second server to carry the cluster — recovery is the
+    [restore procedure](#step-11-restore-procedure-when-ruby-dies) against the snapshot
+    you took in pre-flight. Downgrading k3s in place is not supported once etcd has been
+    written by the newer version.
+
+### After the roll
+
+```bash
+kubectl get nodes                    # all 4 at the new version, all Ready
+kubectl get pods -A | grep -v Running | grep -v Completed
+```
+
+Then re-run the Ansible play so a future rebuild matches, and confirm the pinned version
+and the live version agree.
+
 ## Verification
 
 - [ ] All 4 nodes Ready:
