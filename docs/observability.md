@@ -553,6 +553,82 @@ public URL end-to-end. A small **blackbox-exporter** Application
 Like the custom rules above, `Probe` objects are only selected if they carry the
 `release: kube-prometheus-stack` label.
 
+### NAS host metrics (node-exporter off-cluster)
+
+`node-exporter` ships as a DaemonSet, so it covers the k3s nodes and **nothing else**.
+The NAS is not in the cluster, which left the single most consequential disk in the
+estate unmonitored: it holds the S3 bucket every Velero backup and etcd snapshot is
+written to, the shared Postgres tier, and the photo library. Nothing could alert on it
+filling up.
+
+The blackbox `NasPostgresDown` probe does not close this gap — it answers "is the port
+reachable", not "is the disk about to fill". Those are different failures, and only one
+of them gives you warning.
+
+Run node-exporter on the NAS itself as a container, alongside the other NAS stacks:
+
+```yaml
+# /volume1/docker/node-exporter/docker-compose.yml
+services:
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:v1.12.1
+    container_name: node-exporter
+    restart: unless-stopped
+    # Host PID + network: the exporter reports on the host, not on itself.
+    pid: host
+    network_mode: host
+    command:
+      - '--path.rootfs=/host'
+      # Only the real data pool and system partitions — skip container and
+      # overlay mounts, which otherwise flood the series with noise.
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|run|var/lib/docker)($$|/)'
+    volumes:
+      # Read-only view of the host filesystem. rslave keeps later host mounts
+      # visible to the container without granting it write access.
+      - /:/host:ro,rslave
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
+
+Then point Prometheus at it. An off-cluster host has no Service or Pod to discover, so
+`ServiceMonitor`/`PodMonitor` cannot express this — the operator's `ScrapeConfig` CRD is
+the supported equivalent of a raw `static_config`, and it keeps the target in Git rather
+than in an `additionalScrapeConfigs` secret:
+
+```yaml
+# infrastructure/kube-prometheus-stack/manifests/scrapeconfig-nas-node.yaml
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: ScrapeConfig
+metadata:
+  name: nas-node
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack   # same selector gotcha as Probes and Rules
+spec:
+  jobName: nas-node
+  scrapeInterval: 60s
+  staticConfigs:
+    - targets:
+        - 10.0.20.50:9100
+```
+
+!!! warning "Start the exporter before merging the ScrapeConfig"
+    If Prometheus gets the target before node-exporter is running, the scrape fails and
+    kube-prometheus-stack's `TargetDown` fires. Bring the container up first, confirm
+    `curl http://10.0.20.50:9100/metrics` returns, then merge.
+
+Two capacity alerts read this job, both keyed to the data pool
+(`mountpoint="/volume1"`) so the small UGOS system partitions and the `/home` bind of
+the same device don't double-fire: `NasVolumeFillingUp` (warning, >85% for 1h) and
+`NasVolumeAlmostFull` (critical, >95% for 15m).
+
+There is deliberately **no** "NAS unreachable" alert. `NasPostgresDown` and the stock
+`TargetDown` both already fire on that event — a third rule would page twice for one
+outage.
+
 ## Step 5: DNS + HTTPRoute
 
 1. Add `grafana` to the service list in the Cloudflare [Terraform](terraform.md) module
