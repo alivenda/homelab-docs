@@ -15,7 +15,7 @@ A runbook guide for building a 4-node k3s cluster on a Turing Pi 2, learning Dev
 | DNS | 1× Raspberry Pi for AdGuard Home (`pyrite` — this build: Pi 3 Model B; add a 2nd for optional failover) |
 | Domain | Cloudflare-registered domain (~$10/yr) |
 
-You can substitute hardware, but commands are written against this exact build. Full parts list (PSU, SSD, UPS, and the rest) is in [Prerequisites](prerequisites.md).
+You can substitute hardware, but commands are written against this exact build. Full parts list (PSU, SSD, UPS, and the rest) is in [Prerequisites](get-started/prerequisites.md).
 
 ## What you end up with
 
@@ -23,7 +23,7 @@ A 4-node k3s cluster running self-hosted Git (Forgejo), password manager (Vaultw
 
 ## The five repos
 
-Everything is split across five Git repositories, each with its own purpose, security boundary, and consumer — see [Git Foundation](git.md) for the full rationale and setup steps.
+Everything is split across five Git repositories, each with its own purpose, security boundary, and consumer — see [Git Foundation](get-started/set-up-git.md) for the full rationale and setup steps.
 
 | Repo | Purpose | Consumer |
 |---|---|---|
@@ -35,7 +35,7 @@ Everything is split across five Git repositories, each with its own purpose, sec
 
 ## How the runbooks fit together
 
-[Prerequisites](prerequisites.md) sets the mental model — read it first. The guide is split into **Foundation → Infrastructure → Apps**:
+[Prerequisites](get-started/prerequisites.md) sets the mental model — read it first. The guide is split into **Foundation → Infrastructure → Apps**:
 
 ```
 ─── Foundation ──────────────────────────────────────────────
@@ -97,7 +97,7 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
  └─→ planned: Kavita · Mealie · TriliumNext
 ```
 
-**Runbook or catalog row?** An app earns its own runbook when it has a relational database, multiple components, a non-cluster deployment model, a non-HTTP protocol, is config-heavy, or is an auth backbone. Everything simpler is a one-pattern HTTP app and lives as a row in the [App Catalog](apps-catalog.md). Each app/service page also carries a **Status** banner (Live / Planned / Shelved / Retired) at the top.
+**Runbook or catalog row?** An app earns its own runbook when it has a relational database, multiple components, a non-cluster deployment model, a non-HTTP protocol, is config-heavy, or is an auth backbone. Everything simpler is a one-pattern HTTP app and lives as a row in the [App Catalog](reference/app-catalog.md). Each app/service page also carries a **Status** banner (Live / Planned / Shelved / Retired) at the top.
 
 | Status | Apps |
 |---|---|
@@ -105,7 +105,7 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
 | Planned | Kavita · Mealie · TriliumNext Notes |
 | Retired | Uptime Kuma |
 
-→ [App Catalog](apps-catalog.md) for the per-app deltas, [Deploying an App](apps-deploy-pattern.md) for the shared pattern.
+→ [App Catalog](reference/app-catalog.md) for the per-app deltas, [Deploying an App](deploy/index.md) for the shared pattern.
 
 ## How to use this guide
 
@@ -119,4 +119,4 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
 
 ## Version
 
-The current source set is v21. See the [Version History](version-history.md) for the prior PDF lineage and what each release added.
+The current source set is v21. See the [Version History](release-notes.md) for the prior PDF lineage and what each release added.

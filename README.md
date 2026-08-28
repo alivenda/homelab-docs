@@ -38,4 +38,4 @@ mkdocs build
 
 Branch + PR per repo convention — including for README and runbook edits. No direct pushes to `main`.
 
-Page structure, admonition usage, anchor rules, and the public-repo constraints are codified in [STYLE.md](STYLE.md) — `docs/backups.md` and `docs/forgejo.md` are the reference implementations.
+Page structure, admonition usage, anchor rules, and the public-repo constraints are codified in [STYLE.md](STYLE.md) — `docs/build/backups.md` and `docs/deploy/forgejo.md` are the reference implementations.

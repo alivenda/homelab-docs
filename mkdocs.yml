@@ -76,49 +76,53 @@ plugins:
   - search
 
 nav:
-  - Home: index.md
-  - Foundation:
-      - Prerequisites: prerequisites.md
-      - Git Foundation: git.md
-  - Infrastructure:
-      - Networking: networking.md
-      - Turing Pi: turing-pi.md
-      - Ansible: ansible.md
-      - Kubernetes: kubernetes.md
-      - Traefik: traefik.md
-      - Terraform: terraform.md
-      - Storage & Data Architecture: storage-architecture.md
-      - Observability: observability.md
-      - Backups & DR: backups.md
-      - Disaster Recovery: disaster-recovery.md
-      - Cold Shutdown: cold-shutdown.md
-  - Platform Services:
-      - Vaultwarden: vaultwarden.md
-      - Authelia + lldap: authelia.md
-      - ntfy: ntfy.md
-      - NAS PostgreSQL: nas-postgres.md
-      - Forgejo: forgejo.md
-      - Woodpecker CI/CD: woodpecker.md
-      - AdGuard Home: adguard-home.md
-  - Apps:
-      - Deploying an App (pattern): apps-deploy-pattern.md
-      - App Catalog: apps-catalog.md
-      - Nextcloud: nextcloud.md
-      - Paperless-ngx: paperless.md
-      - Immich: immich.md
-      - Home Assistant: home-assistant.md
-      - Homepage: homepage.md
-      - Vikunja: vikunja.md
-      - Miniflux: miniflux.md
-  - Planned & Future:
-      - Personal Cloud Stack (overview): personal-cloud-stack.md
-      - Arr Stack (shelved): arr-stack.md
-      - BookStack: bookstack.md
-      - Syncthing: syncthing.md
-      - RustDesk: rustdesk.md
-      - Reactive Resume: reactive-resume.md
-      - Ollama + Open WebUI: ollama.md
-  - Version History: version-history.md
+  - Overview: index.md
+  - Get started:
+      - Prerequisites: get-started/prerequisites.md
+      - Set up Git: get-started/set-up-git.md
+  - Concepts:
+      - Storage and data architecture: concepts/storage.md
+  - Build the cluster:
+      - Network: build/network.md
+      - Turing Pi: build/turing-pi.md
+      - Ansible: build/ansible.md
+      - Kubernetes: build/kubernetes.md
+      - Traefik: build/traefik.md
+      - Terraform: build/terraform.md
+      - Observability: build/observability.md
+      - Backups: build/backups.md
+  - Deploy services:
+      - Deployment pattern: deploy/index.md
+      - Platform services:
+          - Vaultwarden: deploy/vaultwarden.md
+          - Authelia and lldap: deploy/authelia.md
+          - ntfy: deploy/ntfy.md
+          - NAS PostgreSQL: deploy/nas-postgres.md
+          - Forgejo: deploy/forgejo.md
+          - Woodpecker: deploy/woodpecker.md
+          - AdGuard Home: deploy/adguard-home.md
+      - Applications:
+          - Nextcloud: deploy/nextcloud.md
+          - Paperless-ngx: deploy/paperless.md
+          - Immich: deploy/immich.md
+          - Home Assistant: deploy/home-assistant.md
+          - Homepage: deploy/homepage.md
+          - Vikunja: deploy/vikunja.md
+          - Miniflux: deploy/miniflux.md
+      - Planned:
+          - Arr stack: deploy/arr-stack.md
+          - BookStack: deploy/bookstack.md
+          - Syncthing: deploy/syncthing.md
+          - RustDesk: deploy/rustdesk.md
+          - Reactive Resume: deploy/reactive-resume.md
+          - Ollama and Open WebUI: deploy/ollama.md
+  - Operations:
+      - Disaster recovery: operate/disaster-recovery.md
+      - Cold shutdown: operate/cold-shutdown.md
+  - Reference:
+      - App catalog: reference/app-catalog.md
+      - Service selection: reference/service-selection.md
+  - Release notes: release-notes.md
 
 extra:
   generator: false
