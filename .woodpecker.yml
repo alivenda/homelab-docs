@@ -18,6 +18,16 @@ when:
 steps:
   mkdocs-strict:
     image: python:3.13-slim
+    # Measured peak: ~105 MiB over a ~55s run. Requests give co-tenants a
+    # proportional CPU share; no CPU limit, matching the renovate CronJob.
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            memory: 512Mi
     commands:
       - pip install --quiet --root-user-action=ignore -r requirements.txt
       - mkdocs build --strict
@@ -31,6 +41,14 @@ steps:
   # rebuild has already broken a green pipeline (homelab-manifests kubeconform).
   notify-failure:
     image: docker.io/curlimages/curl:8.21.0@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            memory: 64Mi
     when:
       - status: [failure]
     environment:
