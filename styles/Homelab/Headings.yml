@@ -1,0 +1,149 @@
+extends: capitalization
+message: "'%s' should use sentence-style capitalization."
+link: https://developers.google.com/style/capitalization
+level: warning
+scope: heading
+match: $sentence
+# Google.Headings with this project's proper nouns added. Google's own copy
+# exempts Azure, Docker, Kubernetes and a dozen more; without the homelab
+# equivalents the rule fires on every service name in a heading and the signal
+# is lost. Google.Headings is disabled in .vale.ini so these two don't stack.
+#
+# No `indicators: [":"]` — the guide says the first word after a colon is
+# generally lowercase, and Google.Colons enforces that.
+exceptions:
+  # Infrastructure and platform
+  - AdGuard
+  - Alloy
+  - Ansible
+  - ArgoCD
+  - Authelia
+  - Backblaze
+  - Cloudflare
+  - Collabora
+  - Docker
+  - DietPi
+  - Forgejo
+  - Garage
+  - Gateway
+  - GitHub
+  - GitOps
+  - Grafana
+  - Harbor
+  - Helm
+  - HTTPRoute
+  - ForwardAuth
+  - Kubernetes
+  - Loki
+  - MariaDB
+  - MetalLB
+  - MinIO
+  - PostgreSQL
+  - Prometheus
+  - Proxmox
+  - Redis
+  - Renovate
+  - SQLite
+  - Tailscale
+  - Terraform
+  - Traefik
+  - Velero
+  - WireGuard
+  - Woodpecker
+  # Applications
+  - Actual
+  - Assistant
+  - Audiobookshelf
+  - BookStack
+  - Budget
+  - Donetick
+  - Home
+  - Immich
+  - Kavita
+  - Kuma
+  - Mealie
+  - Miniflux
+  - Nextcloud
+  - Ollama
+  - Open
+  - Paperless
+  - Reactive
+  - Readeck
+  - Resume
+  - RustDesk
+  - Syncthing
+  - TriliumNext
+  - Uptime
+  - Vaultwarden
+  - Vikunja
+  - Vaultwarden
+  - WebUI
+  # Hardware and OS
+  - Arch
+  - CachyOS
+  - CM4
+  - Debian
+  - HAOS
+  - Pi
+  - Turing
+  - Ubuntu
+  - UGOS
+  - UGREEN
+  - UniFi
+  # Acronyms
+  - ACL
+  - API
+  - BMC
+  - CD
+  - CI
+  - CRD
+  - DB
+  - DHCP
+  - DNS
+  - DNSSEC
+  - DR
+  - GUI
+  - HTTP
+  - HTTPS
+  - ID
+  - IoT
+  - IP
+  - JSON
+  - JWT
+  - LAN
+  - LDAP
+  - MFA
+  - NAS
+  - NFS
+  - NUT
+  - OIDC
+  - OS
+  - PKCE
+  - PR
+  - PSU
+  - PVC
+  - RAM
+  - RBAC
+  - S3
+  - SATA
+  - SOPS
+  - SPOF
+  - SSD
+  - SSH
+  - SSO
+  - TCP
+  - TLS
+  - TOTP
+  - UDM
+  - UDP
+  - UFW
+  - UI
+  - UPS
+  - URL
+  - USB
+  - VLAN
+  - VM
+  - VPN
+  - WAN
+  - WOPI
+  - YAML

@@ -32,6 +32,31 @@ steps:
       - pip install --quiet --root-user-action=ignore -r requirements.txt
       - mkdocs build --strict
 
+  # Prose lint against the Google developer documentation style guide, using
+  # Vale's official Google package plus the project-local Homelab style
+  # (styles/Homelab/). `vale sync` fetches the Google package at run time; it is
+  # not vendored, so a package update lands without a commit here.
+  #
+  # `failure: ignore` while the rewrite is in flight: the corpus starts at ~1090
+  # warnings and each section PR drives it down. Flip this step to blocking once
+  # it reaches zero — that is its own one-line PR, not a silent change.
+  # Digest-pinned like the notify step; jdkato/vale:v3.18.0 is multi-arch and
+  # runs on the arm64 agents.
+  vale:
+    image: docker.io/jdkato/vale:v3.18.0@sha256:a947680f6e98ef8bbfcb0323293bcac8a8f4cbffcdf2401c7bf5e13c4bc2cb57
+    failure: ignore
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+          limits:
+            memory: 256Mi
+    commands:
+      - vale sync
+      - vale --minAlertLevel=warning docs/
+
   # Push-notify on failure: ntfy topic `ci`, publisher `woodpecker` (write-only,
   # topic-scoped). `ntfy_token` is an org-level Woodpecker secret shared by all
   # four repos — it must be enabled for push AND pull_request events, or
