@@ -23,7 +23,7 @@ A 4-node k3s cluster running self-hosted Git (Forgejo), password manager (Vaultw
 
 ## The five repos
 
-Everything is split across five Git repositories, each with its own purpose, security boundary, and consumer — see [Git Foundation](get-started/set-up-git.md) for the full rationale and setup steps.
+Everything is split across five Git repositories, each with its own purpose, security boundary, and consumer — see [Set up Git](get-started/set-up-git.md) for the full rationale and setup steps.
 
 | Repo | Purpose | Consumer |
 |---|---|---|
@@ -37,11 +37,11 @@ Everything is split across five Git repositories, each with its own purpose, sec
 
 [Prerequisites](get-started/prerequisites.md) sets the mental model — read it first.
 
-The nav groups pages by what you're doing with them: **Get started**, **Concepts**,
-**Build the cluster**, **Deploy services**, **Operations**, and **Reference**. Build order
-is a different thing, and it crosses those groups — Vaultwarden is a Deploy services page,
-but it comes early because every later runbook stores its credentials there. The diagram
-below gives the order:
+The navigation groups pages by what you're doing with them: **Overview**, **Get started**,
+**Concepts**, **Build the cluster**, **Deploy services**, **Operations**, **Reference**, and
+**Release notes**. Build order cuts across those groups. Vaultwarden is a Deploy services
+page, but it comes early because later runbooks store their credentials there. The following
+diagram shows the build order:
 
 ```
 ─── Get started ────────────────────────────────────────────
@@ -50,7 +50,7 @@ Prerequisites
 Set up Git (5 repos, sops, pre-commit)
 
 ─── Cluster and platform, in build order ────────────────────
-Network — UDM VLANs           ← Tailscale step waits on Turing Pi
+Network — UDM VLANs              ← Tailscale step waits on Turing Pi
  ↓
 Turing Pi — flash DietPi to 4× CM4   ← SSD-prep step superseded by Ansible
  ↓
@@ -60,7 +60,7 @@ Kubernetes — k3s bring-up (MetalLB, NFS storage, ArgoCD, Sealed Secrets)
  ↓
 Traefik — HTTPS (DNS-01 via Cloudflare)
  ↓
-Vaultwarden                      ← cred store for every later runbook
+Vaultwarden                      ← credential store for later runbooks
  ↓
 Terraform (Cloudflare DNS + UniFi IaC; retroactive)
  ↓
@@ -118,7 +118,7 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
 - Read each runbook fully before starting it. Several reference "come back to this after the such-and-such runbook" patterns — skim first so you don't get stuck mid-step.
 - Treat the `Depends On` header as the prerequisite check. If a runbook says "Depends On: Kubernetes", don't start until Kubernetes's Verification section passes.
 - When a runbook gives you a `docker-compose.yml`, check the `Runs On` header. NAS-hosted services use compose; cluster-hosted services use Helm + manifests committed to `homelab-manifests` so ArgoCD manages them.
-- The most common ordering confusion is Tailscale (Networking Step 3 needs ruby from Turing Pi) and ArgoCD (Kubernetes Step 8 needs port-forward to access before Traefik is up). Both are flagged where they appear.
+- The most common ordering confusion is Tailscale (Network Step 3 needs ruby from Turing Pi) and ArgoCD (Kubernetes Step 8 needs port-forward to access before Traefik is up). Both are flagged where they appear.
 
 !!! tip "Bookmark this page"
     When you hit a "wait, when am I supposed to do X" moment three weeks in, the dependency map above answers it without scrolling the whole guide.

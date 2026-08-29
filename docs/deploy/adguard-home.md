@@ -20,7 +20,7 @@ AdGuard Home runs natively on a dedicated Raspberry Pi rather than in the k3s cl
 This build runs a single node, `pyrite`, at `10.0.0.20` on the Default VLAN. The optional secondary is `marcasite` at `10.0.0.21`.
 
 !!! note "Why the Default VLAN, not Lab"
-    DNS is shared infrastructure, not a cluster service, so it lives on the Default LAN (the management plane) alongside the UDM — not on Lab, where the firewall posture is "initiates to nothing." Trusted devices already reach the Default LAN (the `trusted-to-internal-allow` policy from Networking), so they get DNS with no extra rule; IoT and Lab need one small allow rule each — see [Networking Step 3d](../build/network.md#step-3d-dns-enforcement).
+    DNS is shared infrastructure, not a cluster service, so it lives on the Default LAN (the management plane) alongside the UDM — not on Lab, where the firewall posture is "initiates to nothing." Trusted devices already reach the Default LAN (the `trusted-to-internal-allow` policy from Network), so they get DNS with no extra rule; IoT and Lab need one small allow rule each — see [Network Step 3d](../build/network.md#step-3d-dns-enforcement).
 
 This runbook covers:
 
@@ -142,7 +142,7 @@ In the UniFi Network app, hand out the Pi's IP as the DNS server for each VLAN t
 3. Repeat for the Trusted, Lab, and IoT VLANs.
 
 !!! warning "IoT and Lab need a firewall rule to reach it"
-    AdGuard sits on the Default LAN (Internal zone). Trusted reaches it already, but with the zone-based firewall the IoT and Lab zones are blocked from Internal by default — clients there will *silently* lose DNS unless you add the allow rules in [Networking Step 3d](../build/network.md#step-3d-dns-enforcement). Add those before flipping each VLAN's DNS over.
+    AdGuard sits on the Default LAN (Internal zone). Trusted reaches it already, but with the zone-based firewall the IoT and Lab zones are blocked from Internal by default — clients there will *silently* lose DNS unless you add the allow rules in [Network Step 3d](../build/network.md#step-3d-dns-enforcement). Add those before flipping each VLAN's DNS over.
 
 Clients pick up AdGuard at the next DHCP renewal. Force a renewal on a test device (`sudo dhclient -r && sudo dhclient` on Linux, reconnect Wi-Fi on a phone) and verify queries appear in AdGuard's **Query Log**.
 
@@ -254,7 +254,7 @@ You should see a successful push. Log into `http://10.0.0.21:8083` and confirm b
 
 ### Advertise both from the UDM
 
-Back in **Settings → Networks → [VLAN name] → DHCP → DNS Server**, set **DNS Server 2** to `10.0.0.21` on each VLAN (DNS Server 1 stays `10.0.0.20`). Clients now fail over automatically. Extend the IoT/Lab allow rules in [Networking Step 3d](../build/network.md#step-3d-dns-enforcement) to cover `10.0.0.21` as well.
+Back in **Settings → Networks → [VLAN name] → DHCP → DNS Server**, set **DNS Server 2** to `10.0.0.21` on each VLAN (DNS Server 1 stays `10.0.0.20`). Clients now fail over automatically. Extend the IoT/Lab allow rules in [Network Step 3d](../build/network.md#step-3d-dns-enforcement) to cover `10.0.0.21` as well.
 
 ## Ansible
 
@@ -289,7 +289,7 @@ ansible-playbook site.yml --limit pyrite
     ```
 
 - [ ] UDM DHCP advertising `10.0.0.20` as DNS on every VLAN that should filter.
-- [ ] From a device on Trusted, IoT, and Lab: DNS resolves (proves the Networking Step 3d allow rules are in place).
+- [ ] From a device on Trusted, IoT, and Lab: DNS resolves (proves the Network Step 3d allow rules are in place).
 - [ ] Query log in AdGuard UI shows traffic from network devices.
 
 **If you added the second node:**

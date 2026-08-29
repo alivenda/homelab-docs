@@ -142,7 +142,7 @@ resource "cloudflare_dns_record" "services" {
 ## UniFi Module
 
 !!! warning "Written, never applied"
-    This build's UDM was configured by hand ([Networking](network.md)); the `unifi/`
+    This build's UDM was configured by hand ([Network](network.md)); the `unifi/`
     module is a future codification target. Don't read its `.tf` as a description of live
     UDM config — get live facts from the controller (or a `tofu plan`), not the code.
 

@@ -1,4 +1,4 @@
-# Networking
+# Network
 
 VLAN plan, firewall, and remote access via Tailscale. Sets up the network model that every later runbook assumes (cluster nodes on Lab VLAN, MetalLB pool reserved, global mDNS reflector, Tailscale subnet routing).
 

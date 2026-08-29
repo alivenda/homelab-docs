@@ -29,7 +29,7 @@ Nothing in the homelab is affected — this is about restoring your ability to o
 
 1. On the new or reinstalled machine, install the base tooling as each runbook calls for it — `git` and `sops`/`age` are the only two you need before anything else works.
 2. Restore the age key from your (externally-hosted) password manager — [Backups, Step 1](../build/backups.md#step-1-restore-the-age-private-key).
-3. Clone the five repos from Forgejo (`git.yourdomain.com` — it's unaffected); layout and remotes are in [Git Foundation](../get-started/set-up-git.md).
+3. Clone the five repos from Forgejo (`git.yourdomain.com` — it's unaffected); layout and remotes are in [Set up Git](../get-started/set-up-git.md).
 4. Confirm you can decrypt one file from each repo class — [Backups, Step 2](../build/backups.md#step-2-confirm-you-can-decrypt-the-repos).
 5. Pull the kubeconfig from ruby — [Kubernetes, Step 0](../build/kubernetes.md#step-0-get-kubectl-working-on-your-machine).
 6. Verify: `kubectl get nodes` shows four `Ready` nodes, and `tofu plan` runs clean against the restored state backend.
@@ -102,9 +102,9 @@ The NAS holds the entire Garage store (every backup bucket **and** the Terraform
 Fire, theft, flood — everything on-site is gone. What survives is exactly what lives off-site today: the IaC (GitHub mirrors), the secrets chain (your externally-hosted password manager plus the encrypted files in the repos), and these docs. All *data* is gone per the [scenario 5 danger box](#drives-lost) — this rebuild restores the services, and devices restock what they still hold.
 
 1. Confirm the keystone: you can get into your password manager — [the single root of trust](../build/backups.md#the-single-root-of-trust).
-2. On a new machine, clone the five repos from the **GitHub mirrors** — Forgejo lived in the cluster; the mirror wiring is in [Git Foundation](../get-started/set-up-git.md#as-built-forgejo-primary-agit-prs-gitops-over-ssh).
+2. On a new machine, clone the five repos from the **GitHub mirrors** — Forgejo lived in the cluster; the mirror wiring is in [Set up Git](../get-started/set-up-git.md#as-built-forgejo-primary-agit-prs-gitops-over-ssh).
 3. Restore the age key and confirm decrypts — [Backups, Steps 1–2](../build/backups.md#step-1-restore-the-age-private-key).
-4. Network first: if the gateway survived, its config did too; otherwise rebuild it from [Networking](../build/network.md).
+4. Network first: if the gateway survived, its config did too; otherwise rebuild it from [Network](../build/network.md).
 5. NAS, Garage, and the Postgres tier — the [scenario 5 drives-lost list](#drives-lost).
 6. Flash the nodes ([Turing Pi](../build/turing-pi.md)), bootstrap with [Ansible](../build/ansible.md), bring up k3s and its core per [Kubernetes](../build/kubernetes.md).
 7. Wire ArgoCD to the **GitHub mirror** of `homelab-manifests` using the [day-zero pattern](../get-started/set-up-git.md#step-7-wire-argocd-to-homelab-manifests) — the as-built wiring points at Forgejo, which doesn't exist again yet.
