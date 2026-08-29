@@ -1,4 +1,4 @@
-# Git Foundation
+# Set up Git
 
 How this build's Git repos are structured, hosted, and kept secret-free — the foundation Kubernetes (ArgoCD), Ansible, and Terraform all assume.
 

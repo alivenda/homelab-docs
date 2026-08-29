@@ -1,4 +1,4 @@
-# Woodpecker CI/CD
+# Woodpecker
 
 !!! success "Status — Live"
     Live in the cluster — the CI engine gating the homelab repos (today: manifest
