@@ -35,16 +35,22 @@ Everything is split across five Git repositories, each with its own purpose, sec
 
 ## How the runbooks fit together
 
-[Prerequisites](get-started/prerequisites.md) sets the mental model — read it first. The guide is split into **Foundation → Infrastructure → Apps**:
+[Prerequisites](get-started/prerequisites.md) sets the mental model — read it first.
+
+The nav groups pages by what you're doing with them: **Get started**, **Concepts**,
+**Build the cluster**, **Deploy services**, **Operations**, and **Reference**. Build order
+is a different thing, and it crosses those groups — Vaultwarden is a Deploy services page,
+but it comes early because every later runbook stores its credentials there. The diagram
+below gives the order:
 
 ```
-─── Foundation ──────────────────────────────────────────────
+─── Get started ────────────────────────────────────────────
 Prerequisites
  ↓
-Git foundation (5 repos, sops, pre-commit)
+Set up Git (5 repos, sops, pre-commit)
 
-─── Infrastructure (platform + operator tooling) ────────────
-Networking — UDM VLANs           ← Tailscale step waits on Turing Pi
+─── Cluster and platform, in build order ────────────────────
+Network — UDM VLANs           ← Tailscale step waits on Turing Pi
  ↓
 Turing Pi — flash DietPi to 4× CM4   ← SSD-prep step superseded by Ansible
  ↓
@@ -64,7 +70,7 @@ Backups (Garage S3 + Velero)
  ↓
 Forgejo
  ↓
-Woodpecker CI/CD
+Woodpecker
  ↓
 AdGuard Home             ← DNS ad-blocking (dedicated Pi — not k3s)
  ↓
@@ -74,7 +80,7 @@ ntfy                     ← push notifications for the whole stack
  ↓
 NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
 
-─── Apps · full runbooks · live (DB / multi-service / special model) ─
+─── Applications · full runbooks · live (DB / multi-service / special) ─
  ├─→ Nextcloud       (cluster — DB on NAS Postgres)
  ├─→ Paperless-ngx   (cluster — DB on NAS Postgres + Redis)
  ├─→ Immich          (NAS-Docker — not on k3s, see runbook for why)
@@ -83,7 +89,7 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
  ├─→ Vikunja         (cluster — DB on NAS Postgres)
  └─→ Miniflux        (cluster — DB on NAS Postgres, stateless app)
 
-─── Apps · full runbooks · planned & future ──────────────────
+─── Applications · full runbooks · planned ─────────────────────
  ├─→ Arr Stack       (shelved — physical-media-first library)
  ├─→ BookStack       (cluster — MariaDB on NAS)
  ├─→ Syncthing       (per-device — not k3s)
@@ -91,7 +97,7 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
  ├─→ Reactive Resume (cluster — Postgres + Redis + object store)
  └─→ Ollama + WebUI  (NAS Docker — after 16 GB RAM upgrade)
 
-─── Apps · catalog (simple HTTP apps — one shared pattern) ────
+─── Applications · catalog (one shared pattern) ──────────────
  │  See: Deploying an App (pattern) + App Catalog
  ├─→ live:    Actual Budget · Audiobookshelf · Collabora · Donetick · linkding
  └─→ planned: Kavita · Mealie · TriliumNext
