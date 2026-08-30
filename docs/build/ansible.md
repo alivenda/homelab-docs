@@ -5,18 +5,18 @@ Replace the manual per-node steps in Turing Pi with a single Ansible playbook. P
 | | |
 |---|---|
 | **Difficulty** | Intermediate |
-| **Time Estimate** | 2–3 hours upfront, saves hours forever |
-| **Runs On** | Your machine (the Ansible control host) |
+| **Time estimate** | 2–3 hours upfront, saves hours forever |
+| **Runs on** | Your machine (the Ansible control host) |
 | **Replaces** | Manual setup steps in Turing Pi + k3s install |
-| **DevOps Skills** | Configuration management, idempotency, infrastructure as code |
+| **DevOps skills** | Configuration management, idempotency, infrastructure as code |
 
-## Why Ansible (and Not Terraform)
+## Why Ansible (and not Terraform)
 
 Terraform shines for cloud APIs (creating EC2 instances, RDS databases, S3 buckets). For bare-metal homelabs, the actual creation step is physical (you put the CM4 in the slot). Ansible is the right tool for what comes after: making the OS look identical across all 4 nodes.
 
-## Module Preferences: Native Modules over `shell:`
+## Module preferences: native modules over `shell:`
 
-Ansible has native modules for most common ops. Reach for `shell:` only when no module covers the operation (e.g., piped install scripts like k3s). Native modules give you idempotency for free, structured error reporting, and check-mode (`--check`) support — three things `shell:` cannot.
+Ansible has native modules for most common operations. Reach for `shell:` only when no module covers the operation (for example, piped install scripts like k3s). Native modules give you idempotency for free, structured error reporting, and check-mode (`--check`) support — three things `shell:` can't.
 
 Quick reference for tasks in this guide:
 
@@ -32,15 +32,15 @@ Quick reference for tasks in this guide:
 | Template a config file | `ansible.builtin.template` | Jinja2 with handlers for reload |
 | Reboot the host | `ansible.builtin.reboot` | Built-in wait-for-reconnect handling |
 
-The two k3s install tasks in Step 8 of this runbook intentionally use `ansible.builtin.shell`. The k3s upstream install is a curl-piped script — wrapping it in a more idiomatic module would not improve correctness and would obscure the canonical install path. Use `creates: /usr/local/bin/k3s` on the task to keep it idempotent.
+The two k3s install tasks in the [k3s playbooks](#step-8-k3s-playbooks) section intentionally use `ansible.builtin.shell`. The k3s upstream install is a curl-piped script — wrapping it in a more idiomatic module doesn't improve correctness and obscures the canonical install path. Use `creates: /usr/local/bin/k3s` on the task to keep it idempotent.
 
 !!! tip "If you run ansible-lint"
-    The k3s install tasks above will trip `command-instead-of-module` on ansible-lint's `basic` profile or higher. The curl-pipe is the canonical upstream install path, not an oversight — scope the exception narrowly with `# noqa: command-instead-of-module` on each install task rather than disabling the rule globally.
+    The k3s install tasks trip `command-instead-of-module` on ansible-lint's `basic` profile or higher. The curl-pipe is the canonical upstream install path, not an oversight — scope the exception narrowly with `# noqa: command-instead-of-module` on each install task rather than disabling the rule globally.
 
 !!! tip
     Add the `kubernetes.core` collection to your `requirements.yml` before Kubernetes: `ansible-galaxy collection install kubernetes.core`. The `kubeconfig:` parameter on `kubernetes.core.k8s` lets you run cluster ops from your machine against the remote API.
 
-## Step 1: Install Ansible on Your Machine
+## Install Ansible on your machine { #step-1-install-ansible-on-your-machine }
 
 Ansible is agentless — it runs locally and talks to nodes over SSH. No agent install on the CM4s.
 
@@ -55,9 +55,9 @@ sudo pacman -S ansible
 ansible --version
 ```
 
-## Step 2: SSH Key Distribution
+## SSH key distribution { #step-2-ssh-key-distribution }
 
-Turing Pi's `dietpi.txt` sets each node's static IP (`AUTO_SETUP_NET_USESTATIC=1`) and hostname at first boot, so the nodes come up directly on their planned addresses (`10.0.20.10–.13`) — there's no DHCP-to-static transition to manage. A matching DHCP reservation in UDM → Clients is optional belt-and-suspenders.
+Turing Pi's `dietpi.txt` sets each node's static IP (`AUTO_SETUP_NET_USESTATIC=1`) and hostname at first boot, so the nodes come up directly on their planned addresses (10.0.20.10–.13) — there's no DHCP-to-static transition to manage. A matching DHCP reservation in UDM → Clients is optional belt-and-suspenders.
 
 Copy your key to the **`dietpi`** user — DietPi's default admin account. Ansible logs in as `dietpi` and escalates with `sudo` rather than logging in as root:
 
@@ -71,7 +71,7 @@ done
 !!! tip "Harden SSH once the key works"
     After key auth works for `dietpi`, disable root login and password auth on each node — set `PermitRootLogin no` and `PasswordAuthentication no` in `/etc/ssh/sshd_config`, then `sudo systemctl restart ssh`. Key-only, non-root is the baseline before exposing anything.
 
-## Step 3: Project Structure
+## Project structure { #step-3-project-structure }
 
 ```
 homelab-ansible/
@@ -108,7 +108,7 @@ Install:
 ansible-galaxy collection install -r requirements.yml
 ```
 
-## Step 4: Inventory (`inventory.yml`)
+## Inventory (`inventory.yml`) { #step-4-inventory-inventoryyml }
 
 ```yaml
 all:
@@ -150,7 +150,7 @@ k3s_agents:
 !!! tip "The secret resolves at runtime"
     `k3s_token` is pulled from the sops-encrypted `secrets/secrets.sops.yaml` by the `community.sops` lookup and decrypted with your age key. Ansible only resolves Jinja at task-execution time, so create the secret (Step 10) before running `ansible-playbook` in Step 11 — otherwise the lookup fails with a missing-file or decrypt error.
 
-## Step 5: `ansible.cfg`
+## `ansible.cfg` { #step-5-ansiblecfg }
 
 ```ini
 [defaults]
@@ -164,9 +164,9 @@ callback_result_format = yaml
 !!! note "Why not `stdout_callback = yaml`"
     community.general 12.0 removed the standalone `yaml` callback. The built-in `default` callback with `callback_result_format: yaml` gives the same readable multi-line output. There's no `vault_password_file` — sops + age handles secrets (Step 10).
 
-## Step 6: Bootstrap Playbook
+## Bootstrap playbook { #step-6-bootstrap-playbook }
 
-Steps 6–8 each show one play. Append them in order into `site.yml` at the repo root — that one file is the whole playbook for the cluster.
+The [Bootstrap playbook](#step-6-bootstrap-playbook) through [k3s playbooks](#step-8-k3s-playbooks) sections each show one play. Append them in order into `site.yml` at the repo root — that one file is the whole playbook for the cluster.
 
 ```yaml
 - hosts: all
@@ -213,7 +213,7 @@ Steps 6–8 each show one play. Append them in order into `site.yml` at the repo
 
     Let DietPi own identity; Ansible owns configuration (packages, cgroups, `/etc/hosts`, k3s) — one source of truth per concern. Note the cmdline path is `/boot/firmware/cmdline.txt` on current DietPi / Raspberry Pi OS (Bookworm/Trixie), not the older `/boot/cmdline.txt`.
 
-## Step 7: NFS Playbook
+## NFS playbook { #step-7-nfs-playbook }
 
 The play is tagged `nfs` so you can bring the cluster up before the SSD is installed: run `ansible-playbook site.yml --skip-tags nfs` now, then `--tags nfs` once the disk is in.
 
@@ -256,7 +256,7 @@ The mount task below references the filesystem by label, so future reboots resol
 !!! tip
     `no_root_squash` with subnet restriction is a homelab tradeoff, not a production-grade NFS security posture. It works because every node on `10.0.0.0/24` is yours and the data is yours. Do not copy this config into a multi-tenant environment.
 
-## Step 8: k3s Playbooks
+## k3s playbooks { #step-8-k3s-playbooks }
 
 ```yaml
 - hosts: k3s_server
@@ -287,7 +287,7 @@ The mount task below references the filesystem by label, so future reboots resol
         creates: /usr/local/bin/k3s
 ```
 
-## Step 9: Assembled `site.yml`
+## Assembled `site.yml` { #step-9-assembled-siteyml }
 
 The four plays from Steps 6–8 concatenate into one file — adding a `name:` to each play (which the verbatim Step 6–8 blocks omit for brevity) makes the `ansible-playbook` output much easier to scan.
 
@@ -327,9 +327,9 @@ The four plays from Steps 6–8 concatenate into one file — adding a `name:` t
     inheriting cluster assumptions. The four plays above remain the core;
     `homelab-ansible`'s `site.yml` and README are the authoritative play inventory.
 
-## Step 10: Secrets via sops + age
+## Secrets with sops + age { #step-10-secrets-via-sops-age }
 
-The cluster token lives encrypted in `secrets/secrets.sops.yaml` and is decrypted at runtime by the `community.sops` lookup in the inventory — the **same sops + age mechanism** as the `homelab-secrets` repo (Git). That gives you one repo-side secrets tool, consistent with Kubernetes Step 12's two-layer model (sops + age repo-side, Sealed Secrets cluster-side).
+The cluster token lives encrypted in `secrets/secrets.sops.yaml` and is decrypted at runtime by the `community.sops` lookup in the inventory — the **same sops + age mechanism** as the `homelab-secrets` repo (Git). That gives you one repo-side secrets tool, consistent with the [Sealed Secrets two-layer model](kubernetes.md#step-12-sealed-secrets-cluster-side-secret-management) (sops + age repo-side, Sealed Secrets cluster-side).
 
 Generate a strong token and write it into a sops-encrypted file (the repo-root `.sops.yaml` pins your age recipient):
 
@@ -338,9 +338,9 @@ sops secrets/secrets.sops.yaml
 # Add line:  k3s_token: <output of `openssl rand -hex 32`>
 ```
 
-The age **private** key stays at `~/.config/sops/age/keys.txt` (never committed); the encrypted file is safe to commit. Save the token to your password manager too — losing it on top of losing ruby turns a 2-hour rebuild into a full cluster rebuild (Kubernetes Step 11).
+The age **private** key stays at `~/.config/sops/age/keys.txt` (never committed); the encrypted file is safe to commit. Save the token to your password manager too — losing it on top of losing ruby turns a 2-hour rebuild into a full cluster rebuild ([Restore procedure](kubernetes.md#step-11-restore-procedure-when-ruby-dies)).
 
-## Step 11: Run It
+## Run it { #step-11-run-it }
 
 ```bash
 ansible-playbook site.yml --check          # dry run
@@ -349,8 +349,8 @@ ansible-playbook site.yml --skip-tags nfs  # apply without NFS (SSD not installe
 ansible-playbook site.yml --limit emerald  # one node
 ```
 
-!!! tip
-    Commit everything to your `homelab-ansible` repo — including the *encrypted* `secrets/secrets.sops.yaml`. The age private key (`~/.config/sops/age/keys.txt`) lives outside the repo and never gets committed. Combined with ArgoCD watching `homelab-manifests`, you have full infrastructure-as-code: bare-metal provisioning AND application deployment, both from Git.
+!!! tip "Commit everything"
+    Commit everything to your `homelab-ansible` repo — including the *encrypted* `secrets/secrets.sops.yaml`. The age private key (`~/.config/sops/age/keys.txt`) lives outside the repo and never gets committed. Combined with ArgoCD watching `homelab-manifests`, you have full infrastructure-as-code: bare-metal provisioning and application deployment, both from Git.
 
 ## Verification
 
