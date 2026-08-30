@@ -26,8 +26,9 @@ every sentence:
 - Put the most important information first, in the sentence and on the page.
 - Use `must`, `can`, or `might`. Avoid `should`, `could`, `may`, and `would` — `should`
   hides whether an action is required.
-- Cut filler: *simply*, *easy*, *just*, *please*, *note that*, *in order to*, *via*,
-  *leverage*, *utilize*, *allows you to*, *e.g.*, *i.e.*
+- Cut filler. Delete *simply*, *easy*, *easily*, *just*, *quickly*, *please*,
+  *note that*, *basically*, *obviously*, *of course*. Replace *via*, *in order to*,
+  *leverage*, *utilize*, *allows you to*, *desired*, *and/or*, *e.g.*, *i.e.*
 - Don't claim more than you verified. Avoid *best*, *fastest*, *guarantees*. A
   prohibition is not a claim — "never put ForwardAuth in front of an app with its own
   API clients" stays.
@@ -205,7 +206,7 @@ grep -c '^```' docs/build/backups.md
 4. Open the PR with an AGit push to Forgejo. GitHub is a read-only mirror:
 
    ```fish
-   git push origin HEAD:refs/for/main -o topic=<short-topic>
+   git push origin HEAD:refs/for/main -o topic=TOPIC
    ```
 
    The topic is the PR's identity. Reusing it updates that PR; a different topic opens a
@@ -217,15 +218,20 @@ grep -c '^```' docs/build/backups.md
 ### What Vale checks, and what it doesn't
 
 `.vale.ini` loads Vale's official Google package plus the project-local `Homelab` style
-in `styles/Homelab/`. The Homelab rules cover three things the Google package misses:
-`should`/`could`/`may`/`would`, the filler word list, and sentence-case headings with
-this project's product names exempted.
+in `styles/Homelab/`. The Homelab rules cover what the Google package misses:
+`should`/`could`/`may`/`would` (`Auxiliaries`), filler words to replace (`Filler`) and to
+delete (`Delete`), and sentence-case headings with this project's product names exempted
+(`Headings`).
 
-Vale is advisory while the style rewrite is in flight — the `vale` step in
-`.woodpecker.yml` carries `failure: ignore`. It becomes blocking once the corpus reaches
-zero warnings.
+`Vale.Terms` draws on `styles/config/vocabularies/Homelab/accept.txt` to keep product
+names cased consistently — it's what catches `velero` where `Velero` is meant.
 
-Four Google rules are turned off or downgraded in `.vale.ini`, each with its measured hit
-count in a comment. Vale can't judge whether a sentence is *true*, whether a fact belongs
+Vale reports findings without failing on them: the `vale` step runs with `--no-exit`
+while the rewrite is in flight. The step still fails on a broken lint setup, because
+`vale ls-config` runs first and exits non-zero on a bad `StylesPath` or a missing style.
+Dropping `--no-exit` makes the lint blocking, once the corpus reaches zero.
+
+Five Google rules are turned off or downgraded in `.vale.ini`, four of them with their
+measured hit count in a comment. Vale can't judge whether a sentence is *true*, whether a fact belongs
 in a table, or whether a page tells a story instead of describing a system. Those stay a
 human job.

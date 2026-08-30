@@ -76,7 +76,6 @@ exceptions:
   - Uptime
   - Vaultwarden
   - Vikunja
-  - Vaultwarden
   - WebUI
   # Hardware and OS
   - Arch
@@ -90,6 +89,26 @@ exceptions:
   - UGOS
   - UGREEN
   - UniFi
+  # Carried over from Google.Headings, which .vale.ini disables in favour of
+  # this rule. Dropping them turned three correct headings into false
+  # positives ("Other devices (Linux servers, Raspberry Pi)").
+  - Azure
+  - CLI
+  - Cosmos
+  - Emmet
+  - I
+  - Linux
+  - macOS
+  - Marketplace
+  - MongoDB
+  - REPL
+  - Studio
+  - TypeScript
+  - URLs
+  - Visual
+  - VS
+  - Windows
+  - gRPC
   # Acronyms
   - ACL
   - API

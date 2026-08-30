@@ -33,9 +33,13 @@ Prose follows the [Google developer documentation style guide](https://developer
 checked with [Vale](https://vale.sh):
 
 ```bash
+sudo pacman -S vale                # once
 vale sync                          # fetches the Google style package
-vale --minAlertLevel=warning docs/
+vale --no-exit --minAlertLevel=warning docs/
 ```
+
+CI runs the same lint but doesn't block a merge on it yet — the style rewrite is still in
+flight. Only `mkdocs build --strict` gates the merge today.
 
 ## Related repos
 
@@ -58,5 +62,5 @@ constraints are codified in [STYLE.md](STYLE.md) — `docs/build/backups.md` and
 PRs are AGit pushes to Forgejo; GitHub is a read-only mirror:
 
 ```bash
-git push origin HEAD:refs/for/main -o topic=<short-topic>
+git push origin HEAD:refs/for/main -o topic=TOPIC
 ```
