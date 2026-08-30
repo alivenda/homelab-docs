@@ -81,6 +81,7 @@ nav:
       - Prerequisites: get-started/prerequisites.md
       - Set up Git: get-started/set-up-git.md
   - Concepts:
+      - Repositories: concepts/repositories.md
       - Storage and data architecture: concepts/storage.md
   - Build the cluster:
       - Network: build/network.md

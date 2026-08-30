@@ -102,7 +102,7 @@ The NAS holds the entire Garage store (every backup bucket **and** the Terraform
 Fire, theft, flood — everything on-site is gone. What survives is exactly what lives off-site today: the IaC (GitHub mirrors), the secrets chain (your externally-hosted password manager plus the encrypted files in the repos), and these docs. All *data* is gone per the [scenario 5 danger box](#drives-lost) — this rebuild restores the services, and devices restock what they still hold.
 
 1. Confirm the keystone: you can get into your password manager — [the single root of trust](../build/backups.md#the-single-root-of-trust).
-2. On a new machine, clone the five repos from the **GitHub mirrors** — Forgejo lived in the cluster; the mirror wiring is in [Set up Git](../get-started/set-up-git.md#as-built-forgejo-primary-agit-prs-gitops-over-ssh).
+2. On a new machine, clone the five repos from the **GitHub mirrors** — Forgejo lived in the cluster; the mirror wiring is in [Repositories](../concepts/repositories.md#as-built-forgejo-primary-agit-prs-gitops-over-ssh).
 3. Restore the age key and confirm decrypts — [Backups, Steps 1–2](../build/backups.md#step-1-restore-the-age-private-key).
 4. Network first: if the gateway survived, its config did too; otherwise rebuild it from [Network](../build/network.md).
 5. NAS, Garage, and the Postgres tier — the [scenario 5 drives-lost list](#drives-lost).
@@ -110,7 +110,7 @@ Fire, theft, flood — everything on-site is gone. What survives is exactly what
 7. Wire ArgoCD to the **GitHub mirror** of `homelab-manifests` using the [day-zero pattern](../get-started/set-up-git.md#step-7-wire-argocd-to-homelab-manifests) — the as-built wiring points at Forgejo, which doesn't exist again yet.
 8. Restore the Sealed Secrets signing keys before the apps sync — [Backups, Step 3](../build/backups.md#step-3-restore-the-sealed-secrets-signing-keys-cluster-rebuild-only). The Garage dump died with the NAS, so the day-zero fallback is all you have: it unlocks only secrets sealed before the first rotation. Everything sealed after it must be **re-created from its source** (password manager, provider dashboards) and re-sealed.
 9. Rebuild DNS: `tofu apply` with the restored Cloudflare credentials — the state backend was on the NAS, so re-import the records the apply would otherwise duplicate.
-10. Once Forgejo is redeployed, push the five repos into it and flip ArgoCD back to the [as-built SSH wiring](../get-started/set-up-git.md#gitops-argocd-pulls-from-forgejo-over-ssh).
+10. Once Forgejo is redeployed, push the five repos into it and flip ArgoCD back to the [as-built SSH wiring](../concepts/repositories.md#gitops-argocd-pulls-from-forgejo-over-ssh).
 11. Run the full [post-restart verification](cold-shutdown.md#post-restart-verification), then force a complete backup cycle so the new build is protected from day one.
 
 ## After any recovery

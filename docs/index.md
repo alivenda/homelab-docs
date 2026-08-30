@@ -1,8 +1,8 @@
 # Homelab Runbooks
 
-**Turing Pi 2 Edition — From Zero to Self-Hosted Everything**
+**Turing Pi 2 Edition — From zero to self-hosted everything**
 
-A runbook guide for building a 4-node k3s cluster on a Turing Pi 2, learning DevOps practices that transfer to professional work, and replacing the cloud services you rent with services you own.
+Build a 4-node k3s cluster on a Turing Pi 2, learn DevOps practices that transfer to professional work, and replace the cloud services you rent with services you own.
 
 ## Target build
 
@@ -11,37 +11,43 @@ A runbook guide for building a 4-node k3s cluster on a Turing Pi 2, learning Dev
 | Cluster | Turing Pi 2 (mini-ITX) + 4× Raspberry Pi CM4, 8 GB RAM each |
 | Network | Ubiquiti UDM rackmount — VLANs, firewall, DHCP |
 | NAS | UGREEN DXP6800 Pro (x86, 8 GB DDR5) — bulk media and Immich |
-| Home Assistant host | `slate` — repurposed Late-2014 Mac mini (16 GB RAM, 256 GB SSD), Proxmox host running Home Assistant OS in a VM (2 vCPU, 4 GB) |
-| DNS | 1× Raspberry Pi for AdGuard Home (`pyrite` — this build: Pi 3 Model B; add a 2nd for optional failover) |
+| Home Assistant host | slate — repurposed Late-2014 Mac mini (16 GB RAM, 256 GB SSD), Proxmox host running Home Assistant OS in a VM (2 vCPU, 4 GB) |
+| DNS | 1× Raspberry Pi for AdGuard Home (pyrite — this build: Pi 3 Model B; add a 2nd for optional failover) |
 | Domain | Cloudflare-registered domain (~$10/yr) |
 
 You can substitute hardware, but commands are written against this exact build. Full parts list (PSU, SSD, UPS, and the rest) is in [Prerequisites](get-started/prerequisites.md).
 
 ## What you end up with
 
-A 4-node k3s cluster running self-hosted Git (Forgejo), password manager (Vaultwarden), SSO gateway (Authelia), file sync (Nextcloud), photo library (Immich), document archive (Paperless-ngx), smart-home hub (Home Assistant), monitoring (Prometheus / Grafana / Loki / Alloy), nightly backups (Velero + Garage S3), CI (Woodpecker, gating the repos — the runbook teaches the full image-build pipeline), and GitOps deployment (ArgoCD watching `homelab-manifests`). Plus a full personal cloud layer covering notes, tasks, finance, media automation, books, recipes, and more.
+A 4-node k3s cluster running:
+
+- Self-hosted Git (Forgejo), password manager (Vaultwarden), SSO gateway (Authelia)
+- File sync (Nextcloud), photo library (Immich), document archive (Paperless-ngx)
+- Smart-home hub (Home Assistant), monitoring (Prometheus / Grafana / Loki / Alloy)
+- Nightly backups (Velero + Garage S3), CI (Woodpecker), GitOps deployment (ArgoCD)
+
+Plus a full personal-cloud layer covering notes, tasks, finance, media automation, books, recipes, and more.
 
 ## The five repos
 
-Everything is split across five Git repositories, each with its own purpose, security boundary, and consumer — see [Set up Git](get-started/set-up-git.md) for the full rationale and setup steps.
+Everything is split across five Git repositories, each with its own purpose, security boundary, and consumer. See [Repositories](concepts/repositories.md) for the rationale and [Set up Git](get-started/set-up-git.md) for the setup steps.
 
 | Repo | Purpose | Consumer |
 |---|---|---|
-| `homelab-docs` | These runbooks, diagrams, decisions log | You (humans) |
+| `homelab-docs` | Runbooks, diagrams, decisions log | You (humans) |
 | `homelab-ansible` | OS provisioning playbooks | Your machine |
 | `homelab-manifests` | k3s YAML, Helm values, HTTPRoutes | ArgoCD |
 | `homelab-terraform` | Cloudflare DNS, UniFi config, cloud practice | Your machine → Woodpecker |
-| `homelab-secrets` | Encrypted secrets (sops/age) — **PRIVATE** | Your machine (via sops) |
+| `homelab-secrets` | Encrypted secrets (sops/age) — **PRIVATE** | Your machine (with sops) |
 
 ## How the runbooks fit together
 
-[Prerequisites](get-started/prerequisites.md) sets the mental model — read it first.
+Read [Prerequisites](get-started/prerequisites.md) first — it sets the mental model.
 
 The navigation groups pages by what you're doing with them: **Overview**, **Get started**,
 **Concepts**, **Build the cluster**, **Deploy services**, **Operations**, **Reference**, and
 **Release notes**. Build order cuts across those groups. Vaultwarden is a Deploy services
-page, but it comes early because later runbooks store their credentials there. The following
-diagram shows the build order:
+page, but it comes early because later runbooks store their credentials there.
 
 ```
 ─── Get started ────────────────────────────────────────────
@@ -103,7 +109,7 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
  └─→ planned: Kavita · Mealie · TriliumNext
 ```
 
-**Runbook or catalog row?** An app earns its own runbook when it has a relational database, multiple components, a non-cluster deployment model, a non-HTTP protocol, is config-heavy, or is an auth backbone. Everything simpler is a one-pattern HTTP app and lives as a row in the [App Catalog](reference/app-catalog.md). Each app/service page also carries a **Status** banner (Live / Planned / Shelved / Retired) at the top.
+**Runbook or catalog row?** An app gets its own runbook when it has a relational database, multiple components, a non-cluster deployment model, a non-HTTP protocol, heavy configuration, or is an auth backbone. Everything simpler is a one-pattern HTTP app and lives as a row in the [App Catalog](reference/app-catalog.md). Each app and service page carries a **Status** banner (Live / Planned / Shelved / Retired) at the top.
 
 | Status | Apps |
 |---|---|
@@ -115,14 +121,14 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
 
 ## How to use this guide
 
-- Read each runbook fully before starting it. Several reference "come back to this after the such-and-such runbook" patterns — skim first so you don't get stuck mid-step.
-- Treat the `Depends On` header as the prerequisite check. If a runbook says "Depends On: Kubernetes", don't start until Kubernetes's Verification section passes.
-- When a runbook gives you a `docker-compose.yml`, check the `Runs On` header. NAS-hosted services use compose; cluster-hosted services use Helm + manifests committed to `homelab-manifests` so ArgoCD manages them.
-- The most common ordering confusion is Tailscale (Network Step 3 needs ruby from Turing Pi) and ArgoCD (Kubernetes Step 8 needs port-forward to access before Traefik is up). Both are flagged where they appear.
+- Read each runbook fully before starting it. Several reference "come back to this after X" patterns — skim first so you don't get stuck mid-step.
+- Treat the **Depends On** header as the prerequisite check. If a runbook says "Depends On: Kubernetes," don't start until the Kubernetes verification section passes.
+- When a runbook gives you a `docker-compose.yml` file, check the **Runs On** header. NAS-hosted services use Compose; cluster-hosted services use Helm and manifests committed to `homelab-manifests` so ArgoCD manages them.
+- The most common ordering confusion: Tailscale (the Network page needs ruby from Turing Pi) and ArgoCD (the Kubernetes page needs a port-forward before Traefik is up). Both are flagged where they appear.
 
 !!! tip "Bookmark this page"
-    When you hit a "wait, when am I supposed to do X" moment three weeks in, the dependency map above answers it without scrolling the whole guide.
+    When you hit a "when am I supposed to do X" moment three weeks in, the dependency map answers it.
 
 ## Version
 
-The current source set is v21. See the [Version History](release-notes.md) for the prior PDF lineage and what each release added.
+The current source set is v21. See [Release notes](release-notes.md) for the prior PDF lineage and what each release added.
