@@ -1,31 +1,31 @@
 # Traefik
 
-Foundational layer for clean URLs and automatic HTTPS via Let's Encrypt: traffic flows MetalLB → Traefik (Gateway API provider) → `HTTPRoute`s, with TLS terminated once by a cert-manager wildcard certificate on the `Gateway`.
+Foundational layer for clean URLs and automatic HTTPS with Let's Encrypt: traffic flows MetalLB → Traefik (Gateway API provider) → `HTTPRoute`s, with TLS terminated once by a cert-manager wildcard certificate on the `Gateway`.
 
 | | |
 |---|---|
 | **Difficulty** | Intermediate |
-| **Time Estimate** | 2–3 hours |
-| **Runs On** | k3s cluster |
-| **Depends On** | Kubernetes (k3s + MetalLB) |
+| **Time estimate** | 2–3 hours |
+| **Runs on** | k3s cluster |
+| **Depends on** | Kubernetes (k3s + MetalLB) |
 
 !!! note "Why the Gateway API, not IngressRoute"
     The cluster uses the Kubernetes **Gateway API**, not Traefik's proprietary `IngressRoute`. The Gateway API splits ownership: the platform owns the `Gateway` (listeners + TLS), each app owns its `HTTPRoute`. TLS is handled once by a cert-manager wildcard cert on the Gateway, so apps attach a route and configure no TLS at all. See [Deploying an App](../deploy/index.md) for the per-app side.
 
-## Domain Strategy
+## Domain strategy
 
 Two options: local-only with self-signed certs, or a real domain (~$10/yr) with Let's Encrypt DNS-01. **Recommended: real domain** — annual cost is trivial and DNS-01 is a real-world skill.
 
-## Step 1: Cloudflare API Token
+## Cloudflare API token { #step-1-cloudflare-api-token }
 
 Host the domain on Cloudflare, then create an API token under **My Profile → API Tokens** with the **"Edit zone DNS"** template, scoped to your zone:
 
 - **Permissions:** Zone → DNS → Edit
 - **Zone Resources:** Include → Specific zone → `yourdomain.com`
 
-cert-manager uses this token to solve the DNS-01 challenge for the wildcard cert. Save it to your password manager; you'll seal it in Step 4.
+cert-manager uses this token to solve the DNS-01 challenge for the wildcard cert. Save it to your password manager; you seal it in [Seal the Cloudflare token](#step-4-seal-the-cloudflare-token).
 
-## Step 2: Install the Gateway API CRDs
+## Install the Gateway API CRDs { #step-2-install-the-gateway-api-crds }
 
 The Gateway API CRDs are a separate upstream project (`kubernetes-sigs/gateway-api`), not bundled with Traefik. Install them **first** — at ArgoCD sync wave `-2` — so they exist before Traefik tries to use the `GatewayClass`/`Gateway` kinds:
 
@@ -35,7 +35,7 @@ kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/downloa
 
 In GitOps this is an `Application` pointing at `config/crd/standard` of that repo, pinned to the release tag.
 
-## Step 3: Install Traefik with the Gateway provider
+## Install Traefik with the Gateway provider { #step-3-install-traefik-with-the-gateway-provider }
 
 ```bash
 helm repo add traefik https://traefik.github.io/charts
@@ -78,12 +78,12 @@ helm upgrade --install traefik traefik/traefik \
   --namespace traefik --values values.yaml
 ```
 
-Note what's *gone* versus the legacy setup: no `certificatesresolvers` ACME arguments, no `acme.json` persistence, no `CF_DNS_API_TOKEN` env. Certificates are cert-manager's job now (Step 5), not Traefik's.
+Note what's *gone* versus the legacy setup: no `certificatesresolvers` ACME arguments, no `acme.json` persistence, no `CF_DNS_API_TOKEN` env. Certificates are cert-manager's job ([cert-manager + wildcard certificate](#step-5-cert-manager-wildcard-certificate)), not Traefik's.
 
 !!! note "Source of truth"
-    This `values.yaml` lives at `homelab-manifests/apps/traefik/values.yaml` with a pinned chart version, applied by ArgoCD via the multi-source `$values` pattern. Edit the repo, not a local copy.
+    This `values.yaml` lives at `homelab-manifests/apps/traefik/values.yaml` with a pinned chart version, applied by ArgoCD with the multi-source `$values` pattern. Edit the repo, not a local copy.
 
-## Step 4: Seal the Cloudflare token
+## Seal the Cloudflare token { #step-4-seal-the-cloudflare-token }
 
 cert-manager reads the token from a Secret named `cloudflare-api-token` (key `token`) in the `cert-manager` namespace. Seal it so it's safe in Git:
 
@@ -100,7 +100,7 @@ kubectl create secret generic cloudflare-api-token \
 
 Commit it under `homelab-manifests/infrastructure/cert-manager/manifests/`.
 
-## Step 5: cert-manager + wildcard certificate
+## cert-manager + wildcard certificate { #step-5-cert-manager-wildcard-certificate }
 
 Install cert-manager, define two `ClusterIssuer`s (staging first to avoid burning Let's Encrypt rate limits, then prod), and issue one `*.yourdomain.com` wildcard `Certificate` into the `traefik` namespace.
 
@@ -168,7 +168,7 @@ spec:
 !!! tip "Verify against staging first"
     Point the Certificate's `issuerRef` at `cloudflare-staging` until you confirm the DNS-01 flow issues a cert, then switch to `cloudflare-prod` and let it re-issue. Prod Let's Encrypt caps duplicate certs at 5/week per registered domain.
 
-## Step 6: The Gateway
+## The Gateway { #step-6-the-gateway }
 
 The `Gateway` is where TLS lives — two listeners: HTTP (redirected to HTTPS by Traefik) and HTTPS, terminating TLS with the wildcard secret. `allowedRoutes.namespaces.from: All` lets any namespace attach a route.
 
@@ -201,11 +201,11 @@ spec:
           from: All
 ```
 
-## Step 7: Internal DNS
+## Internal DNS { #step-7-internal-dns }
 
-On your UDM, add a host record for `*.yourdomain.com → 10.0.20.200` to avoid hairpin NAT.
+On your UDM, add a host record for *.yourdomain.com → 10.0.20.200 to avoid hairpin NAT.
 
-## Step 8: Sample HTTPRoute
+## Sample HTTPRoute { #step-8-sample-httproute }
 
 Every service attaches like this — no TLS config, the Gateway handles it:
 
@@ -228,10 +228,10 @@ spec:
           port: 80
 ```
 
-Apps that need Authelia ForwardAuth attach a Traefik `Middleware` via an `ExtensionRef` filter — see [Deploying an App](../deploy/index.md).
+Apps that need Authelia ForwardAuth attach a Traefik `Middleware` through an `ExtensionRef` filter — see [Deploying an App](../deploy/index.md).
 
 !!! warning "Never expose the Traefik dashboard without auth"
-    It leaks routing details that aid attackers.
+    The dashboard leaks routing details that aid attackers.
 
 ## Verification
 

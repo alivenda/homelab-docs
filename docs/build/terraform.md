@@ -3,16 +3,16 @@
 Three things in your homelab are good Terraform fits: Cloudflare DNS records, UniFi network config, and a small cloud account used for learning.
 
 !!! note "Why this runbook is retroactive"
-    At this point in the guide you've already manually clicked through Cloudflare and UDM (Networking and Traefik). Terraform is therefore retroactive — you're IaC-ifying configuration you already created. That's still valuable: the next time you add a service, you'll add a Cloudflare record via `terraform apply` instead of clicking through the UI. If you want a stricter IaC-first workflow, you can move Terraform to before Traefik on a future rebuild.
+    At this point in the guide you've already manually clicked through Cloudflare and UDM (Network and Traefik). Terraform is therefore retroactive — you're IaC-ifying configuration you already created. That's still valuable: the next time you add a service, you add a Cloudflare record with `terraform apply` instead of clicking through the UI. To use a stricter IaC-first workflow, move Terraform to before Traefik on a future rebuild.
 
 | | |
 |---|---|
 | **Difficulty** | Intermediate |
-| **Time Estimate** | 3–4 hours |
-| **Runs On** | Your machine |
-| **Depends On** | Traefik, Networking |
+| **Time estimate** | 3–4 hours |
+| **Runs on** | Your machine |
+| **Depends on** | Traefik, Network |
 
-## Where Terraform Genuinely Fits
+## Where Terraform genuinely fits
 
 | Domain | Why it fits |
 |---|---|
@@ -20,13 +20,13 @@ Three things in your homelab are good Terraform fits: Cloudflare DNS records, Un
 | UniFi config | Provider exists, VLANs/firewall as code |
 | Cloud practice | Cloud APIs are Terraform's natural habitat |
 
-## Where Terraform Does NOT Fit
+## Where Terraform does NOT fit
 
 - Bare-metal node provisioning — use [Ansible](ansible.md)
 - Kubernetes resource creation — ArgoCD watching Git is better
 - Helm releases — same reason
 
-## Install
+## Install { #install }
 
 ```bash
 # macOS
@@ -43,7 +43,7 @@ terraform version
     pre-commit hooks are `tofu_fmt` / `tofu_validate`. Prose below says "Terraform" for the
     tool category; commands in the build-specific sections use `tofu`.
 
-## Project Structure
+## Project structure
 
 ```
 homelab-terraform/
@@ -56,7 +56,7 @@ homelab-terraform/
 !!! warning "Don't commit state or plaintext tfvars"
     Never commit `.tfstate`, `.tfvars` (plaintext), or anything containing API tokens. The `.gitignore` from Git covers this, with the `!*.enc.tfvars` exception allowing sops-encrypted tfvars through.
 
-## Remote State
+## Remote state
 
 By default, Terraform writes state to `terraform.tfstate` in the working directory. That's local-only — every machine has a different view, and `.gitignore` blocks committing it. For a homelab this is fine if you only run Terraform from one host. For anything more, use a remote backend.
 
@@ -102,7 +102,7 @@ Two reasonable options:
 
     `terraform login` once on your machine. State lives in Terraform Cloud; their free tier handles homelab-scale usage indefinitely.
 
-## Cloudflare Module
+## Cloudflare module
 
 ```hcl
 terraform {
@@ -139,7 +139,7 @@ resource "cloudflare_dns_record" "services" {
 !!! warning "v5 renamed the resource"
     Provider v5 renamed `cloudflare_record` → `cloudflare_dns_record` (and earlier in v4, the field `value` → `content`). If you're migrating from a v4 codebase, run `terraform apply` after upgrading the provider — v5 ships state upgraders that auto-rewrite v4 state on first plan. Always check the [provider docs](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs) against your pinned version.
 
-## UniFi Module
+## UniFi module
 
 !!! warning "Written, never applied"
     This build's UDM was configured by hand ([Network](network.md)); the `unifi/`
@@ -169,9 +169,9 @@ provider "unifi" {
 !!! warning
     Community-maintained UniFi providers lag newer UDM features. Verify your UDM firmware version is supported before pinning a release.
 
-## Secret Handling
+## Secret handling
 
-Use sops + age ([Git Step 5](../get-started/set-up-git.md#step-5-secret-management-with-sops-age)). This build
+Use sops + age ([Encrypt secrets with sops and age](../get-started/set-up-git.md#step-5-secret-management-with-sops-age)). This build
 reads secrets **directly through the
 [`carlpett/sops`](https://github.com/carlpett/terraform-provider-sops) provider**: each
 module keeps a `secrets.enc.yaml` (ciphertext, safe to commit) and a `data "sops_file"`
@@ -179,7 +179,7 @@ block decrypts it in memory at plan/apply time — plaintext never lands on disk
 place with `sops cloudflare/secrets.enc.yaml`. (Encrypted `*.enc.tfvars` passed via
 `-var-file` are the older fallback pattern; the `.gitignore` allows them through.)
 
-## Workflow
+## Workflow { #workflow }
 
 ```bash
 cd homelab-terraform/cloudflare
@@ -192,8 +192,8 @@ tofu apply
 No decrypt or cleanup steps — the sops provider handles secrets at run time, and the
 pre-commit hooks run `tofu fmt` / `tofu validate` on every commit.
 
-!!! tip
-    The single most impressive resume item from this runbook: "managed bare-metal network infrastructure (UniFi VLANs, firewall rules, DHCP) and DNS as code using Terraform, with CI-driven apply via Woodpecker."
+!!! tip "Resume-worthy line"
+    The single most impressive resume item from this runbook: "managed bare-metal network infrastructure (UniFi VLANs, firewall rules, DHCP) and DNS as code using Terraform, with CI-driven apply through Woodpecker."
 
 ## Verification
 
