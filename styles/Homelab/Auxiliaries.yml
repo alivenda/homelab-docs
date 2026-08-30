@@ -1,0 +1,25 @@
+extends: existence
+message: "Ambiguous auxiliary '%s' — use 'must', 'can', or 'might'."
+link: https://developers.google.com/style/word-list
+level: warning
+# Case-sensitive on purpose: lowercase 'may' is the auxiliary, capitalised
+# 'May' is the month. With ignorecase the rule flagged "stripped from CE in
+# May 2025". A sentence opening with the auxiliary "May" is rare enough in
+# runbooks to be worth the trade.
+ignorecase: false
+# The Google package has no rule for these, but the guide is explicit: 'should'
+# hides whether an action is required, 'may' is for permission, and 'would' and
+# 'could' are conditionals that rarely survive a rewrite. This is the repo's
+# second-largest judgment category, so it needs to be visible.
+#
+# 'should' inside a quoted upstream error or a config key is a false positive;
+# wrap those in code font and Vale skips them. Plain double quotes are not
+# enough — only code font is skipped.
+tokens:
+  - should
+  - shouldn't
+  - could
+  - couldn't
+  - would
+  - wouldn't
+  - may

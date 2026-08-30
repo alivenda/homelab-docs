@@ -17,12 +17,29 @@ mkdocs serve
 
 Then open <http://127.0.0.1:8000>. Live-reload watches `docs/` for changes.
 
-## Build static site
+## Build the static site
 
 ```bash
-mkdocs build
+mkdocs build --strict
 # Output in ./site/
 ```
+
+`--strict` is what CI runs. It fails the build on a broken internal link or anchor, so a
+local build without it passes where the pipeline won't.
+
+## Lint the prose
+
+Prose follows the [Google developer documentation style guide](https://developers.google.com/style),
+checked with [Vale](https://vale.sh):
+
+```bash
+sudo pacman -S vale                # once
+vale sync                          # fetches the Google style package
+vale --no-exit --minAlertLevel=warning docs/
+```
+
+CI runs the same lint but doesn't block a merge on it yet — the style rewrite is still in
+flight. Only `mkdocs build --strict` gates the merge today.
 
 ## Related repos
 
@@ -38,4 +55,12 @@ mkdocs build
 
 Branch + PR per repo convention — including for README and runbook edits. No direct pushes to `main`.
 
-Page structure, admonition usage, anchor rules, and the public-repo constraints are codified in [STYLE.md](STYLE.md) — `docs/build/backups.md` and `docs/deploy/forgejo.md` are the reference implementations.
+Prose style, page structure, admonition semantics, anchor rules, and the public-repo
+constraints are codified in [STYLE.md](STYLE.md) — `docs/build/backups.md` and
+`docs/deploy/forgejo.md` are the reference implementations.
+
+PRs are AGit pushes to Forgejo; GitHub is a read-only mirror:
+
+```bash
+git push origin HEAD:refs/for/main -o topic=TOPIC
+```

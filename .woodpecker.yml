@@ -32,6 +32,40 @@ steps:
       - pip install --quiet --root-user-action=ignore -r requirements.txt
       - mkdocs build --strict
 
+  # Prose lint against the Google developer documentation style guide, using
+  # Vale's official Google package plus the project-local Homelab style
+  # (styles/Homelab/). `vale sync` fetches the Google package at run time; it is
+  # not vendored, so a package update lands without a commit here.
+  #
+  # The step reports findings without failing on them, but still fails on a
+  # broken lint setup. `--no-exit` makes vale exit 0 when it finds warnings;
+  # without it the step would be red from the first run (the corpus starts at
+  # 1102 warnings) and `failure: ignore` would then hide a genuinely broken
+  # step forever — the two states look identical.
+  #
+  # `vale ls-config` is the canary. It exits 2 on a bad StylesPath or a missing
+  # style, where `vale sync` exits 0 for both. Ordering matters: validate the
+  # config, then fetch, then lint.
+  #
+  # Making the lint blocking is a one-line change — drop `--no-exit` — once the
+  # corpus reaches zero. That is its own PR, not a silent change.
+  # Digest-pinned like the notify step; jdkato/vale:v3.18.0 is multi-arch and
+  # runs on the arm64 agents.
+  vale:
+    image: docker.io/jdkato/vale:v3.18.0@sha256:a947680f6e98ef8bbfcb0323293bcac8a8f4cbffcdf2401c7bf5e13c4bc2cb57
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            memory: 256Mi
+    commands:
+      - vale ls-config > /dev/null
+      - vale sync
+      - vale --no-exit --minAlertLevel=warning docs/
+
   # Push-notify on failure: ntfy topic `ci`, publisher `woodpecker` (write-only,
   # topic-scoped). `ntfy_token` is an org-level Woodpecker secret shared by all
   # four repos — it must be enabled for push AND pull_request events, or

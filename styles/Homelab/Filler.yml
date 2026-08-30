@@ -1,0 +1,25 @@
+extends: substitution
+message: "Cut the filler: use '%s' instead of '%s'."
+link: https://developers.google.com/style/word-list
+level: warning
+ignorecase: true
+action:
+  name: replace
+# Words with a real replacement. Words to delete outright live in Delete.yml —
+# an empty swap value here renders the message with a hole in it ("use
+# instead of 'note that'").
+#
+# `in order to` is deliberately absent: Google.WordListCase already swaps it,
+# and listing it here double-reports the same span.
+#
+# `via` alone accounts for 124 hits, the largest mechanical fix in the rewrite.
+swap:
+  via: by using|with|through
+  allows you to: lets you
+  allow you to: let you
+  utilize: use
+  utilizes: uses
+  leverage: use
+  leverages: uses
+  desired: the one you want
+  and/or: and|or

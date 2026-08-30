@@ -1,0 +1,22 @@
+extends: existence
+message: "Cut the filler '%s' — the sentence works without it."
+link: https://developers.google.com/style/word-list
+level: warning
+ignorecase: true
+# Words that get deleted rather than replaced. Filler.yml can't carry these:
+# an empty swap value renders its message with a hole where the replacement
+# should be.
+#
+# `easy`, `just`, and `please` are in STYLE.md's list and nothing in the Google
+# package enforces them, so they are enforced here.
+tokens:
+  - simply
+  - basically
+  - obviously
+  - of course
+  - note that
+  - easily
+  - quickly
+  - 'just'
+  - please
+  - easy
