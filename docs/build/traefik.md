@@ -1,6 +1,6 @@
 # Traefik
 
-Foundational layer for clean URLs and automatic HTTPS via Let's Encrypt: traffic flows MetalLB → Traefik (Gateway API provider) → `HTTPRoute`s, with TLS terminated once by a cert-manager wildcard certificate on the `Gateway`.
+Foundational layer for clean URLs and automatic HTTPS with Let's Encrypt: traffic flows MetalLB → Traefik (Gateway API provider) → `HTTPRoute`s, with TLS terminated once by a cert-manager wildcard certificate on the `Gateway`.
 
 | | |
 |---|---|
@@ -81,7 +81,7 @@ helm upgrade --install traefik traefik/traefik \
 Note what's *gone* versus the legacy setup: no `certificatesresolvers` ACME arguments, no `acme.json` persistence, no `CF_DNS_API_TOKEN` env. Certificates are cert-manager's job ([cert-manager + wildcard certificate](#step-5-cert-manager-wildcard-certificate)), not Traefik's.
 
 !!! note "Source of truth"
-    This `values.yaml` lives at `homelab-manifests/apps/traefik/values.yaml` with a pinned chart version, applied by ArgoCD via the multi-source `$values` pattern. Edit the repo, not a local copy.
+    This `values.yaml` lives at `homelab-manifests/apps/traefik/values.yaml` with a pinned chart version, applied by ArgoCD with the multi-source `$values` pattern. Edit the repo, not a local copy.
 
 ## Seal the Cloudflare token { #step-4-seal-the-cloudflare-token }
 
@@ -228,7 +228,7 @@ spec:
           port: 80
 ```
 
-Apps that need Authelia ForwardAuth attach a Traefik `Middleware` via an `ExtensionRef` filter — see [Deploying an App](../deploy/index.md).
+Apps that need Authelia ForwardAuth attach a Traefik `Middleware` through an `ExtensionRef` filter — see [Deploying an App](../deploy/index.md).
 
 !!! warning "Never expose the Traefik dashboard without auth"
     The dashboard leaks routing details that aid attackers.

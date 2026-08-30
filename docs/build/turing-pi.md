@@ -33,13 +33,13 @@ Initial hardware assembly, firmware update, OS flashing, and network configurati
 4. Insert the adapter boards into the 4 SO-DIMM slots on the Turing Pi 2 board.
 5. Connect a SATA SSD to the onboard SATA connector for topaz (Node 3) (Node 3 slot). Do **not** hot-plug — connect while powered off.
 6. Connect one RJ45 port to your UDM/network switch.
-7. Connect a PicoPSU or ATX PSU via the 24-pin ATX connector. Power up.
+7. Connect a PicoPSU or ATX PSU through the 24-pin ATX connector. Power up.
 
 ## Access the BMC { #step-2-access-the-bmc }
 
 The BMC (Baseboard Management Controller) starts automatically within 10–20 seconds.
 
-1. Open a browser to `turingpi.local` (or find the IP via your UDM).
+1. Open a browser to turingpi.local (or find the IP in your UDM).
 2. Verify SSH access: `ssh root@turingpi.local`
 3. Update the BMC firmware to the latest version. See [docs.turingpi.com](https://docs.turingpi.com) for the firmware upgrade guide.
 
@@ -60,7 +60,7 @@ DietPi is a lightweight Debian-based OS optimized for single-board computers and
 
     Or use the BMC web UI: **Nodes → select node → USB → Device mode**. On your PC, `rpiboot` should detect the CM4 storage and present it as a new disk.
 
-6. Flash via Raspberry Pi Imager using "Use custom" with the DietPi image.
+6. Flash with Raspberry Pi Imager using "Use custom" with the DietPi image.
 7. Before completing the flash, mount the boot partition and edit `dietpi.txt`:
 
     ```ini
@@ -90,7 +90,7 @@ DietPi is a lightweight Debian-based OS optimized for single-board computers and
 
 ## Boot and verify { #step-4-boot-and-verify }
 
-1. Power on all nodes via the BMC UI or by pressing the `Key1` button.
+1. Power on all nodes through the BMC UI or by pressing the **Key1** button.
 2. Wait for first boot (2–3 minutes).
 3. SSH into each node and update:
 
@@ -137,7 +137,7 @@ What you actually need from the UPS is not the runtime, it is the USB or network
 
 **Topology:**
 
-- UPS connects to one host (typically the NAS, since it runs 24/7) via USB. That host runs `nut-server` in `upsd` mode and exposes the UPS status over the network.
+- UPS connects to one host (typically the NAS, since it runs 24/7) over USB. That host runs `nut-server` in `upsd` mode and exposes the UPS status over the network.
 - Every cluster node runs `nut-client` in `upsmon` mode, talking to the NAS `upsd`. When `upsd` reports `LOW_BATTERY`, all clients run their configured shutdown command.
 - Order matters, and it mirrors the planned shutdown below: the NFS-*client* nodes (the plain workers **and** the control plane) shut down first, then the cluster's NFS *server* (topaz), then the standalone NAS — which hosts `upsd` — last. NFS must stay mounted until every client is down, or a client can hang on a stale handle mid-shutdown.
 
@@ -215,7 +215,7 @@ Once all four nodes are `Ready`, ArgoCD reconciles the workloads back on its own
 
 ## Verification
 
-- [ ] All 4 nodes reachable via SSH:
+- [ ] All 4 nodes reachable over SSH:
 
     ```bash
     for i in 10 11 12 13; do

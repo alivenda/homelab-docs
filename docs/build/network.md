@@ -479,7 +479,7 @@ Tailscale is easier (NAT traversal handled, no port forward needed). WireGuard o
 - [ ] From the Apple TV: AirPlay handoff to Plex on the NAS works through Infuse or the Plex app (proves mDNS reflector + `iot-to-plex-tcp` + `iot-to-plex-udp` + IGMP snooping all wired up correctly, plus Plex Server's LAN Networks setting includes 10.0.30.0/24)
 - [ ] From a phone on `home` SSID: AirPlay from Photos / Music finds Apple TV in the picker and casts successfully — proves mDNS reflector is working
 - [ ] *(after AdGuard deploy)* From any client: `dig @8.8.8.8 example.com` times out (proves `dns-public-block` policy); `dig @10.0.0.20 example.com` succeeds
-- [ ] From a Trusted device with Tailscale connected via cellular: `ping 10.0.20.10` over Tailscale works
+- [ ] From a Trusted device with Tailscale connected over cellular: `ping 10.0.20.10` over Tailscale works
 - [ ] `tailscale status` on ruby AND emerald shows advertised routes accepted
 - [ ] Tailscale admin console: ACL file in place, only `autogroup:owner` has access to advertised subnets
 - [ ] Failover test: `sudo tailscale down` on ruby — verify remote access still works through emerald within ~30 s, then `tailscale up` ruby to restore

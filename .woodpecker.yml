@@ -40,7 +40,7 @@ steps:
   # The step reports findings without failing on them, but still fails on a
   # broken lint setup. `--no-exit` makes vale exit 0 when it finds warnings;
   # without it the step would be red from the first run (the corpus starts at
-  # 939 warnings) and `failure: ignore` would then hide a genuinely broken
+  # 928 warnings) and `failure: ignore` would then hide a genuinely broken
   # step forever — the two states look identical.
   #
   # `vale ls-config` is the canary. It exits 2 on a bad StylesPath or a missing

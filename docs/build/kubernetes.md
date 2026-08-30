@@ -230,7 +230,7 @@ etcd-snapshot-dir: /var/lib/rancher/k3s/server/db/snapshots
 sudo systemctl restart k3s
 ```
 
-Get the snapshots off-node too: k3s can upload them straight to the Garage S3 store on the NAS via its built-in `etcd-s3` config — [Backups](backups.md#off-node-etcd-snapshots-k3s-native) sets that up (codified in `homelab-ansible`).
+Get the snapshots off-node too: k3s can upload them straight to the Garage S3 store on the NAS through its built-in `etcd-s3` config — [Backups](backups.md#off-node-etcd-snapshots-k3s-native) sets that up (codified in `homelab-ansible`).
 
 ## Restore procedure (when ruby dies) { #step-11-restore-procedure-when-ruby-dies }
 
