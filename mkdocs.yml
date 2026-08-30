@@ -82,7 +82,8 @@ nav:
       - Set up Git: get-started/set-up-git.md
   - Concepts:
       - Repositories: concepts/repositories.md
-      - Storage and data architecture: concepts/storage.md
+      - Storage: concepts/storage.md
+      - Identity and access: concepts/identity.md
   - Build the cluster:
       - Network: build/network.md
       - Turing Pi: build/turing-pi.md

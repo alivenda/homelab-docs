@@ -15,22 +15,7 @@ Single sign-on, two-factor authentication, and OIDC provider for all cluster ser
 | **Difficulty** | Intermediate |
 | **Time Estimate** | 2–3 hours |
 
-This runbook deploys two services:
-
-- **lldap** — a lightweight LDAP server that stores your users and groups. It is the user database Authelia queries when someone logs in.
-- **Authelia** — the authentication gateway. It sits behind Traefik and enforces who can access which services, handling 2FA and acting as an OIDC provider.
-
-## ForwardAuth vs OIDC — Read This First
-
-Authelia protects services in two fundamentally different ways. Using the wrong mode causes double-login prompts and breaks API/sync clients:
-
-| Mode | When to use | How it works | Apps using it |
-|------|-------------|-------------|----------------|
-| **ForwardAuth** | Apps with **no** login page of their own | Traefik intercepts every request, asks Authelia "is this user authenticated?", and either passes the request through or redirects to the Authelia login portal | Homepage, and any service without its own login screen |
-| **OIDC** | Apps with **their own** user system | The app redirects to Authelia for login, receives a token, and manages its own session — Traefik is not involved in the auth check | Nextcloud, Forgejo, Paperless-ngx, Vikunja, Actual Budget, Mealie, Audiobookshelf, BookStack, and any app with a built-in user system |
-
-!!! warning "Never put ForwardAuth in front of an app with its own API clients"
-    Nextcloud, Forgejo, and Paperless have desktop sync, git CLI, or mobile clients that send credentials directly and cannot handle an intermediate redirect — ForwardAuth breaks them. Configure those apps as OIDC clients instead; each app's runbook covers its own OIDC setup.
+This runbook deploys two services — lldap (user store) and Authelia (authentication gateway and OIDC provider). Read [Identity and access](../concepts/identity.md) first for the ForwardAuth-versus-OIDC decision and when to use each mode.
 
 ---
 
