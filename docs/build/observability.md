@@ -5,9 +5,9 @@ Metrics, logs, dashboards, and alerts for the whole homelab.
 | | |
 |---|---|
 | **Difficulty** | Intermediate |
-| **Time Estimate** | 2–3 hours |
-| **Runs On** | k3s (cluster), namespace `monitoring` |
-| **Depends On** | Kubernetes (k3s), Traefik, Terraform (DNS). The alerting hookup (Step 4) returns here after ntfy. |
+| **Time estimate** | 2–3 hours |
+| **Runs on** | k3s (cluster), namespace `monitoring` |
+| **Depends on** | Kubernetes (k3s), Traefik, Terraform (DNS). The alerting hookup ([Alerting → ntfy](#step-4-alerting-ntfy)) returns here after ntfy. |
 
 ## The shape of the stack
 
@@ -28,14 +28,14 @@ alerts   Prometheus rules ──> Alertmanager ──webhook──> ntfy ──>
 - **`alloy`** — the log collector, from `grafana/helm-charts`.
 
 !!! warning "The Grafana chart repos split — check you're pulling from the right one"
-    `grafana.github.io/helm-charts` is winding down: the **loki** chart is frozen
+    grafana.github.io/helm-charts is winding down: the **loki** chart is frozen
     there (at 7.0.0) and its maintained lineage moved to
-    [`grafana-community.github.io/helm-charts`](https://github.com/grafana-community/helm-charts)
+    [grafana-community.github.io/helm-charts](https://github.com/grafana-community/helm-charts)
     (same chart, renumbered at 17.x). **Promtail is EOL since March 2026** — do not
     deploy it; [Grafana Alloy](https://grafana.com/docs/alloy/latest/) is its
     successor as the log collector. Alloy itself, being an active Grafana product,
-    **stayed** in `grafana.github.io/helm-charts`. Three components, two repos —
-    easy to get wrong.
+    **stayed** in grafana.github.io/helm-charts. Three components, two repos —
+    check which one you're pulling from.
 
 ## Before you start: fix node clock sync
 
@@ -49,9 +49,9 @@ running your own daemon) and install `chrony` — apt removes systemd-timesyncd 
 same transaction, so no second daemon fights over the clock. Run that play before
 deploying the stack and the alert never fires.
 
-## Step 1: kube-prometheus-stack
+## kube-prometheus-stack { #step-1-kube-prometheus-stack }
 
-### The Applications
+### The applications
 
 Two ArgoCD Applications in `bootstrap/kube-prometheus-stack.yaml`, exactly the
 chart-plus-manifests split Forgejo and Woodpecker use:
@@ -92,7 +92,7 @@ Two settings here are load-bearing:
 The second Application (`kube-prometheus-stack-manifests`) points at
 `infrastructure/kube-prometheus-stack/manifests/` — the sealed Grafana admin
 secret, the Grafana HTTPRoute, the alert rules and the sealed ntfy token from
-Step 4. Give it `CreateNamespace=true` too: the SealedSecret carries
+[Alerting → ntfy](#step-4-alerting-ntfy). Give it `CreateNamespace=true` too: the SealedSecret carries
 `namespace: monitoring`, so without it the manifests app fails until the chart app
 happens to create the namespace first. (And per the Forgejo/Woodpecker pattern, **no**
 `ServerSideApply` on the manifests app — the HTTPRoute trap.)
@@ -132,9 +132,9 @@ and the OIDC callback — wrong or unset breaks login flows through Traefik.
 
 The Loki datasource is added by hand because Loki is a separate chart; Prometheus
 and Alertmanager datasources are provisioned automatically. It points at the
-service port directly — Loki's nginx gateway is disabled (Step 2).
+service port directly — Loki's nginx gateway is disabled ([Loki](#step-2-loki)).
 
-Seal the admin login ([pattern from Kubernetes Step 13](kubernetes.md#step-13-encrypt-your-first-secret)):
+Seal the admin login ([Encrypt your first secret](kubernetes.md#step-13-encrypt-your-first-secret)):
 
 ```bash
 GRAFANA_ADMIN_PW=$(openssl rand -base64 24)
@@ -179,13 +179,13 @@ prometheus:
 
 - **Why `local-path`, not `nfs-storage`:** Prometheus's TSDB on NFS is explicitly
   unsupported upstream (non-POSIX semantics can corrupt blocks). The `local-path`
-  class plus the topaz pin lands the volume on the SATA SSD via the provisioner's
+  class plus the topaz pin lands the volume on the SATA SSD through the provisioner's
   `nodePathMap` — the right disk, POSIX-correct.
 - **Loss-tolerant by design:** metrics history is *not* backed up. A rebuild starts
   an empty TSDB and that's fine — dashboards refill within the retention window.
 - **`retentionSize` below the PVC size:** Prometheus deletes its oldest blocks past
   18 GiB, and the 2 GiB of slack absorbs WAL + compaction churn so the volume never
-  actually fills.
+  fills.
 - **The resource limit protects the node:** this is the heaviest pod in the
   cluster (~1 Gi steady-state at this size). The 2 Gi cap keeps a label-cardinality
   blow-up from OOMing topaz — which also serves NFS for everything else.
@@ -218,7 +218,7 @@ removes `KubeControllerManagerDown` / `KubeSchedulerDown` / `KubeProxyDown` —
 which would otherwise be permanent false positives. Node, kubelet, and apiserver
 scraping are separate components and stay on.
 
-## Step 2: Loki
+## Loki { #step-2-loki }
 
 One Application (`bootstrap/loki.yaml`), chart `loki` from
 **`grafana-community.github.io/helm-charts`** (see the repo-split warning above),
@@ -294,10 +294,10 @@ The decisions, briefly:
   hit `loki:3100` directly, the nginx gateway is a pointless hop, and a per-node
   canary DaemonSet is too much footprint for four CM4s.
 
-## Step 3: Alloy — the log collector
+## Alloy — the log collector { #step-3-alloy-the-log-collector }
 
 One Application (`bootstrap/alloy.yaml`), chart `alloy` from
-**`grafana.github.io/helm-charts`** (it stayed put), `prune: false` so a sync never
+**grafana.github.io/helm-charts** (it stayed put), `prune: false` so a sync never
 rolls the DaemonSet across every node at once. Alloy tails `/var/log/pods` on each
 node and pushes to Loki:
 
@@ -405,7 +405,7 @@ What's deliberate here:
   positions across restarts (the same trick the old promtail chart used with
   `/run/promtail`).
 
-## Step 4: Alerting → ntfy
+## Alerting → ntfy { #step-4-alerting-ntfy }
 
 !!! note "Come back to this step after ntfy"
     Alertmanager publishes to the ntfy server, which doesn't exist until ntfy. The
@@ -629,7 +629,7 @@ There is deliberately **no** "NAS unreachable" alert. `NasPostgresDown` and the 
 `TargetDown` both already fire on that event — a third rule would page twice for one
 outage.
 
-## Step 5: DNS + HTTPRoute
+## DNS + HTTPRoute { #step-5-dns-httproute }
 
 1. Add `grafana` to the service list in the Cloudflare [Terraform](terraform.md) module
    and apply — one A record per service, no wildcard.
