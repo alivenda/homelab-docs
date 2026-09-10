@@ -61,7 +61,7 @@ systemctl status AdGuardHome
 ## Initial setup wizard { #step-2-initial-setup-wizard }
 
 !!! note "Headless installs skip this"
-    If AdGuard came in via DietPi-Software (ID 126), there's no wizard — it was pre-configured and its admin login seeded from `AUTO_SETUP_GLOBAL_PASSWORD`. Rotate that password in [Post-install hardening](#post-install-hardening), then go to [Configure upstreams and blocklists](#step-3-configure-upstreams-and-blocklists).
+    If AdGuard came in through DietPi-Software (ID 126), there's no wizard — it was pre-configured and its admin login seeded from `AUTO_SETUP_GLOBAL_PASSWORD`. Rotate that password in [Post-install hardening](#post-install-hardening), then go to [Configure upstreams and blocklists](#step-3-configure-upstreams-and-blocklists).
 
 Open `http://10.0.0.20:3000` from a browser on your local network and complete the wizard:
 
