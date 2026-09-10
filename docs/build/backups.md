@@ -5,8 +5,8 @@ Local backups on the NAS, mirrored off-site to Backblaze B2 nightly.
 | | |
 |---|---|
 | **Difficulty** | Intermediate |
-| **Time Estimate** | 2–4 hours |
-| **Runs On** | NAS (primary backup target), cluster nodes |
+| **Time estimate** | 2–4 hours |
+| **Runs on** | NAS (primary backup target), cluster nodes |
 
 ## What runs when
 
@@ -58,7 +58,7 @@ External password manager ──> age private key ──┬──> SOPS files (A
 !!! danger "The external password manager is the keystone — make sure *it* is independently recoverable"
     Everything below decrypts from one age key whose only off-machine copy is in that manager. If you can't get into it, nothing is recoverable. Confirm now: master password memorized (not stored only inside the vault), and its two-factor **recovery code** printed and kept offline (fireproof safe / second location). Note that **Vaultwarden runs inside this cluster** — never make the cluster's recovery depend on a secrets store the cluster itself hosts. The root of trust must be an externally-hosted manager (or an offline vault export), not Vaultwarden.
 
-### Step 1 — Restore the age private key
+### Restore the age private key { #step-1-restore-the-age-private-key }
 
 On your machine (or any host that will run `sops`/`tofu`/`ansible`):
 
@@ -81,7 +81,7 @@ age-keygen -y ~/.config/sops/age/keys.txt
 
 If that matches, the repo-side secret layer is recoverable. SOPS reads `~/.config/sops/age/keys.txt` automatically; if you keep the key elsewhere, point `SOPS_AGE_KEY_FILE` at it.
 
-### Step 2 — Confirm you can decrypt the repos
+### Confirm you can decrypt the repos { #step-2-confirm-you-can-decrypt-the-repos }
 
 ```sh
 sops --decrypt homelab-secrets/sealed-secrets-controller-key.enc.yaml | head
@@ -93,9 +93,9 @@ A successful decrypt confirms the whole SOPS layer. Each repo unlocks a differen
 |---|---|---|
 | `homelab-ansible` | `secrets/secrets.sops.yaml` | `k3s_token`, `tailscale_authkey` — needed to re-bootstrap the cluster and Tailscale routers |
 | `homelab-terraform` | `cloudflare/secrets.enc.yaml` | Cloudflare API token — needed for `tofu apply` |
-| `homelab-secrets` | `sealed-secrets-controller-key.enc.yaml` | the cluster's Sealed Secrets signing key (Step 3) |
+| `homelab-secrets` | `sealed-secrets-controller-key.enc.yaml` | the cluster's Sealed Secrets signing key ([Restore the signing keys](#step-3-restore-the-sealed-secrets-signing-keys-cluster-rebuild-only)) |
 
-### Step 3 — Restore the Sealed Secrets signing keys (cluster rebuild only)
+### Restore the Sealed Secrets signing keys (cluster rebuild only) { #step-3-restore-the-sealed-secrets-signing-keys-cluster-rebuild-only }
 
 Only needed when the cluster was rebuilt. A fresh Sealed Secrets controller generates a **new** keypair and cannot decrypt secrets that were sealed against the old one — so every `SealedSecret` committed to `homelab-manifests` would be undecryptable. Restoring the backed-up signing keys avoids re-sealing anything.
 
@@ -186,7 +186,7 @@ vim /tmp/age-drill/keys.txt         # paste the AGE-SECRET-KEY-1… line
 export SOPS_AGE_KEY_FILE=/tmp/age-drill/keys.txt
 ```
 
-**3 — Prove the Garage path.** Rebuild the throwaway `rclone.conf` exactly as in Step 3, then stop short of `kubectl apply` — list the bucket and inspect the newest dump offline, key names only:
+**3 — Prove the Garage path.** Rebuild the throwaway `rclone.conf` exactly as in [Restore the signing keys](#step-3-restore-the-sealed-secrets-signing-keys-cluster-rebuild-only), then stop short of `kubectl apply` — list the bucket and inspect the newest dump offline, key names only:
 
 ```sh
 rclone --config /tmp/age-drill/rclone.conf ls crypt:
@@ -468,14 +468,14 @@ docker exec -ti garage /garage bucket info immich-backups          # Objects ≥
 
 ### Home Assistant backups → Garage
 
-Home Assistant runs off-cluster — an HAOS VM on **slate** (`10.0.20.21`, see [Home Assistant](../deploy/home-assistant.md)). Its native backups are local; getting them off-box to Garage is done by **pulling from the NAS with rclone**, not by an in-HA S3 integration.
+Home Assistant runs off-cluster — an HAOS VM on **slate** (10.0.20.21, see [Home Assistant](../deploy/home-assistant.md)). Its native backups are local; getting them off-box to Garage is done by **pulling from the NAS with rclone**, not by an in-HA S3 integration.
 
 !!! note "Why pull from the NAS instead of an HA S3 backup-agent integration"
     Home Assistant's S3-compatible backup-agent integrations are `botocore`-based, and on current HA they break on an `aiobotocore`↔`botocore` version skew (the integration's newer `aiobotocore` passes an argument the bundled `botocore` doesn't accept). Decoupling — HA writes local backups, the NAS ships them to Garage — sidesteps HA's Python entirely and survives HA core updates, which is the better DR posture regardless.
 
 On the HA side:
 
-1. Install the official **Samba share** add-on; set a username + password and scope **Allowed Hosts** to the Lab VLAN (`10.0.20.0/24`) — only it should reach the shares (this exposes `/config` too). HA's `/backup` is then readable as the `backup` share.
+1. Install the official **Samba share** add-on; set a username + password and scope **Allowed Hosts** to the Lab VLAN (10.0.20.0/24) — only it needs to reach the shares (this exposes `/config` too). HA's `/backup` is then readable as the `backup` share.
 2. Settings → System → **Backups** → automatic backup: daily, keep 7. These write to `/backup`.
 3. **Store the backup encryption key in Vaultwarden** (and on paper), alongside the age key. HA encrypts every backup; without the key the Garage copy is unrecoverable.
 
@@ -589,7 +589,7 @@ Everything so far is one building. `offsite-backup-sync.timer` on the NAS is the
 Step 2 is why the other jobs need no cloud target of their own: it takes the entire Garage store off-site, so every bucket in [What runs when](#what-runs-when) — Velero, etcd snapshots, the Postgres dumps, the sealed-secrets keys, the per-app syncs — inherits an off-site copy. Step 1 covers what Garage never sees: the photo library originals, which are bulk data no database dump contains. The `thumbs/` and `encoded-video/` exclusions are regenerable derivatives, so they'd only inflate the bill.
 
 !!! warning "Step 2 uses `sync`, which breaks the copy-never-sync rule above — deliberately"
-    The per-app jobs use `rclone copy` so an empty source can never wipe the Garage copy. Step 2 is the exception: Garage holds retention-managed buckets that *should* shrink when Velero expires a backup, and `copy` would grow the B2 bill forever. The trade is real — anything that wipes Garage locally propagates to B2 at the next 07:00 run. Enable B2 **object lifecycle rules** (keep prior versions ~30 days) so a bad sync is recoverable; B2 versioning is the safety net that makes `sync` acceptable here. Step 1 stays `copy`, so deleting a photo never deletes its off-site original.
+    The per-app jobs use `rclone copy` so an empty source can never wipe the Garage copy. Step 2 is the exception: Garage holds retention-managed buckets that shrink when Velero expires a backup, and `copy` would grow the B2 bill forever. The trade is real — anything that wipes Garage locally propagates to B2 at the next 07:00 run. Enable B2 **object lifecycle rules** (keep prior versions ~30 days) so a bad sync is recoverable; B2 versioning is the safety net that makes `sync` acceptable here. Step 1 stays `copy`, so deleting a photo never deletes its off-site original.
 
 !!! danger "The crypt passphrase is the whole backup"
     `offsite:` is an rclone `crypt` remote — B2 holds ciphertext with obscured filenames. Lose the passphrase and the off-site copy is unrecoverable noise. It belongs in the external password manager beside the age key ([The single root of trust](#the-single-root-of-trust)), **not** only in `/etc/rclone/rclone.conf` on the machine the backup exists to survive. Restoring means recreating the remote from the passphrase first — see the drill below.
@@ -612,7 +612,7 @@ A backup that has never been restored is a hypothesis, not a backup. Once a mont
 - A database dump must restore from the **Garage copy** into a scratch database with matching row counts — [NAS PostgreSQL](../deploy/nas-postgres.md) has the drill.
 
 !!! tip "Schedule a restore drill"
-    The first time you discover backups are corrupt should NOT be when you need them.
+    Don't discover your backups are corrupt the day you need them.
 
 ## Verification
 

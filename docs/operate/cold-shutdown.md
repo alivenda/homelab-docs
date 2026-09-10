@@ -1,14 +1,14 @@
-# Cold Shutdown & Storage
+# Cold shutdown and storage
 
 Powering down the **entire stack** — cluster, NAS, Home Assistant host, network gear — for **more than a day**: a house move, extended travel, electrical work, long-term storage.
 
 | | |
 |---|---|
 | **Difficulty** | Beginner–Intermediate |
-| **Time Estimate** | 1–2 hours down, 1–2 hours up (plus however long it stays dark) |
-| **Runs On** | Everything |
+| **Time estimate** | 1–2 hours down, 1–2 hours up (plus however long it stays dark) |
+| **Runs on** | Everything |
 
-An overnight power-down is just [Turing Pi's Planned Shutdown & Startup](../build/turing-pi.md#shutdown); longer than that and the secondary effects start to bite — backup jobs silently miss their windows, RTC-less boards drift, and the Sealed Secrets key can cross its rotation boundary while the controller is off. Turing Pi owns the cluster-internal ordering (etcd snapshot, NFS clients before the NFS server); this page is the layer above it: final data captures while everything is still running, the cross-device ordering, transporting the hardware if it's moving, and a cold-start sequence plus verification checklist for the day it all comes back.
+An overnight power-down is [Turing Pi's planned shutdown and startup](../build/turing-pi.md#shutdown); longer than that and the secondary effects start to bite — backup jobs silently miss their windows, RTC-less boards drift, and the Sealed Secrets key can cross its rotation boundary while the controller is off. Turing Pi owns the cluster-internal ordering (etcd snapshot, NFS clients before the NFS server); this page is the layer above it: final data captures while everything is still running, the cross-device ordering, transporting the hardware if it's moving, and a cold-start sequence plus verification checklist for the day it all comes back.
 
 ## Before you power anything down
 
@@ -20,7 +20,7 @@ Vaultwarden runs *inside* the cluster, so it is offline for the entire outage. A
 - Router/controller admin login, BMC root, NAS admin, Proxmox root
 - Tailscale account (handy for verifying remote access once back up)
 
-Forgejo is also in the cluster — while it's down, your repos are reachable read-only via their GitHub mirrors.
+Forgejo is also in the cluster — while it's down, your repos are reachable read-only through their GitHub mirrors.
 
 ### Final captures
 
@@ -104,7 +104,7 @@ Writers stop before the things they write to. Network gear goes last because eve
 4. **Network gear** — gateway, switch, APs. Their configuration persists on-device.
 5. **UPS** — power it off; if it's being transported or stored long-term, disconnect the battery (tape exposed terminals). A jostled lead-acid battery shorting against a chassis is the one genuinely dangerous item in the load.
 
-## Transport & storage notes
+## Transport and storage notes
 
 Skip this section if the hardware stays racked where it is.
 
@@ -121,7 +121,7 @@ Reverse dependency order: network → NAS → Home Assistant host → cluster.
 1. **Modem + gateway.** If you moved, the new ISP's WAN settings are the only thing that actually changed — LAN, VLANs, firewall rules, and DHCP reservations all persist on the gateway. Confirm a machine on the trusted VLAN gets an address and can reach the internet.
 
     !!! warning "Internet before cluster — the CM4s have no RTC"
-        The compute modules boot with their clocks set to whenever they last shut down (or worse). Until chrony reaches an NTP server and steps the clock, expect x509 *"certificate is not yet valid"* noise and unhappy etcd. Bring the WAN up **before** powering the cluster, and verify time on each node once booted: `chronyc tracking` should show an offset in the millisecond range.
+        The compute modules boot with their clocks set to whenever they last shut down (or worse). Until chrony reaches an NTP server and steps the clock, expect x509 *"certificate is not yet valid"* noise and unhappy etcd. Bring the WAN up **before** powering the cluster, and verify time on each node once booted: `chronyc tracking` shows an offset in the millisecond range when sync is healthy.
 
 2. **NAS.** Power on, then confirm its services came back:
 
@@ -131,7 +131,7 @@ Reverse dependency order: network → NAS → Home Assistant host → cluster.
     systemctl list-timers                # postgres-backup + ha-backup-sync scheduled
     ```
 
-3. **Home Assistant host.** Power on the Proxmox machine; the HAOS VM should auto-start (verify the VM's *Start at boot* option is set **before** the shutdown, not after).
+3. **Home Assistant host.** Power on the Proxmox machine; the HAOS VM auto-starts if the VM's *Start at boot* option is set — verify that **before** the shutdown, not after.
 
 4. **The cluster** — follow [Turing Pi's startup](../build/turing-pi.md#startup): topaz first (NFS), then ruby (wait for `Ready`), then emerald and amethyst. ArgoCD reconciles the workloads on its own; give it a few minutes before touching anything.
 
@@ -156,7 +156,7 @@ Reverse dependency order: network → NAS → Home Assistant host → cluster.
 - [ ] Clocks synced on every node: `chronyc tracking` offset in the millisecond range.
 - [ ] `sudo ufw status` → `active` on all four nodes (see the half-load tip above).
 - [ ] ArgoCD: every Application `Synced`/`Healthy`.
-- [ ] Public endpoints reachable end-to-end: the blackbox `public-endpoints` Probe drives the `PublicEndpointDown` alert (fires to ntfy if any of the six public HTTPS hosts stay down for 5m), so a quiet inbox already means they're up. To spot-check directly, curl each — every one should return `200`:
+- [ ] Public endpoints reachable end-to-end: the blackbox `public-endpoints` Probe drives the `PublicEndpointDown` alert (fires to ntfy if any of the six public HTTPS hosts stay down for 5m), so a quiet inbox already means they're up. To spot-check directly, curl each — every one returns `200`:
 
     ```bash
     for h in auth argocd immich vault ha lldap; do
