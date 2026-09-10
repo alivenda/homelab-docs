@@ -9,13 +9,13 @@ pods, the NAS runs their databases.
 
 | | |
 |---|---|
-| **Endpoint** | `10.0.20.50:5433` (LAN-only; UGOS's own Postgres keeps `5432`) |
+| **Endpoint** | 10.0.20.50:5433 (LAN-only; UGOS's own Postgres keeps `5432`) |
 | **Image** | `postgres:18` (docker-compose on the NAS) |
 | **Backup** | nightly `04:30` → `postgres-backups` Garage bucket, 30-day retention |
-| **Runs On** | NAS (Docker — not k3s) |
-| **Depends On** | Backups (Garage S3), [Storage & Data Architecture](../concepts/storage.md) |
+| **Runs on** | NAS (Docker — not k3s) |
+| **Depends on** | Backups (Garage S3), [Storage & Data Architecture](../concepts/storage.md) |
 | **Difficulty** | Intermediate |
-| **Time Estimate** | 1–2 hours |
+| **Time estimate** | 1–2 hours |
 
 ## Does your app even belong here?
 
@@ -40,7 +40,7 @@ is the tie-breaker.
 UGOS Pro (the NAS appliance OS) runs its **own internal PostgreSQL** on `127.0.0.1:5432`
 for its services. A loopback bind wouldn't technically collide with a bind on the LAN IP,
 but a firmware update could change it, and the standing rule for the appliance is *don't
-fight UGOS's config layer*. So this server publishes **`10.0.20.50:5433`** — every consumer
+fight UGOS's config layer*. So this server publishes **10.0.20.50:5433** — every consumer
 `DATABASE_URL` must say port `5433`.
 
 Check before you build (also confirms Immich's bundled Postgres stays unpublished, and that
@@ -128,7 +128,7 @@ sudo ss -tlnp | grep 5433
 
 Expected: logs end `database system is ready to accept connections` with no hba errors,
 version 18.x, `data_checksums = on` (the PG 18 initdb default — page corruption gets
-*detected* instead of silently served), and a listener on `10.0.20.50:5433` only.
+*detected* instead of silently served), and a listener on 10.0.20.50:5433 only.
 
 !!! tip "If the very first boot failed"
     A failed first start can leave a half-initialized `./data` where the superuser password
@@ -334,7 +334,7 @@ day-old copy.
 
 - [ ] `sudo docker exec -ti postgres psql -U postgres -c 'select version();'` → PostgreSQL 18.x
 - [ ] `show data_checksums` → `on`
-- [ ] `sudo ss -tlnp | grep 5433` → listener on `10.0.20.50:5433` only
+- [ ] `sudo ss -tlnp | grep 5433` → listener on 10.0.20.50:5433 only
 - [ ] Cluster gate: `kubectl run pg-test …` → `FATAL: no pg_hba.conf entry for host "10.0.20.1x"`
 - [ ] `sudo systemctl list-timers postgres-backup.timer` → a NEXT run is scheduled
 - [ ] `garage bucket info postgres-backups` → Objects ≥ 2 with non-trivial sizes

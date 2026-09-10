@@ -7,13 +7,13 @@ Single sign-on, two-factor authentication, and OIDC provider for all cluster ser
 
 | | |
 |---|---|
-| **URL** | `https://auth.yourdomain.com` (Authelia) · `https://lldap.yourdomain.com` (lldap admin UI) |
+| **URL** | https://auth.yourdomain.com (Authelia) · https://lldap.yourdomain.com (lldap admin UI) |
 | **Namespaces** | `authelia`, `lldap` |
 | **Chart** | `authelia/authelia` (Helm); lldap is raw manifests (Deployment/PVC/Service) |
 | **Storage** | SQLite on `local-path` for both — Authelia `/config` (1Gi), lldap `/data` (1Gi) |
-| **Depends On** | Kubernetes (k3s), Traefik, Vaultwarden |
+| **Depends on** | Kubernetes (k3s), Traefik, Vaultwarden |
 | **Difficulty** | Intermediate |
-| **Time Estimate** | 2–3 hours |
+| **Time estimate** | 2–3 hours |
 
 This runbook deploys two services — lldap (user store) and Authelia (authentication gateway and OIDC provider). Read [Identity and access](../concepts/identity.md) first for the ForwardAuth-versus-OIDC decision and when to use each mode.
 
@@ -23,7 +23,7 @@ This runbook deploys two services — lldap (user store) and Authelia (authentic
 
 lldap is the lightweight LDAP backend Authelia uses as its user store. Deploy it first — Authelia depends on it being reachable. The official image (`ghcr.io/lldap/lldap`) ships multiarch including ARM64. See the [lldap repository](https://github.com/lldap/lldap) for reference.
 
-### Step 1: Seal lldap Credentials
+### Seal lldap credentials { #step-1-seal-lldap-credentials }
 
 Generate the required secrets and seal them. All three values must be random — they are used for JWT signing and data encryption inside lldap.
 
@@ -42,11 +42,11 @@ kubectl create secret generic lldap-secrets \
   > lldap-secrets-sealed.yaml
 ```
 
-Save the plaintext `LLDAP_LDAP_USER_PASS` value to Vaultwarden. This is the bootstrap **`admin`** login for the lldap web UI — it is *not* the password Authelia binds with. Authelia uses a dedicated `authelia` service account you create in Step 3, with its own separate password.
+Save the plaintext `LLDAP_LDAP_USER_PASS` value to Vaultwarden. This is the bootstrap **`admin`** login for the lldap web UI — it is *not* the password Authelia binds with. Authelia uses a dedicated `authelia` service account you create in [Create the Authelia service account](#step-3-create-the-authelia-service-account-in-lldap), with its own separate password.
 
 Commit `lldap-secrets-sealed.yaml` to `homelab-manifests/apps/lldap/`.
 
-### Step 2: Deploy lldap
+### Deploy lldap { #step-2-deploy-lldap }
 
 Create `homelab-manifests/apps/lldap/deployment.yaml`:
 
@@ -179,9 +179,9 @@ spec:
 !!! note
     Authelia must be running (Part 2) and the `Middleware` must exist before this route attaches with auth. The ForwardAuth middleware is copied into each protected namespace — see [Deploying an App](index.md).
 
-### Step 3: Create the Authelia Service Account in lldap
+### Create the Authelia service account in lldap { #step-3-create-the-authelia-service-account-in-lldap }
 
-Once lldap is running, open its web UI at `http://<node-ip>:17170` (via `kubectl port-forward` before Traefik is wired up):
+Once lldap is running, open its web UI at `http://<node-ip>:17170` (with `kubectl port-forward` before Traefik is wired up):
 
 ```bash
 kubectl port-forward -n lldap svc/lldap 17170:17170
@@ -189,7 +189,7 @@ kubectl port-forward -n lldap svc/lldap 17170:17170
 
 Open `http://localhost:17170`. Log in with username `admin` and the `LLDAP_LDAP_USER_PASS` you saved to Vaultwarden.
 
-1. Go to **Users → Create a user** and create a user named `authelia` — the service account Authelia binds with to query LDAP. Give it its **own** password and save it to Vaultwarden; this is the value you seal as `authentication.ldap.password.txt` in Step 5 (it is *not* the `admin` password).
+1. Go to **Users → Create a user** and create a user named `authelia` — the service account Authelia binds with to query LDAP. Give it its **own** password and save it to Vaultwarden; this is the value you seal as `authentication.ldap.password.txt` in [Seal the Authelia secret](#step-5-seal-the-authelia-secret) (it is *not* the `admin` password).
 2. Go to **Groups → lldap_password_manager** and add `authelia` to this group so it can reset user passwords.
 3. Create a group named `admins` for your own user accounts (optional but recommended for OIDC access control later).
 4. Create your own personal user account, and add it to `admins`.
@@ -198,11 +198,11 @@ Open `http://localhost:17170`. Log in with username `admin` and the `LLDAP_LDAP_
 
 ## Part 2: Authelia
 
-Authelia is deployed via the official Helm chart from `https://charts.authelia.com`. The chart is in beta — always check the [chart changelog](https://github.com/authelia/chartrepo) when upgrading. See the [official Kubernetes docs](https://www.authelia.com/integration/kubernetes/chart/) for full reference.
+Authelia is deployed with the official Helm chart from `https://charts.authelia.com`. The chart is in beta — always check the [chart changelog](https://github.com/authelia/chartrepo) when upgrading. See the [official Kubernetes docs](https://www.authelia.com/integration/kubernetes/chart/) for full reference.
 
-### Step 4: Generate the OIDC Signing Key
+### Generate the OIDC signing key { #step-4-generate-the-oidc-signing-key }
 
-Authelia signs OIDC tokens with an RSA private key. Generate one now — you'll seal it together with the other secrets in Step 5:
+Authelia signs OIDC tokens with an RSA private key. Generate one now — you seal it together with the other secrets in [Seal the Authelia secret](#step-5-seal-the-authelia-secret):
 
 ```bash
 kubectl create namespace authelia
@@ -211,12 +211,12 @@ kubectl create namespace authelia
 openssl genrsa -out /tmp/oidc.jwk.RS256.pem 4096
 ```
 
-### Step 5: Seal the Authelia Secret
+### Seal the Authelia secret { #step-5-seal-the-authelia-secret }
 
-The chart consumes a single Secret via `secret.existingSecret`. It projects five **fixed** keys into `/secrets/internal/` and auto-generates the matching `AUTHELIA_*_FILE` env vars — several were renamed in 4.38, so let the chart manage them rather than hand-rolling `pod.env`. The OIDC JWKS key is a **sixth** key that `existingSecret` ignores; it's mounted separately via `secret.additionalSecrets` (Step 6). Seal all six into one `authelia-secrets` Secret — the `authentication.ldap.password.txt` value is the `authelia` service-account password from Step 3:
+The chart consumes a single Secret through `secret.existingSecret`. It projects five **fixed** keys into `/secrets/internal/` and auto-generates the matching `AUTHELIA_*_FILE` env vars — several were renamed in 4.38, so let the chart manage them rather than hand-rolling `pod.env`. The OIDC JWKS key is a **sixth** key that `existingSecret` ignores; it's mounted separately through `secret.additionalSecrets` ([Install Authelia](#step-6-install-authelia-via-helm)). Seal all six into one `authelia-secrets` Secret — the `authentication.ldap.password.txt` value is the `authelia` service-account password from [Create the service account](#step-3-create-the-authelia-service-account-in-lldap):
 
 ```bash
-# The password you gave the `authelia` user in lldap (Step 3):
+# The password you gave the `authelia` user in lldap (service-account step):
 AUTHELIA_LDAP_PASS='<authelia-service-account-password>'
 
 kubectl create secret generic authelia-secrets \
@@ -265,7 +265,7 @@ The five built-in keys use fixed names the chart expects — do not rename them:
 
 Commit `authelia-secrets-sealed.yaml` to `homelab-manifests/apps/authelia/`.
 
-### Step 6: Install Authelia via Helm
+### Install Authelia with Helm { #step-6-install-authelia-via-helm }
 
 Add the chart repo and inspect the values reference:
 
@@ -337,7 +337,7 @@ configMap:
       - domain: auth.yourdomain.com
         policy: bypass
       # two_factor by default (secure-by-default). A two_factor rule is ALSO
-      # what makes Authelia expose 2FA device registration at all — see Step 8.
+      # what makes Authelia expose 2FA device registration at all — see First login.
       # Relax per-app with a bypass/one_factor rule placed ABOVE this catch-all.
       - domain: "*.yourdomain.com"
         policy: two_factor
@@ -377,7 +377,7 @@ configMap:
       clients: []   # OIDC clients are added per-app in each app's runbook
 
 ingress:
-  enabled: false   # we route via an HTTPRoute (Step 7)
+  enabled: false   # we route with an HTTPRoute (see HTTPRoute section)
 ```
 
 Deploy:
@@ -400,7 +400,7 @@ Pin `--version` to the latest release listed on [charts.authelia.com](https://ch
     app. Flip `enabled: true` in the **same** change that adds the first client
     (see [OIDC Client Setup](#oidc-client-setup-per-app)).
 
-### Step 7: HTTPRoute and ForwardAuth Middleware
+### HTTPRoute and ForwardAuth middleware { #step-7-httproute-and-forwardauth-middleware }
 
 The Authelia portal itself is **not** behind ForwardAuth (it *is* the auth). Create `homelab-manifests/apps/authelia/manifests/httproute.yaml`:
 
@@ -447,7 +447,7 @@ See [Deploying an App](index.md) for the per-app HTTPRoute + `ExtensionRef` wiri
 !!! note "ExtensionRef prerequisite"
     Traefik's Kubernetes IngressRoute CRD provider must stay enabled for `ExtensionRef` middlewares to resolve — moving to the Gateway API doesn't remove that requirement.
 
-### Step 8: First Login
+### First login { #step-8-first-login }
 
 Open `https://auth.yourdomain.com` and log in with your personal lldap user. With a single factor you land on the portal's "Authenticated" screen — Authelia does **not** auto-prompt for TOTP. Enrol it from the settings page: go to **`auth.yourdomain.com/settings/two-factor-authentication`** and click **Add** under **One-Time Password**.
 
@@ -455,7 +455,7 @@ Open `https://auth.yourdomain.com` and log in with your personal lldap user. Wit
     Authelia only exposes device registration when at least one `access_control`
     rule uses `two_factor`. With only `bypass`/`one_factor` rules, the settings
     page reports *"There are no protected applications that require a second factor
-    method"* and refuses to register anything — the catch-all in Step 6 is set to
+    method"* and refuses to register anything — the catch-all in [Install Authelia](#step-6-install-authelia-via-helm) is set to
     `two_factor` for exactly this reason.
 
 !!! note "Filesystem notifier — read the verification message from disk"
@@ -470,14 +470,14 @@ Open `https://auth.yourdomain.com` and log in with your personal lldap user. Wit
     your passwords. The same notifier applies to any future password-reset message
     until `notifier.smtp` is configured.
 
-Once logged in, any service whose HTTPRoute attaches an `authelia-forwardauth` middleware (via an `ExtensionRef` filter) will redirect unauthenticated requests to this portal.
+Once logged in, any service whose HTTPRoute attaches an `authelia-forwardauth` middleware (through an `ExtensionRef` filter) redirects unauthenticated requests to this portal.
 
-## OIDC Client Setup (Per-App)
+## OIDC client setup (per-app)
 
 Each app that has its own user system gets an OIDC client entry added to the `configMap.identity_providers.oidc.clients` list in `values.yaml`.
 
 !!! warning "Enable the provider with your first client"
-    The provider ships disabled (`enabled: false`, Step 6). When you add the
+    The provider ships disabled (`enabled: false`, [Install Authelia](#step-6-install-authelia-via-helm)). When you add the
     **first** client, set `identity_providers.oidc.enabled: true` in the same
     change — enabling it with an empty `clients` list crashes Authelia, and a
     populated list with the provider still disabled does nothing.

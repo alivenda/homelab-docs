@@ -7,17 +7,17 @@ Self-hosted Git server — the cluster's primary Git host.
 
 | | |
 |---|---|
-| **URL** | `https://git.yourdomain.com` — SSH: `git@git.yourdomain.com` (same IP, see Step 4) |
+| **URL** | https://git.yourdomain.com — SSH: git@git.yourdomain.com (same IP, see [Routing](#step-4-routing-https-git-over-ssh)) |
 | **Namespace** | `forgejo` |
 | **Chart** | `forgejo` from `code.forgejo.org/forgejo-helm` (OCI), version-pinned |
 | **ArgoCD Applications** | `forgejo` (chart) + `forgejo-manifests` (HTTPRoute, repos PVC, admin SealedSecret) |
 | **Storage** | DB + config on `local-path` (node-pinned); repos + LFS on `nfs-storage` |
 | **Auth** | Authelia OIDC (auto-registration from lldap); local `forgejo_admin` = break-glass |
-| **Depends On** | Traefik (Gateway + wildcard TLS), Authelia (SSO), MetalLB (SSH LoadBalancer) |
+| **Depends on** | Traefik (Gateway + wildcard TLS), Authelia (SSO), MetalLB (SSH LoadBalancer) |
 | **Difficulty** | Intermediate |
-| **Time Estimate** | 45 minutes |
+| **Time estimate** | 45 minutes |
 
-Deploying via the official Helm chart (not docker-compose) keeps the Git server inside the cluster's GitOps lifecycle: ArgoCD reconciles it, an HTTPRoute gives HTTPS off the shared Gateway, a MetalLB `LoadBalancer` carries Git-over-SSH on the *same* IP, and accounts come from your lldap directory via Authelia OIDC.
+Deploying with the official Helm chart (not docker-compose) keeps the Git server inside the cluster's GitOps lifecycle: ArgoCD reconciles it, an HTTPRoute gives HTTPS off the shared Gateway, a MetalLB `LoadBalancer` carries Git-over-SSH on the *same* IP, and accounts come from your lldap directory through Authelia OIDC.
 
 !!! warning "Chart key naming"
     The Forgejo chart inherits Gitea's chart-internal `gitea.` value prefix (Forgejo forked it). This is not a bug — check the chart README at [code.forgejo.org/forgejo-helm](https://code.forgejo.org/forgejo-helm/forgejo-helm) for any value-name changes when you bump the chart.
@@ -36,9 +36,9 @@ So keep the chart's main `/data` PVC on `local-path` (small — DB, `app.ini`, a
 
 Because the DB's `local-path` PV is node-local and `ReadWriteOnce`, the pod is pinned to that node. Pin it to a worker with eMMC headroom, **off the control plane**, and ideally **off the node running your identity layer** (Authelia + lldap) — git operations (clone, pack, gc, indexing) are CPU-spiky and you don't want them contending with every app's login path. On this cluster that's `emerald` (the `workload=heavy` worker).
 
-## Step 1: Seal the admin credentials
+## Seal the admin credentials { #step-1-seal-the-admin-credentials }
 
-Forgejo needs a bootstrap admin. Even with SSO this is your **break-glass** login for when Authelia or lldap is down — so seal it, don't skip it. Don't pass the password via `--set` (it leaks into shell history and `ps`):
+Forgejo needs a bootstrap admin. Even with SSO this is your **break-glass** login for when Authelia or lldap is down — so seal it, don't skip it. Don't pass the password with `--set` (it leaks into shell history and `ps`):
 
 ```bash
 # Generate
@@ -65,7 +65,7 @@ The chart expects the secret keys `username` and `password`. Forgejo CrashLoops 
 !!! note "No separate DB secret"
     The chart dropped its bundled PostgreSQL sub-chart in v14 — for a single-instance homelab deployment Forgejo's built-in SQLite is the natural fit and needs no credential. To scale out later, deploy a shared Postgres and point `gitea.config.database` at it (see [Storage & Data Architecture](../concepts/storage.md)).
 
-## Step 2: Values
+## Values { #step-2-values }
 
 The chart renders a single-replica **Deployment** with `strategy.type: Recreate` by default — so the node-local DB volume is never double-mounted. No StatefulSet, no manual strategy override.
 
@@ -161,7 +161,7 @@ spec:
 
     Pin `--version` to a current release on [code.forgejo.org/forgejo-helm](https://code.forgejo.org/forgejo-helm/forgejo-helm).
 
-## Step 3: GitOps-managed install (recommended)
+## GitOps-managed install (recommended) { #step-3-gitops-managed-install-recommended }
 
 Commit the ArgoCD `Application` to `homelab-manifests/bootstrap/forgejo.yaml` so ArgoCD reconciles future changes from Git. Use the multi-source `$values` pattern (chart from upstream OCI + your `values.yaml` from this repo), plus a second `Application` for the raw manifests:
 
@@ -193,7 +193,7 @@ The second `forgejo-manifests` Application points at `infrastructure/forgejo/man
 !!! note "Applications register on merge"
     The app-of-apps `root.yaml` is live, so committing `bootstrap/forgejo.yaml` and merging is enough — root creates the Application on its next sync. No manual `kubectl apply`.
 
-## Step 4: Routing — HTTPS + Git-over-SSH
+## Routing — HTTPS + Git-over-SSH { #step-4-routing-https-git-over-ssh }
 
 **HTTPS** is an HTTPRoute on the shared Gateway's `websecure` listener — the Gateway terminates TLS with the wildcard cert, so Forgejo configures no TLS:
 
@@ -217,7 +217,7 @@ spec:
           port: 3000
 ```
 
-**Git-over-SSH** is raw TCP, which the HTTP Gateway can't carry. Expose it with the chart's own `service.ssh` as a MetalLB `LoadBalancer` (configured in Step 2). The trick that keeps a *single* hostname is to **share the Traefik gateway's IP**: ports 22 and 443 don't collide, so MetalLB will co-locate both Services on `10.0.20.200`, and `git@git.yourdomain.com` resolves to the same record as the web UI.
+**Git-over-SSH** is raw TCP, which the HTTP Gateway can't carry. Expose it with the chart's own `service.ssh` as a MetalLB `LoadBalancer` (configured in [Values](#step-2-values)). The trick that keeps a *single* hostname is to **share the Traefik gateway's IP**: ports 22 and 443 don't collide, so MetalLB will co-locate both Services on `10.0.20.200`, and `git@git.yourdomain.com` resolves to the same record as the web UI.
 
 Sharing requires the **same** `allow-shared-ip` key on **both** Services. Add it to Traefik's Service in `apps/traefik/values.yaml`:
 
@@ -233,7 +233,7 @@ The chart maps the Service's port 22 to container port 2222 (the rootless image'
 !!! note "Why not a TCPRoute?"
     The Gateway API *can* route TCP, but that needs the experimental channel plus a dedicated TCP listener on the Gateway — neither is configured here (HTTP/HTTPS listeners only). The shared-IP `LoadBalancer` is the simpler path and reuses the IP you already have.
 
-## Step 5: Single sign-on (Authelia OIDC)
+## Single sign-on (Authelia OIDC) { #step-5-single-sign-on-authelia-oidc }
 
 Forgejo keeps its own user system, so it's an **OIDC client** of Authelia (not ForwardAuth — its Git CLI/API clients can't follow an auth redirect). Two halves:
 
@@ -273,9 +273,9 @@ The group fields appear once Provider = OpenID Connect. The admin-group value ke
 !!! warning "Groups are captured at login"
     A user's admin bit is decided from the `groups` claim **at login**. After changing someone's lldap groups, they must fully log out of *both* Forgejo and Authelia and back in.
 
-## Step 6: First login & SSH key
+## First login and SSH key { #step-6-first-login-ssh-key }
 
-1. Browse to `https://git.yourdomain.com`, log in once as `forgejo_admin` (break-glass) to confirm the cert and add the OAuth source (Step 5b).
+1. Browse to `https://git.yourdomain.com`, log in once as `forgejo_admin` (break-glass) to confirm the cert and add the OAuth source ([Single sign-on](#step-5-single-sign-on-authelia-oidc)).
 2. Log out, then **Sign in with authelia** — you're redirected through Authelia, and a Forgejo account is auto-created from your lldap identity (admin if you're in `homelab-admins`).
 3. Add your SSH key under **User Settings → SSH / GPG Keys**.
 

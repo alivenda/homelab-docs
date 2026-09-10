@@ -5,21 +5,21 @@
     validation on `homelab-manifests`). This runbook teaches the full pipeline through
     image builds and GitOps deploys.
 
-End-to-end pipeline: push code, auto-build container images, deploy to k3s via GitOps.
+End-to-end pipeline: push code, auto-build container images, deploy to k3s through GitOps.
 
 | | |
 |---|---|
-| **URL** | `https://ci.yourdomain.com` |
+| **URL** | https://ci.yourdomain.com |
 | **Namespace** | `woodpecker` |
 | **Chart** | `woodpecker/woodpecker` (umbrella: `server` + `agent` subcharts) |
 | **Storage** | SQLite on `local-path` (server, 2Gi) + `woodpecker-ci-scratch` (agent, per-pipeline) |
 | **Auth** | Forgejo OAuth2 (`WOODPECKER_ADMIN` gate) |
-| **Runs On** | k3s cluster (32 GB node) |
-| **Depends On** | Kubernetes, Traefik, Backups, Forgejo |
+| **Runs on** | k3s cluster (32 GB node) |
+| **Depends on** | Kubernetes, Traefik, Backups, Forgejo |
 | **Difficulty** | Intermediate–Advanced |
-| **Time Estimate** | 2–3 hours |
+| **Time estimate** | 2–3 hours |
 
-## Step 1: OAuth2 App in Forgejo
+## OAuth2 app in Forgejo { #step-1-oauth2-app-in-forgejo }
 
 **Site Admin → Applications → OAuth2 Applications.**
 
@@ -37,14 +37,14 @@ Save the **Client ID** and **Client Secret** to Vaultwarden.
     updates `app.ini` but does **not** roll the pod on a config change — run
     `kubectl -n forgejo rollout restart deployment forgejo` for it to take effect.
 
-## Step 2: Generate the agent secret
+## Generate the agent secret { #step-2-generate-the-agent-secret }
 
 ```bash
 WOODPECKER_AGENT_SECRET=$(openssl rand -hex 32)
 echo "Woodpecker agent secret: $WOODPECKER_AGENT_SECRET"   # save to Vaultwarden
 ```
 
-## Step 3: Seal Woodpecker credentials
+## Seal Woodpecker credentials { #step-3-seal-woodpecker-credentials }
 
 ```bash
 kubectl create namespace woodpecker
@@ -72,7 +72,7 @@ kubectl create secret generic woodpecker-secrets \
       -o jsonpath='{.data.WOODPECKER_FORGEJO_CLIENT}' | base64 -d
     ```
 
-## Step 4: Deploy Woodpecker
+## Deploy Woodpecker { #step-4-deploy-woodpecker }
 
 ### Helm values
 
@@ -126,7 +126,7 @@ agent:
 ```
 
 The kubernetes backend's step pods need RBAC in the namespace; the chart creates
-the Role/RoleBinding for you via `agent.serviceAccount.rbac.create` (default `true`).
+the Role/RoleBinding for you with `agent.serviceAccount.rbac.create` (default `true`).
 
 !!! warning "Forge env vars: server only — and FORGEJO vs GITEA"
     Put `WOODPECKER_FORGEJO*` on the **server**, never the agent — agent-side forge
@@ -151,8 +151,8 @@ Pin `--version` to a current release listed on [woodpecker-ci/helm](https://gith
 
 ### GitOps-managed install (recommended)
 
-Commit two ArgoCD `Application`s, exactly as Forgejo does (its Step 3): the chart
-Application via the multi-source `$values` pattern, plus a second Application for
+Commit two ArgoCD `Application`s, exactly as [Forgejo's GitOps-managed install](forgejo.md#step-3-gitops-managed-install-recommended): the chart
+Application with the multi-source `$values` pattern, plus a second Application for
 the raw manifests (HTTPRoute, the sealed secret, the scratch StorageClass).
 
 ```yaml
@@ -208,15 +208,15 @@ volumeBindingMode: Immediate
     and merging is enough — root creates the Applications on its next sync. No
     manual `kubectl apply`.
 
-## Step 5: HTTPRoute
+## HTTPRoute { #step-5-httproute }
 
-Standard HTTPRoute for `ci.yourdomain.com`. Same shape as [Vaultwarden Step 3](vaultwarden.md#step-3-httproute) — change the backend service to `woodpecker-server`, port `80` (the server subchart's Service port; the `woodpecker-server` name comes from the mandatory `woodpecker` release name).
+Standard HTTPRoute for `ci.yourdomain.com`. Same shape as [Vaultwarden HTTPRoute](vaultwarden.md#step-3-httproute) — change the backend service to `woodpecker-server`, port `80` (the server subchart's Service port; the `woodpecker-server` name comes from the mandatory `woodpecker` release name).
 
-## Step 6: Why kubernetes backend (not docker)
+## Why kubernetes backend (not docker) { #step-6-why-kubernetes-backend-not-docker }
 
 - Each pipeline step becomes its own pod, scheduled by k3s. Resource limits and node selectors work.
 - **No `/var/run/docker.sock` mount in the agent.** The original compose mount was a privileged escape risk. The kubernetes backend doesn't need it — image builds happen in dedicated build pods.
-- Cross-architecture builds: pin steps to amd64 or arm64 via `nodeSelector` on the build pod if you ever add x86 nodes.
+- Cross-architecture builds: pin steps to amd64 or arm64 with `nodeSelector` on the build pod if you ever add x86 nodes.
 
 !!! warning "Pipeline images must be ARM64"
     All pipeline images must be ARM64-compatible. Most official images publish arm64 builds — verify third-party plugins. See [Reality of ARM64 Homelabs](../get-started/prerequisites.md#reality-of-arm64-homelabs) for debugging strategy.
@@ -255,11 +255,11 @@ check validates the **whole tree** every run, so one broken manifest on `main` r
 every subsequent PR until it's fixed — keep `main` green.
 
 !!! note "AGit PRs do trigger Woodpecker"
-    With the Forgejo webhook delivering (Step 1), an AGit pull request
+    With the Forgejo webhook delivering ([OAuth2 app in Forgejo](#step-1-oauth2-app-in-forgejo)), an AGit pull request
     (`git push origin HEAD:refs/for/main -o topic=…`) fires a `pull_request` event
     and the gate runs **before merge** — no Forgejo Actions runner needed.
 
-## Sample Pipeline (build → push → bump manifest)
+## Sample pipeline (build → push → bump manifest)
 
 The kubernetes backend doesn't have a Docker socket. Use [BuildKit](https://github.com/moby/buildkit) (rootless) to build OCI images directly inside a build pod — no daemon, no socket mount, no privileged container.
 
@@ -313,7 +313,7 @@ Your CI pipeline above builds your own images. Third-party versions (helm charts
 ### Hosted vs self-hosted
 
 - **Mend Renovate hosted (recommended):** install the [Mend Renovate GitHub App](https://github.com/marketplace/renovate), grant it access to the repos you want scanned, drop a `renovate.json` in each. No infra to run.
-- **Self-hosted via Woodpecker:** a scheduled cron pipeline (shown at the end of this section). Use this if you want Renovate inside your cluster.
+- **Self-hosted with Woodpecker:** a scheduled cron pipeline (shown at the end of this section). Use this if you want Renovate inside your cluster.
 
 ### Base config (every repo)
 
@@ -372,7 +372,7 @@ To use it, drop a comment directly above the pin:
 targetRevision: 40.2.0
 ```
 
-### Self-hosted: schedule via Woodpecker
+### Self-hosted: schedule with Woodpecker
 
 If you'd rather not depend on Mend, run Renovate as a scheduled Woodpecker pipeline in each repo:
 

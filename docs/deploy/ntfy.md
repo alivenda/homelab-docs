@@ -7,14 +7,14 @@ Self-hosted push notifications for the entire homelab stack.
 
 | | |
 |---|---|
-| **URL** | `https://ntfy.yourdomain.com` |
+| **URL** | https://ntfy.yourdomain.com |
 | **Namespace** | `ntfy` |
 | **Chart** | none — raw manifests (`apps/ntfy/manifests/`) |
 | **Storage** | SQLite on `local-path` ×2 — `ntfy-cache` (2Gi), `ntfy-data` (1Gi) |
 | **Auth** | Native (`deny-all` default; provisioned users/tokens) — no SSO |
-| **Depends On** | Kubernetes (k3s), Traefik, Terraform (DNS), [the deploy pattern](index.md) |
+| **Depends on** | Kubernetes (k3s), Traefik, Terraform (DNS), [the deploy pattern](index.md) |
 | **Difficulty** | Beginner |
-| **Time Estimate** | 45–60 minutes |
+| **Time estimate** | 45–60 minutes |
 
 ntfy is a pub/sub notification service — services publish messages to named topics and your phone (or any HTTP client) subscribes to receive them. Every other service in this stack can send notifications through it: Prometheus Alertmanager, CI pipeline results, Home Assistant automations.
 
@@ -46,7 +46,7 @@ Both persistent stores are **SQLite**, so both PVCs bind the node-local `local-p
 
 Pin the pod to a light worker node with `nodeSelector: kubernetes.io/hostname` — `local-path` provisions the PVs wherever the pod lands, so the pin also fixes where the data lives.
 
-## Configuration (`server.yml` via ConfigMap)
+## Configuration (`server.yml` in a ConfigMap)
 
 ```yaml
 base-url: "https://ntfy.yourdomain.com"
@@ -103,7 +103,7 @@ docker run --rm -it binwiederhier/ntfy:<version> user hash
 
 For your admin user, hash your real password (store it in your password manager first). The service accounts are **token-only** — hash a random throwaway (`openssl rand -base64 18`) and discard it; the token is their real credential.
 
-**Tokens** must be `tk_` + 29 characters (32 total). They are secrets, so they ride in a `SealedSecret` as the `NTFY_AUTH_TOKENS` env var (env beats `server.yml` in ntfy's precedence) consumed via `envFrom` — never in the ConfigMap:
+**Tokens** must be `tk_` + 29 characters (32 total). They are secrets, so they ride in a `SealedSecret` as the `NTFY_AUTH_TOKENS` env var (env beats `server.yml` in ntfy's precedence) consumed with `envFrom` — never in the ConfigMap:
 
 ```bash
 kubectl create secret generic ntfy-tokens --namespace ntfy \
@@ -140,7 +140,7 @@ Each service uses *its own* token against *its own* topic:
   wiring. Two details differ from the other publishers: it uses the **in-cluster**
   URL (`http://ntfy.ntfy.svc.cluster.local/alerts?template=alertmanager`) so alert
   delivery survives an ingress/DNS outage, and the token rides in a SealedSecret
-  read via `credentials_file` rather than inline config.
+  read through `credentials_file` rather than inline config.
 
 - **Home Assistant** (RESTful notify):
 
