@@ -1,12 +1,12 @@
-# Deploying an App — the GitOps Pattern
+# Deploying an app — the GitOps pattern
 
 Every user-facing service on the cluster is deployed the same way. This is that procedure, written **once**.
 
 | | |
 |---|---|
 | **Difficulty** | Intermediate |
-| **Runs On** | k3s (cluster) |
-| **Depends On** | A working [Traefik](../build/traefik.md) `Gateway` + wildcard TLS, and [Authelia](authelia.md) for auth |
+| **Runs on** | k3s (cluster) |
+| **Depends on** | A working [Traefik](../build/traefik.md) `Gateway` + wildcard TLS, and [Authelia](authelia.md) for auth |
 
 Per-app specifics live either in the [App Catalog](../reference/app-catalog.md) (simple services — just the deltas) or in a dedicated runbook (services with real complexity: Arr stack, Authelia, Immich, Home Assistant, Ollama, ntfy).
 
@@ -29,12 +29,12 @@ apps/<app>/
     └── middleware.yaml      # ForwardAuth apps only
 ```
 
-## Step 1 — Choose the workload mode
+## Choose the workload mode { #step-1-choose-the-workload-mode }
 
 - **Helm chart** when upstream maintains one (e.g. Vaultwarden). The `Application` uses the multi-source `$values` pattern: chart from the upstream Helm repo + `valueFiles: [$values/apps/<app>/values.yaml]`. Pin `targetRevision` and add a `# renovate:` comment so Renovate tracks the chart.
 - **Raw manifests** when there's no good chart — most simple apps (linkding, Mealie, ntfy). Commit a `Deployment` + `Service` + `PVC` to `apps/<app>/manifests/`. **Pin the image tag — never `:latest`.**
 
-## Step 2 — Secrets (SealedSecret)
+## Secrets (SealedSecret) { #step-2-secrets-sealedsecret }
 
 Anything sensitive (OIDC client secret, admin password, API token) goes in a `SealedSecret` so it's safe to commit. Seal against the cluster's controller:
 
@@ -51,7 +51,7 @@ kubectl create secret generic <app>-secrets \
 
 Save the plaintext to Vaultwarden as well. The controller's signing key is itself backed up — see [Backups & DR](../build/backups.md).
 
-## Step 3 — Storage
+## Storage { #step-3-storage }
 
 See **[Storage & Data Architecture](../concepts/storage.md)** for the full rationale and the per-tier rules; the short version:
 
@@ -64,7 +64,7 @@ See **[Storage & Data Architecture](../concepts/storage.md)** for the full ratio
 !!! warning "`local-path` is a standalone provisioner, not k3s's built-in"
     k3s runs with `--disable local-storage`, so the built-in `local-path` class doesn't exist; a separate standalone provisioner supplies this class instead — **live** since 2026-06. Its StorageClass **must** set `defaultVolumeType: local`, or velero silently backs up nothing — see [Storage & Data Architecture](../concepts/storage.md#the-local-path-tier).
 
-## Step 4 — Routing (DNS + HTTPRoute)
+## Routing (DNS + HTTPRoute) { #step-4-routing-dns-httproute }
 
 **First, publish the hostname.** Service names are individual A records — there is no wildcard record: add the subdomain to `var.services` in the Cloudflare [Terraform](../build/terraform.md) module and apply; each entry becomes one A record pointing at the Traefik LB IP. A browser "server not found" on a freshly deployed app is almost always this step missing — the route below can be perfectly healthy and still unreachable by name. If a record was ever hand-created in the dashboard, `tofu import` it into state instead of letting apply mint a duplicate A record.
 
@@ -91,7 +91,7 @@ spec:
 
 This replaces the old per-app `IngressRoute` + `certResolver` flow. The backend `Service` lives in the same namespace as the route, so no `ReferenceGrant` is needed.
 
-## Step 5 — Authentication
+## Authentication { #step-5-authentication }
 
 Pick one mode per app.
 
@@ -161,7 +161,7 @@ The Middleware lives in the **app's own namespace** — an `ExtensionRef` filter
 !!! tip "Apps with their own login double-prompt"
     If the app has its own auth, you'll authenticate twice — Authelia, then the app. After confirming ForwardAuth works, disable the app's built-in login where it offers the option. Safe because the route fails closed.
 
-## Step 6 — Register the Application and sync
+## Register the application and sync { #step-6-register-the-application-and-sync }
 
 Add the `Application`(s) to `homelab-manifests/bootstrap/` — the chart app via `$values` plus the `-manifests` app, mirroring `vaultwarden.yaml`. Commit via a branch + PR; on merge the live `root.yaml` app-of-apps creates the Application on its next sync — no manual `kubectl apply`. For stateful apps set `prune: false` on the chart app so a sync can't drop the StatefulSet/PVC out from under it.
 
