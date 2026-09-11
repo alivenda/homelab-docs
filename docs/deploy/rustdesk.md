@@ -109,7 +109,7 @@ spec:
             claimName: rustdesk-data
 ```
 
-Replace `10.0.20.50` in the `hbbs` args with the MetalLB IP you assign in [LoadBalancer service](#step-2-loadbalancer-service).
+Replace 10.0.20.50 in the `hbbs` args with the MetalLB IP you assign in [LoadBalancer service](#step-2-loadbalancer-service).
 
 ## LoadBalancer service { #step-2-loadbalancer-service }
 
@@ -183,7 +183,7 @@ Each device shows a numeric ID — share the ID and a one-time password to allow
 
 If you want to access the RustDesk server from outside your LAN without opening firewall ports:
 
-1. The cluster nodes are already on Tailscale (from Network). The MetalLB IP `10.0.20.50` is on the Lab VLAN which is advertised through the Tailscale subnet router.
+1. The cluster nodes are already on Tailscale (from Network). The MetalLB IP 10.0.20.50 is on the Lab VLAN which is advertised through the Tailscale subnet router.
 2. Set the RustDesk client ID/Relay server to the MetalLB IP — it will be reachable from anywhere on your Tailscale network.
 
 ## Verification
