@@ -8,16 +8,16 @@ Self-hosted wiki and knowledge base with OIDC login and role-based access.
 | | |
 |---|---|
 | **Difficulty** | Intermediate |
-| **Time Estimate** | 45–60 minutes |
-| **Runs On** | k3s (cluster) |
-| **Depends On** | Kubernetes (k3s), Traefik, Authelia (OIDC) |
+| **Time estimate** | 45–60 minutes |
+| **Runs on** | k3s (cluster) |
+| **Depends on** | Kubernetes (k3s), Traefik, Authelia (OIDC) |
 
-BookStack ([bookstackapp.com](https://www.bookstackapp.com)) is a structured wiki platform organised around Shelves → Books → Chapters → Pages. ARM64 ✅ (`lscr.io/linuxserver/bookstack` ships multiarch via LinuxServer.io). See the [official documentation](https://www.bookstackapp.com/docs/) for full reference. BookStack requires a **MariaDB** database — both are deployed here.
+BookStack ([bookstackapp.com](https://www.bookstackapp.com)) is a structured wiki platform organised around Shelves → Books → Chapters → Pages. ARM64 ✅ (`lscr.io/linuxserver/bookstack` ships multiarch through LinuxServer.io). See the [official documentation](https://www.bookstackapp.com/docs/) for full reference. BookStack requires a **MariaDB** database — both are deployed here.
 
 !!! warning "OIDC only — not ForwardAuth"
     BookStack has its own user and role system. Use the OIDC client below — not ForwardAuth.
 
-## Step 1: MariaDB
+## MariaDB { #step-1-mariadb }
 
 Create `homelab-manifests/apps/bookstack/mariadb.yaml`:
 
@@ -89,7 +89,7 @@ spec:
       targetPort: 3306
 ```
 
-## Step 2: SealedSecrets
+## SealedSecrets { #step-2-sealedsecrets }
 
 `APP_KEY` is required by BookStack for session encryption. Generate it using the official method before sealing:
 
@@ -124,7 +124,7 @@ kubectl create secret generic bookstack-secrets \
 
 Save all plaintext values to Vaultwarden.
 
-## Step 3: Register the OIDC Client in Authelia
+## Register the OIDC client in Authelia { #step-3-register-the-oidc-client-in-authelia }
 
 In `homelab-manifests/apps/authelia/values.yaml`, add under `configMap.identity_providers.oidc.clients`:
 
@@ -144,7 +144,7 @@ In `homelab-manifests/apps/authelia/values.yaml`, add under `configMap.identity_
 
 Commit and upgrade Authelia before deploying BookStack.
 
-## Step 4: Deploy BookStack
+## Deploy BookStack { #step-4-deploy-bookstack }
 
 Create `homelab-manifests/apps/bookstack/deployment.yaml`:
 
@@ -263,7 +263,7 @@ spec:
       targetPort: 6875
 ```
 
-## Step 5: HTTPRoute
+## HTTPRoute { #step-5-httproute }
 
 Create `homelab-manifests/apps/bookstack/httproute.yaml` (TLS is handled by the Gateway's wildcard cert — see [Deploying an App](index.md)):
 
@@ -288,7 +288,7 @@ spec:
 
 Commit all manifests to `homelab-manifests/apps/bookstack/` and let ArgoCD sync.
 
-## Step 6: First Login
+## First login { #step-6-first-login }
 
 Open `https://wiki.yourdomain.com`. With `AUTH_METHOD=oidc`, the login page shows a **Login with Authelia** button. Click it to authenticate.
 

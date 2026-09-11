@@ -8,9 +8,9 @@ A services dashboard — one tile per deployed service, behind Authelia.
 | | |
 |---|---|
 | **Difficulty** | Beginner |
-| **Time Estimate** | 45–60 minutes |
-| **Runs On** | k3s (cluster) |
-| **Depends On** | Traefik, Terraform (DNS), Authelia (ForwardAuth), [the deploy pattern](index.md) |
+| **Time estimate** | 45–60 minutes |
+| **Runs on** | k3s (cluster) |
+| **Depends on** | Traefik, Terraform (DNS), Authelia (ForwardAuth), [the deploy pattern](index.md) |
 
 Homepage ([gethomepage.dev](https://gethomepage.dev)) is a YAML-configured start page. In this stack it serves static tiles and bookmarks for every live service, reads the Kubernetes API for cluster stats, and sits entirely behind Authelia ForwardAuth.
 
@@ -98,7 +98,7 @@ Homepage expects nine files under `/app/config`; **all nine must exist as Config
 !!! tip "Whole-dir mount, not subPath"
     Upstream's k8s example mounts each file with `subPath`, which **freezes** the file — kubelet never updates subPath mounts, so every config edit needs a pod restart. Mounting the ConfigMap volume whole at `/app/config` (with the `emptyDir` shadowing `logs/` inside it) keeps kubelet's atomic-symlink update path: an ArgoCD sync reaches the pod within about a minute and shows on page refresh. If an edit doesn't appear: `kubectl -n homepage rollout restart deployment homepage`.
 
-`widgets.yaml` ships two **keyless** info widgets — `kubernetes` (cluster + node CPU/memory via the ServiceAccount) and `datetime`. `services.yaml` is the tile grid, grouped to match `settings.yaml`'s `layout` (group names must match exactly):
+`widgets.yaml` ships two **keyless** info widgets — `kubernetes` (cluster + node CPU/memory from the ServiceAccount) and `datetime`. `services.yaml` is the tile grid, grouped to match `settings.yaml`'s `layout` (group names must match exactly):
 
 ```yaml
 # services.yaml (abridged — one entry per live service)

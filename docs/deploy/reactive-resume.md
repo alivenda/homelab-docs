@@ -8,16 +8,16 @@ Self-hosted resume builder with OIDC login, PDF export, and a polished editor.
 | | |
 |---|---|
 | **Difficulty** | Intermediate |
-| **Time Estimate** | 45–60 minutes |
-| **Runs On** | k3s (cluster) |
-| **Depends On** | Kubernetes (k3s), Traefik, Authelia (OIDC) |
+| **Time estimate** | 45–60 minutes |
+| **Runs on** | k3s (cluster) |
+| **Depends on** | Kubernetes (k3s), Traefik, Authelia (OIDC) |
 
 Reactive Resume ([rxresu.me](https://rxresu.me)) is a feature-complete resume builder with real-time editing, multiple templates, and PDF export. ARM64 ✅ — the image is based on `node:24-slim` (multi-arch), and `FLAG_DISABLE_IMAGE_PROCESSING=true` reduces load on ARM hardware. See the [self-hosting docs](https://docs.rxresu.me/overview/self-hosting) for full reference. Reactive Resume requires PostgreSQL and Redis in addition to the app container.
 
 !!! warning "OIDC only — not ForwardAuth"
-    Reactive Resume has its own user accounts and OIDC integration via standard env vars. Use the OIDC client below — not ForwardAuth.
+    Reactive Resume has its own user accounts and OIDC integration through standard env vars. Use the OIDC client below — not ForwardAuth.
 
-## Step 1: SealedSecrets
+## SealedSecrets { #step-1-sealedsecrets }
 
 ```bash
 kubectl create namespace reactive-resume
@@ -36,7 +36,7 @@ kubectl create secret generic rxresume-secrets \
 
 Save all plaintext values to Vaultwarden.
 
-## Step 2: Register the OIDC Client in Authelia
+## Register the OIDC client in Authelia { #step-2-register-the-oidc-client-in-authelia }
 
 In `homelab-manifests/apps/authelia/values.yaml`, add under `configMap.identity_providers.oidc.clients`:
 
@@ -55,7 +55,7 @@ In `homelab-manifests/apps/authelia/values.yaml`, add under `configMap.identity_
 
 Commit and upgrade Authelia before deploying Reactive Resume.
 
-## Step 3: PostgreSQL and Redis
+## PostgreSQL and Redis { #step-3-postgresql-and-redis }
 
 Create `homelab-manifests/apps/reactive-resume/postgres.yaml`:
 
@@ -174,7 +174,7 @@ spec:
       storage: 2Gi
 ```
 
-## Step 4: Deploy Reactive Resume
+## Deploy Reactive Resume { #step-4-deploy-reactive-resume }
 
 Create `homelab-manifests/apps/reactive-resume/deployment.yaml`:
 
@@ -258,7 +258,7 @@ spec:
       targetPort: 3000
 ```
 
-## Step 5: HTTPRoute
+## HTTPRoute { #step-5-httproute }
 
 Create `homelab-manifests/apps/reactive-resume/httproute.yaml` (TLS is handled by the Gateway's wildcard cert — see [Deploying an App](index.md)):
 
@@ -283,11 +283,11 @@ spec:
 
 Commit all manifests to `homelab-manifests/apps/reactive-resume/` and let ArgoCD sync.
 
-## Step 6: First Login
+## First login { #step-6-first-login }
 
 Open `https://resume.yourdomain.com`. Click **Continue with Authelia**. Reactive Resume creates a local user on first OIDC login.
 
-`FLAG_DISABLE_SIGNUPS=true` prevents any new accounts except via OIDC. `FLAG_DISABLE_IMAGE_PROCESSING=true` disables server-side image resizing — useful on ARM hardware; resume profile images still work but are not server-processed.
+`FLAG_DISABLE_SIGNUPS=true` prevents any new accounts except through OIDC. `FLAG_DISABLE_IMAGE_PROCESSING=true` disables server-side image resizing — useful on ARM hardware; resume profile images still work but are not server-processed.
 
 ## Verification
 

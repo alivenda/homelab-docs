@@ -8,9 +8,9 @@ Scan, OCR, and organize all your documents.
 | | |
 |---|---|
 | **Difficulty** | Intermediate |
-| **Time Estimate** | 1–2 hours |
-| **Runs On** | k3s (app + Redis) **+ NAS (database)** |
-| **Depends On** | [Deploying an App](index.md), NAS PostgreSQL, Authelia, [Storage & Data Architecture](../concepts/storage.md) |
+| **Time estimate** | 1–2 hours |
+| **Runs on** | k3s (app + Redis) **+ NAS (database)** |
+| **Depends on** | [Deploying an App](index.md), NAS PostgreSQL, Authelia, [Storage & Data Architecture](../concepts/storage.md) |
 
 Paperless-ngx is the cleanest live example of the
 [decomposition rule](../concepts/storage.md#how-to-decompose-one-app): one app, four
@@ -32,7 +32,7 @@ Service, an HTTPRoute — one ArgoCD `Application` in `bootstrap/paperless.yaml`
 
 !!! warning "If you read an older revision of this runbook"
     Earlier drafts installed a community chart imperatively (`helm upgrade --install`)
-    with **postgres and redis bundled in-cluster**, and pinned the pod via a
+    with **postgres and redis bundled in-cluster**, and pinned the pod with a
     `workload: heavy` node label. All three are wrong here: the chart URL never
     existed, in-cluster postgres contradicts the storage architecture, and no node
     carries that label. GitOps-only, database on the NAS, no node pin.
@@ -41,10 +41,10 @@ Service, an HTTPRoute — one ArgoCD `Application` in `bootstrap/paperless.yaml`
 
 | Component | Home | Why |
 |---|---|---|
-| Relational DB | NAS shared Postgres `10.0.20.50:5433`, db + role `paperless` | The [relational tier](../concepts/storage.md#relational-databases-on-the-nas-not-the-cluster) — real databases don't run on CM4 eMMC |
+| Relational DB | NAS shared Postgres 10.0.20.50:5433, db + role `paperless` | The [relational tier](../concepts/storage.md#relational-databases-on-the-nas-not-the-cluster) — real databases don't run on CM4 eMMC |
 | Documents, search index, consume, export | Four `nfs-storage` PVCs | Bulk flat files. With the DB external there is **no SQLite in the data dir**, so NFS is safe |
 | Redis (Celery broker + cache) | In-cluster `paperless-redis`, emptyDir, persistence off | Cache tier — not a system of record, nothing to back up (velero-excluded) |
-| Credentials + OIDC provider config | `paperless-secrets` SealedSecret | The OIDC JSON embeds a plaintext secret — see Step 3 |
+| Credentials + OIDC provider config | `paperless-secrets` SealedSecret | The OIDC JSON embeds a plaintext secret — see [SSO](#step-3-sso-oidc-client-with-one-twist) |
 
 !!! danger "The consume dir is NFS — polling is not optional"
     inotify events don't propagate across NFS clients, so a consumer relying on
@@ -67,29 +67,29 @@ There is deliberately **no nodeSelector**: documents are on NFS, the database is
 the NAS, the broker is ephemeral — nothing node-local exists to reschedule back to.
 Resource requests steer placement; the 2 Gi memory limit absorbs OCR spikes.
 
-## Step 1 — Database on the NAS
+## Database on the NAS { #step-1-database-on-the-nas }
 
 Follow [NAS PostgreSQL → Provisioning a database for an app](nas-postgres.md#provisioning-a-database-for-an-app)
 with `<app> = paperless`: create the role + database, append the four per-node
 `pg_hba.conf` lines scoped to exactly this db/role, and `pg_reload_conf()`. The role
-password goes to your password manager and into the SealedSecret in Step 2.
+password goes to your password manager and into the SealedSecret in [Secrets](#step-2-secrets).
 
 The nightly dump script enumerates databases dynamically, so `paperless` joins the
 Garage backup on its first 04:30 run — **no script change**, but verify the object
 appears (Verification below).
 
-## Step 2 — Secrets
+## Secrets { #step-2-secrets }
 
 One SealedSecret, four keys, sealed per the
 [standard pattern](index.md): `PAPERLESS_SECRET_KEY` (generate, e.g.
-`openssl rand -base64 48`), `PAPERLESS_DBPASS` (the Step 1 role password),
+`openssl rand -base64 48`), `PAPERLESS_DBPASS` (the [Database on the NAS](#step-1-database-on-the-nas) role password),
 `PAPERLESS_ADMIN_PASSWORD` (the local break-glass superuser, auto-created at first
-start), and `PAPERLESS_SOCIALACCOUNT_PROVIDERS` (Step 3). The exact seal command is
+start), and `PAPERLESS_SOCIALACCOUNT_PROVIDERS` ([SSO](#step-3-sso-oidc-client-with-one-twist)). The exact seal command is
 in `apps/paperless/README.md`.
 
-## Step 3 — SSO: OIDC client, with one twist
+## SSO: OIDC client, with one twist { #step-3-sso-oidc-client-with-one-twist }
 
-Paperless speaks OIDC natively via django-allauth, so it takes the **OIDC client**
+Paperless speaks OIDC natively through django-allauth, so it takes the **OIDC client**
 mode from [the app pattern](index.md) — the route stays plain (the
 mobile app and API tokens authenticate directly; ForwardAuth would break both).
 
@@ -146,14 +146,14 @@ change one, change both. `PAPERLESS_APPS=allauth.socialaccount.providers.openid_
     `PAPERLESS_DISABLE_REGULAR_LOGIN` unset until OIDC has round-tripped; flip it
     (and `PAPERLESS_REDIRECT_LOGIN_TO_SSO`) later if you want SSO-only.
 
-## Step 4 — Routing
+## Routing { #step-4-routing }
 
 `paperless` is already present in the Cloudflare module's `var.services` (pre-staged),
 so DNS needs **no change** — just confirm the record resolves. The `HTTPRoute` attaches
 to the shared Gateway's `websecure` listener as usual; no middleware
-([pattern, Step 4](index.md)).
+([deploy pattern](index.md)).
 
-## Step 5 — Register the Application and sync
+## Register the application and sync { #step-5-register-the-application-and-sync }
 
 `bootstrap/paperless.yaml`: single Application, `prune: false` (document archive — a
 path typo must not tear down PVCs), client-side apply (HTTPRoute + SSA = permanent
@@ -193,4 +193,4 @@ scanner exists.
 
 - [ ] **DB backup gate**: after the next 04:30 NAS run, `paperless-<date>.dump`
       exists in the Garage `postgres-backups` bucket with a non-trivial size
-      (list with rclone via the `garage-pg` remote, per NAS PostgreSQL)
+      (list with rclone through the `garage-pg` remote, per NAS PostgreSQL)

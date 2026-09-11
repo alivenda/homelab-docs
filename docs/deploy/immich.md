@@ -1,19 +1,19 @@
 # Immich
 
 !!! success "Status — Live"
-    Live on the NAS via Docker, fronted on the cluster domain (see below for why it is not on k3s).
+    Live on the NAS through Docker, fronted on the cluster domain (see below for why it is not on k3s).
 
 Self-hosted photo and video management.
 
 | | |
 |---|---|
 | **Difficulty** | Beginner–Intermediate |
-| **Time Estimate** | 1 hour |
-| **Runs On** | NAS (Docker) — strongly recommended |
+| **Time estimate** | 1 hour |
+| **Runs on** | NAS (Docker) — strongly recommended |
 | **Min Requirements** | 6 GB RAM, 2 CPU cores |
 
 !!! warning "Not on the cluster"
-    Immich officially requires 6 GB RAM minimum and is CPU-intensive. This runbook intentionally keeps Immich on the NAS via Docker — not on the k3s cluster. CM4 nodes lack the RAM, the photo library belongs near your bulk storage, and machine-learning workloads benefit from the NAS's larger CPU. Do not migrate this to Helm/k3s without a hardware upgrade.
+    Immich officially requires 6 GB RAM minimum and is CPU-intensive. This runbook intentionally keeps Immich on the NAS with Docker — not on the k3s cluster. CM4 nodes lack the RAM, the photo library belongs near your bulk storage, and machine-learning workloads benefit from the NAS's larger CPU. Do not migrate this to Helm/k3s without a hardware upgrade.
 
 ## Install
 
@@ -53,7 +53,7 @@ and land in the [cold-shutdown export](../operate/cold-shutdown.md).
 
 ## Traefik HTTPRoute (optional, for HTTPS on the cluster domain)
 
-To resolve `https://immich.yourdomain.com` through Traefik on the cluster (instead of `http://<nas-ip>:2283`), front the NAS-hosted Immich with a selector-less `Service` + a manual `EndpointSlice` pointing at the NAS, then attach an `HTTPRoute`. This is exactly how `homelab-manifests/apps/immich/manifests/` already exposes it — TLS is handled by the Gateway's wildcard cert (see [Deploying an App](index.md)). Otherwise just access it via the NAS IP.
+To resolve `https://immich.yourdomain.com` through Traefik on the cluster (instead of `http://<nas-ip>:2283`), front the NAS-hosted Immich with a selector-less `Service` + a manual `EndpointSlice` pointing at the NAS, then attach an `HTTPRoute`. This is exactly how `homelab-manifests/apps/immich/manifests/` already exposes it — TLS is handled by the Gateway's wildcard cert (see [Deploying an App](index.md)). Otherwise access it at the NAS IP.
 
 ??? example "Service + EndpointSlice + HTTPRoute manifests"
 
@@ -110,5 +110,5 @@ To resolve `https://immich.yourdomain.com` through Traefik on the cluster (inste
     ```
 
 - [ ] `https://immich.yourdomain.com` (or `http://<nas-ip>:2283`) loads the welcome screen.
-- [ ] Upload a test photo via the web UI — it appears in the timeline within a few seconds.
+- [ ] Upload a test photo through the web UI — it appears in the timeline within a few seconds.
 - [ ] Machine-learning job ran (Search → Search by keyword in photo content) — returns results after a few minutes of background processing.
