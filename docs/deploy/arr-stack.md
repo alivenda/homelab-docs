@@ -24,8 +24,8 @@ stack runs on the cluster and feeds **Plex**, which runs on the NAS.
 | | |
 |---|---|
 | **Difficulty** | Intermediate |
-| **Runs On** | k3s (cluster); media + Plex on the NAS |
-| **Depends On** | Kubernetes (k3s), Traefik (Gateway + wildcard TLS), Authelia (ForwardAuth), Terraform (Cloudflare DNS), a VPN provider account |
+| **Runs on** | k3s (cluster); media + Plex on the NAS |
+| **Depends on** | Kubernetes (k3s), Traefik (Gateway + wildcard TLS), Authelia (ForwardAuth), Terraform (Cloudflare DNS), a VPN provider account |
 
 !!! note "No request UI"
     This stack intentionally omits a request portal (Seerr/Jellyseerr) — content
@@ -115,7 +115,7 @@ an optimisation, not a requirement; see the end of this runbook.)
 
 qBittorrent runs with a **gluetun** sidecar in the same pod. gluetun brings up a
 WireGuard/OpenVPN tunnel and a kill-switch; both containers share the pod network
-namespace, so **all** of qBittorrent's traffic exits via the VPN and nothing
+namespace, so **all** of qBittorrent's traffic exits through the VPN and nothing
 leaks to the home WAN IP if the tunnel drops. This replaces Arr Stack's original
 no-VPN qBittorrent.
 
@@ -144,13 +144,13 @@ old loose `apps/arr/*.yaml`.
 `TZ=Etc/UTC` everywhere (was Europe/London). All LinuxServer apps take
 `PUID=1000`, `PGID=1000`, `UMASK=022`.
 
-## Step 1 — NAS NFS export (prerequisite)
+## NAS NFS export (prerequisite) { #step-1-nas-nfs-export-prerequisite }
 
-On the NAS (`10.0.20.50`):
+On the NAS (10.0.20.50):
 
 1. Create the unified layout above under one shared folder (e.g.
    `/volume1/data`), `downloads/` and `media/{tv,movies,music}` as siblings.
-2. Export it over NFS to the four node IPs `10.0.20.10-13` (Lab VLAN),
+2. Export it over NFS to the four node IPs 10.0.20.10-13 (Lab VLAN),
    read-write, mapping/allowing **UID/GID 1000** so the apps can write.
 3. Set `spec.nfs.path` in `pv-data.yaml` to the **actual** export path (the
    committed `/volume1/data` is the documented default — confirm it against your
@@ -177,7 +177,7 @@ spec:
   claimRef: { namespace: arr, name: arr-data }
 ```
 
-## Step 2 — VPN credentials (gluetun)
+## VPN credentials (gluetun) { #step-2-vpn-credentials-gluetun }
 
 qBittorrent's traffic is useless (and unsafe) without the tunnel, so the
 `gluetun-secrets` SealedSecret is a hard prerequisite. Until it's resealed with
@@ -224,7 +224,7 @@ gluetun needs `securityContext.capabilities.add: [NET_ADMIN]` (it creates
 kernel module on the CM4s). Its `livenessProbe` runs gluetun's own healthcheck so
 a dead tunnel restarts the sidecar and re-arms the kill-switch.
 
-## Step 3 — Auth (ForwardAuth)
+## Auth (ForwardAuth) { #step-3-auth-forwardauth }
 
 One `authelia-forwardauth` Middleware in the `arr` namespace; each protected
 HTTPRoute references it with an `ExtensionRef` filter (the
@@ -241,24 +241,23 @@ rules:
       - { name: sonarr, port: 8989 }
 ```
 
-## Step 4 — DNS
+## DNS { #step-4-dns }
 
 Add the subdomains to `var.services` in the Cloudflare module and `tofu apply`
 **before** they'll resolve (one A record each at the Traefik LB):
 `sonarr`, `radarr`, `lidarr`, `prowlarr`, `qbt`.
 
-## Step 5 — Deploy
+## Deploy { #step-5-deploy }
 
-Commit `apps/arr/` + `bootstrap/arr.yaml` via a branch/PR and let ArgoCD sync.
-The app won't go fully Healthy until Step 1 (NAS export) and Step 2 (gluetun
-secret) are done.
+Commit `apps/arr/` + `bootstrap/arr.yaml` through a branch/PR and let ArgoCD sync.
+The app won't go fully Healthy until [NAS NFS export](#step-1-nas-nfs-export-prerequisite) and [VPN credentials](#step-2-vpn-credentials-gluetun) are done.
 
-## Step 6 — First-run wiring
+## First-run wiring { #step-6-first-run-wiring }
 
 1. **qBittorrent password** — the image prints a *random temporary* admin
    password to its logs on first start:
    `kubectl -n arr logs deploy/qbittorrent -c qbittorrent | grep -i password`.
-   Log in at `https://qbt.alivenda.dev`, set a permanent one (Settings → Web UI),
+   Log in at https://qbt.yourdomain.com, set a permanent one (Settings → Web UI),
    save to Vaultwarden, set the save path to `/data/downloads`.
 2. **Prowlarr → apps** — Settings → Apps; add each with its in-cluster URL +
    API key: `http://sonarr.arr.svc.cluster.local:8989`,

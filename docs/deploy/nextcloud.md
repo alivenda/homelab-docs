@@ -9,9 +9,9 @@ office editing on top of the same install.
 | | |
 |---|---|
 | **Difficulty** | Intermediate |
-| **Time Estimate** | 1–2 hours |
-| **Runs On** | k3s — any node. Nothing pins it: files are on NFS, the DB is on the NAS, so the pod can reschedule freely |
-| **Depends On** | Traefik (Gateway), Authelia, NAS PostgreSQL, and the [GitOps deploy pattern](index.md) |
+| **Time estimate** | 1–2 hours |
+| **Runs on** | k3s — any node. Nothing pins it: files are on NFS, the DB is on the NAS, so the pod can reschedule freely |
+| **Depends on** | Traefik (Gateway), Authelia, NAS PostgreSQL, and the [GitOps deploy pattern](index.md) |
 
 Architecturally it's the poster child of the
 [Storage & Data Architecture](../concepts/storage.md#how-to-decompose-one-app): one app
@@ -28,7 +28,7 @@ config, background jobs, and OIDC.
 |---|---|---|
 | PHP/Apache app pod | the cluster | What the CM4s are good at |
 | Files (`/var/www/html` PVC) | `nfs-storage`, 100Gi | Bulk flat files; survives rescheduling to any node |
-| Database | NAS Postgres, `10.0.20.50:5433` | Sustained fsync'd writes belong on x86 + a real disk ([NAS PostgreSQL](nas-postgres.md)) |
+| Database | NAS Postgres, 10.0.20.50:5433 | Sustained fsync'd writes belong on x86 + a real disk ([NAS PostgreSQL](nas-postgres.md)) |
 | Cache + file locking | ephemeral Valkey pod | Not a system of record — no PVC, nothing to back up |
 
 !!! danger "Leave the chart's bundled databases off"
@@ -42,7 +42,7 @@ config, background jobs, and OIDC.
     disables all of them: `internalDatabase.enabled: false`, external DB and external
     Redis only.
 
-## Step 1: Provision the database on the NAS
+## Provision the database on the NAS { #step-1-provision-the-database-on-the-nas }
 
 Follow [NAS PostgreSQL's per-app procedure](nas-postgres.md#provisioning-a-database-for-an-app)
 on the NAS — generate a password (`openssl rand -base64 24` → password manager first):
@@ -61,7 +61,7 @@ The nightly backup needs **no** configuration: the dump script enumerates
 after the next 04:30 run. Checking that it actually did is part of
 [verification](#verification).
 
-## Step 2: One SealedSecret for admin + DB credentials
+## One SealedSecret for admin + DB credentials { #step-2-one-sealedsecret-for-admin-db-credentials }
 
 The chart reads the admin bootstrap credentials and the DB credentials from existing
 Secrets — both point at one `SealedSecret`, with key names matching the chart defaults:
@@ -84,7 +84,7 @@ Save both plaintexts to Vaultwarden. The admin credentials are only *consumed* a
 install — the image's autoconfig creates the admin account and connects the DB from
 these env vars, so the web setup wizard never appears.
 
-## Step 3: Values — the decisions that matter
+## Values — the decisions that matter { #step-3-values-the-decisions-that-matter }
 
 `apps/nextcloud/values.yaml` is the source of truth; these are the blocks to understand
 rather than copy blindly.
@@ -114,7 +114,7 @@ volume until there's a reason.
 
 **Cache + file locking** — a single-container Valkey pod committed to
 `apps/nextcloud/manifests/valkey.yaml` (no PVC, no auth, memory-capped, snapshots off),
-wired in via the chart's `externalRedis` block. This gives Nextcloud distributed
+wired in through the chart's `externalRedis` block. This gives Nextcloud distributed
 caching *and* transactional file locking. Don't use the `redis` subchart for this: it's
 `bitnamilegacy` (see above) and provisions durable PVCs for what is, by
 [architecture](../concepts/storage.md#the-four-storage-tiers), ephemeral data.
@@ -128,7 +128,7 @@ cronjob:
 
 The chart's alternative (`type: cronjob`, a real Kubernetes `CronJob`) needs the
 app volume mountable by a second pod; the sidecar shares the existing pod's mounts and
-is the simpler correct choice for a single-replica app. Step 6 flips Nextcloud to
+is the simpler correct choice for a single-replica app. [Flip background jobs to cron](#step-6-flip-background-jobs-to-cron) flips Nextcloud to
 actually *use* it.
 
 **A startup probe, or the installer gets killed:**
@@ -167,7 +167,7 @@ nextcloud:
 
 `nextcloud.trustedDomains` needs nothing: it defaults to `nextcloud.host`.
 
-## Step 4: Routing
+## Routing { #step-4-routing }
 
 The hostname is already in `var.services` in the Cloudflare module (Terraform) — verify with
 `tofu plan` before assuming. The route goes in the `-manifests` app, and the backend
@@ -207,10 +207,10 @@ spec:
     [permanent-OutOfSync trap](vaultwarden.md#step-3-httproute). The route stays in
     the no-SSA `-manifests` app like every other app's.
 
-No auth middleware on this route — Nextcloud is an OIDC app (Step 7), and ForwardAuth
+No auth middleware on this route — Nextcloud is an OIDC app ([OIDC login](#step-7-oidc-login-through-authelia)), and ForwardAuth
 would break every sync client ([Authelia](authelia.md)).
 
-## Step 5: Register the Applications and sync
+## Register the applications and sync { #step-5-register-the-applications-and-sync }
 
 `bootstrap/nextcloud.yaml` holds the usual pair ([deploy pattern](index.md),
 mirroring `vaultwarden.yaml`): the chart app — `nextcloud/helm` pinned with a
@@ -226,7 +226,7 @@ Expect several quiet minutes (see the startup-probe note) before
 `https://nextcloud.yourdomain.com` serves a login page directly — no setup wizard, since
 autoconfig already ran with the sealed credentials.
 
-## Step 6: Flip background jobs to cron
+## Flip background jobs to cron { #step-6-flip-background-jobs-to-cron }
 
 The crond sidecar fires `cron.php` every 5 minutes, but Nextcloud still defaults to
 AJAX-triggered jobs (runs only while someone has a tab open — unreliable for a sync
@@ -237,10 +237,10 @@ kubectl -n nextcloud exec deploy/nextcloud -c nextcloud -- \
   su -s /bin/sh -c "php occ background:cron" www-data
 ```
 
-**Settings → Administration → Basic settings** should show *Cron* selected and, within
+**Settings → Administration → Basic settings** shows *Cron* selected and, within
 five minutes, a fresh *Last job execution*.
 
-## Step 7: OIDC login through Authelia
+## OIDC login through Authelia { #step-7-oidc-login-through-authelia }
 
 Nextcloud is the textbook [OIDC-mode app](index.md#oidc-client-the-app-speaks-oidc-to-authelia):
 it has its own user system, and its desktop/mobile clients authenticate through Login
@@ -318,7 +318,7 @@ The login page now offers **Login with Authelia** alongside the local form. The 
 form stays — it's the admin account's only way in, and the break-glass path if Authelia
 is down (`/login?direct=1` if the OIDC redirect is ever made automatic).
 
-## Step 8: Prove the backups
+## Prove the backups { #step-8-prove-the-backups }
 
 Two backup paths, two gates — and per the house rule, gate on **bytes and objects**,
 never on `Completed`:
@@ -348,11 +348,11 @@ sudo docker exec -ti garage /garage bucket info postgres-backups
 
 Object count up by one, with a `nextcloud-<date>.dump` of non-trivial size.
 
-## Step 9: Settle the security check
+## Settle the security check { #step-9-settle-the-security-check }
 
 **Administration → Overview** flags a handful of items on a fresh install. Triage:
 
-- **HSTS** — already handled by the `ResponseHeaderModifier` on the HTTPRoute (Step 4);
+- **HSTS** — already handled by the `ResponseHeaderModifier` on the HTTPRoute ([Routing](#step-4-routing));
   if it's still flagged, the route filter isn't applying.
 - **Maintenance window** — heavy daily background jobs default to running whenever, i.e.
   during usage. Pin them to the small hours (the value is the **UTC** start hour of a
@@ -391,8 +391,8 @@ single-instance noise.
 - [ ] **Login with Authelia** round-trips: 2FA at Authelia, lands back in Nextcloud as your lldap user (human-readable username, not a hash).
 - [ ] Desktop client syncs a file; it appears on a second device/web within a minute.
 - [ ] Admin → Basic settings: mode is *Cron*, *Last job execution* under 5 minutes old.
-- [ ] Admin → Overview security check shows no reverse-proxy, `overwriteprotocol`, or HSTS warnings — and the Step 9 items are settled.
-- [ ] Velero `PodVolumeBackup` for the Nextcloud volume shows **bytes > 0** (Step 8).
+- [ ] Admin → Overview security check shows no reverse-proxy, `overwriteprotocol`, or HSTS warnings — and the [Settle the security check](#step-9-settle-the-security-check) items are settled.
+- [ ] Velero `PodVolumeBackup` for the Nextcloud volume shows **bytes > 0** ([Prove the backups](#step-8-prove-the-backups)).
 - [ ] `nextcloud-<date>.dump` landed in `postgres-backups` after the nightly run.
 - [ ] Admin password, DB password, and OIDC client secret all in Vaultwarden.
 

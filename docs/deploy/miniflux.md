@@ -9,9 +9,9 @@ Reader API endpoints for mobile clients, and very low RAM.
 | | |
 |---|---|
 | **Difficulty** | Beginner |
-| **Time Estimate** | ~45 minutes |
-| **Runs On** | k3s (app) **+ NAS (database)** |
-| **Depends On** | [Deploying an App](index.md), NAS PostgreSQL, Authelia, [Storage & Data Architecture](../concepts/storage.md) |
+| **Time estimate** | ~45 minutes |
+| **Runs on** | k3s (app) **+ NAS (database)** |
+| **Depends on** | [Deploying an App](index.md), NAS PostgreSQL, Authelia, [Storage & Data Architecture](../concepts/storage.md) |
 
 The deployed truth is `homelab-manifests/apps/miniflux/`; this runbook records
 the decisions and the bring-up procedure, not the YAML.
@@ -24,7 +24,7 @@ picked Miniflux, and Miniflux is **PostgreSQL-only**: no SQLite fallback, no
 data directory. That changes the shape twice over:
 
 - **A database means a runbook** (the catalog's own rule): db + role
-  `miniflux` on the shared NAS Postgres (`10.0.20.50:5433`) per NAS PostgreSQL,
+  `miniflux` on the shared NAS Postgres (10.0.20.50:5433) per NAS PostgreSQL,
   joining the nightly dump → Garage backup automatically.
 - **There is no storage tier at all.** The FreshRSS row said `nfs-storage`,
   2 Gi; Miniflux mounts nothing — no PVC, not even an emptyDir. The pod is
@@ -37,7 +37,7 @@ Miniflux is configured **entirely through environment variables**, there
 isn't even a ConfigMap: non-secret env sits inline in the Deployment, secrets
 in one SealedSecret. It is the smallest app directory in the repo.
 
-## Step 1 — Database on the NAS
+## Database on the NAS { #step-1-database-on-the-nas }
 
 Per NAS PostgreSQL, on the NAS — but set the password interactively with
 `\password`, not inline in `CREATE ROLE`:
@@ -68,7 +68,7 @@ anywhere. Store it in your password manager, then paste it at the
 Append the four per-node `pg_hba.conf` lines scoped to `miniflux miniflux`,
 then `SELECT pg_reload_conf()` — NAS PostgreSQL has the exact lines.
 
-## Step 2 — Configuration: env-only, no ConfigMap
+## Configuration: env-only, no ConfigMap { #step-2-configuration-env-only-no-configmap }
 
 Everything non-secret sits inline in the Deployment:
 
@@ -77,9 +77,9 @@ Everything non-secret sits inline in the Deployment:
 - `BASE_URL=https://rss.yourdomain.com` — cookie and redirect base.
 - `RUN_MIGRATIONS=1` — migrations run at startup against the NAS; the
   startupProbe allows five minutes for the first boot.
-- `CREATE_ADMIN=1` + `ADMIN_USERNAME` (password via the SealedSecret) —
+- `CREATE_ADMIN=1` + `ADMIN_USERNAME` (password from the SealedSecret) —
   idempotent: creates the local admin only if absent. This is the bootstrap
-  and break-glass account; Step 4 retires it from daily use.
+  and break-glass account; [SSO: OIDC client](#step-4-sso-oidc-client) retires it from daily use.
 - `METRICS_COLLECTOR=1` + `METRICS_ALLOWED_NETWORKS=10.42.0.0/16` —
   Prometheus scrapes `/metrics` on the app listener, gated by source network
   (scrapes arrive with the Prometheus pod's IP from the pod CIDR), so no
@@ -94,7 +94,7 @@ Two gotchas the env-only surface hides:
    URL form: `user=miniflux password=… host=10.0.20.50 port=5433
    dbname=miniflux sslmode=disable`. A URL-form DSN requires
    percent-encoding the password, which is exactly the class of silent
-   breakage Step 1's hex password already side-steps.
+   breakage the [Database](#step-1-database-on-the-nas) hex password already side-steps.
 2. **`enableServiceLinks: false` stays on by convention.** Miniflux reads
    the bare `PORT` variable (a PaaS convention that overrides
    `LISTEN_ADDR`); the kubelet's discovery env for a Service named
@@ -102,19 +102,19 @@ Two gotchas the env-only surface hides:
    but the `PAPERLESS_PORT`/`VIKUNJA_PORT` class of bug is one Service
    rename away. Off, like everywhere else.
 
-## Step 3 — Secrets
+## Secrets { #step-3-secrets }
 
 One SealedSecret, three keys (exact seal command in the app README):
 
 | Key | Content |
 |---|---|
-| `DATABASE_URL` | key=value DSN carrying the Step 1 password |
+| `DATABASE_URL` | key=value DSN carrying the [Database](#step-1-database-on-the-nas) password |
 | `OAUTH2_CLIENT_SECRET` | OIDC client-secret plaintext (`openssl rand -hex 32`) |
 | `ADMIN_PASSWORD` | local break-glass admin password |
 
 Plaintexts to your password manager.
 
-## Step 4 — SSO: OIDC client
+## SSO: OIDC client { #step-4-sso-oidc-client }
 
 The Authelia client follows the Authelia recipe — `client_id: miniflux`,
 pbkdf2 hash in `apps/authelia/values.yaml` — with one deviation from the
@@ -150,11 +150,11 @@ first OIDC login.
 the admin, promote your own OIDC-provisioned account to administrator
 (Settings → Users), then set `DISABLE_LOCAL_AUTH=1` in the Deployment. The
 username/password form disappears and OIDC becomes the only door; the
-break-glass path is flipping the variable back off via Git.
+break-glass path is flipping the variable back off through Git.
 
-## Step 5 — DNS, routing, Application
+## DNS, routing, application { #step-5-dns-routing-application }
 
-- `rss` A record via the Terraform Cloudflare module (`var.services`), and
+- `rss` A record through the Terraform Cloudflare module (`var.services`), and
   run `tofu apply` **before the first browser lookup** — the UDM caches an
   NXDOMAIN for 1800 s, and one premature lookup costs half an hour of "DNS
   is broken" (learned during the Vikunja bring-up).
@@ -177,7 +177,7 @@ break-glass path is flipping the variable back off via Git.
       a spinner).
 - [ ] Pod logs clean — no errors, nothing `forbidden`.
 - [ ] Homepage tile renders and lands on `https://rss.yourdomain.com`.
-- [ ] Prometheus target up (`/metrics` via the ServiceMonitor).
+- [ ] Prometheus target up (`/metrics` through the ServiceMonitor).
 - [ ] **Backup gate (database):** a `miniflux-<date>.dump` object in the
       Garage `postgres-backups` bucket after the nightly NAS run.
 - [ ] **Backup gate (inverted):** after the next velero nightly, **zero**

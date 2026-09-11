@@ -26,14 +26,14 @@ Personal budgeting (envelope method) with OIDC login.
 
 **Gotchas**
 
-- OIDC support in Actual is **in preview** — enabled via `ACTUAL_OPENID_*` env, and the config surface can change between releases. Verify against current Actual docs **and the server source** at deploy. Everything below was verified against actual-server **v26.6.0** (`packages/sync-server/src/accounts/openid.ts` + `load-config.js`).
+- OIDC support in Actual is **in preview** — enabled with `ACTUAL_OPENID_*` env, and the config surface can change between releases. Verify against current Actual docs **and the server source** at deploy. Everything below was verified against actual-server **v26.6.0** (`packages/sync-server/src/accounts/openid.ts` + `load-config.js`).
 - Config is **env-only** — no ConfigMap. The server writes its own `/data/config.json`; there is no settings-override file (the linkding contrast).
 - Storage is SQLite, so **local-path, never `nfs-storage`** — the catalog originally listed NFS, which corrupts SQLite. One PVC at `/data` covers the whole data tree.
 - OIDC **supports discovery**: set `ACTUAL_OPENID_DISCOVERY_URL` to the Authelia issuer base (`https://auth.yourdomain.com`); `Issuer.discover()` appends `/.well-known/openid-configuration` (no need to spell out the four endpoints, the linkding contrast).
 - The redirect is **built from `ACTUAL_OPENID_SERVER_HOSTNAME`**, not the request scheme — `https://budget.yourdomain.com/openid/callback` (**no** trailing slash) — so there is no TLS-proxy `http://` redirect bug, and the Authelia `redirect_uris` must match exactly.
 - The authorization request **sends PKCE S256** (`require_pkce: true`), and the token exchange uses `openid-client`'s default **`client_secret_basic`** — not `client_secret_post`.
 - Username = `preferred_username` from the **userinfo** endpoint, so the `profile` scope is required. No group→role mapping → no `groups` scope, no `claims_policy`.
-- The **first user to sign in via OIDC becomes the server owner**. `ACTUAL_USER_CREATION_MODE=manual` (default) means the owner must add every other user in-app (matching username) before they can log in; `login` would auto-provision any Authelia user.
+- The **first user to sign in through OIDC becomes the server owner**. `ACTUAL_USER_CREATION_MODE=manual` (default) means the owner must add every other user in-app (matching username) before they can log in; `login` would auto-provision any Authelia user.
 - **Break-glass — OpenID-only**: the first owner bootstraps through Authelia, so there's no password login, and Actual's preview auth can't run password + OpenID at once — you **can't** add a parallel password (upstream [#5248](https://github.com/actualbudget/actual/issues/5248)). If Authelia is down, flip in-pod with `node /app/src/scripts/reset-password.js` (→ password-only), then `node /app/src/scripts/enable-openid.js` to flip back. `ACTUAL_OPENID_ENFORCE=false` (default) is kept so the flip needs no env change, and it dodges upstream [#6333](https://github.com/actualbudget/actual/issues/6333) (enforce silently ignored when the provider is unreachable at boot).
 - Health probe = `/health` (returns `{status:'UP'}` 200, unauthenticated, no Host header). **No metrics endpoint** — no ServiceMonitor.
 
@@ -66,7 +66,7 @@ fronts the NAS container for TLS on the cluster domain.
   trade-off, accepted: the container itself is outside GitOps, exactly like Immich.
 - **k8s fronting only.** A selector-less `Service` + manual `EndpointSlice` point
   at the NAS (`10.0.20.50:13378`); the existing `HTTPRoute` for
-  `audiobooks.yourdomain.com` (TLS via the Gateway wildcard cert) backs onto it.
+  `audiobooks.yourdomain.com` (TLS from the Gateway wildcard cert) backs onto it.
   Identical to `apps/immich`. No Deployment, no PV/PVC, no Helm chart, no
   SealedSecret.
 - **Runs as root by default with no PUID/PGID** (that's a LinuxServer convention
@@ -110,7 +110,7 @@ Online office suite (CODE) — the editing backend for Nextcloud.
 | Service port | 9980 |
 | Storage | none (stateless) |
 | Secret keys | none |
-| Auth | **None** — Nextcloud reaches it server-side via WOPI |
+| Auth | **None** — Nextcloud reaches it server-side through WOPI |
 
 **Gotchas**
 
@@ -141,7 +141,7 @@ React PWA + API). Verified against **v0.1.75** (latest stable; newer tags are
 
 - **SQLite → `local-path`, not `nfs-storage`** (the old row was wrong): NFS lacks
   reliable POSIX locking and corrupts SQLite. One file `donetick.db`; the path is
-  set by `DT_SQLITE_PATH` env (read via `os.Getenv`, **not** a YAML key) pointed
+  set by `DT_SQLITE_PATH` env (read with `os.Getenv`, **not** a YAML key) pointed
   at the PVC. Normal velero bytes-gate.
 - **Config is a mounted file, not pure env.** Most keys are `DT_*`-overridable
   (`viper.AutomaticEnv` + `ExperimentalBindStruct`), but `oauth2.scopes` is a
@@ -157,7 +157,7 @@ React PWA + API). Verified against **v0.1.75** (latest stable; newer tags are
 - **Break-glass = local admin.** `is_user_creation_disabled` closes only the
   local *sign-up* form; the local *login* stays as the Authelia-down fallback,
   and OIDC keeps auto-provisioning (the callback never checks the flag). Deploy
-  with it `false`, register one local admin + log in via OIDC, then flip to
+  with it `false`, register one local admin + log in through OIDC, then flip to
   `true`.
 - **Realtime SSE + websocket** on the same origin (`/api/v1/...`) pass through
   the one HTTPRoute (Traefik upgrades the socket transparently); don't put
@@ -182,7 +182,7 @@ Bookmark manager with a browser extension and OIDC login.
 **Gotchas**
 
 - Use the **standard** image variant, not `-plus` — `-plus` bundles Chromium for HTML snapshot archiving, far too heavy for Pi-class nodes.
-- linkding cannot detect a TLS-terminating proxy, so the OIDC `redirect_uri` goes out as `http://` and the provider rejects it ([linkding#1366](https://github.com/sissbruecker/linkding/issues/1366)). No env option exists; mount a one-line settings override (the image ships `bookmarks/settings/custom.py` as a placeholder that `prod.py` star-imports last) via ConfigMap `subPath`: `SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")`.
+- linkding cannot detect a TLS-terminating proxy, so the OIDC `redirect_uri` goes out as `http://` and the provider rejects it ([linkding#1366](https://github.com/sissbruecker/linkding/issues/1366)). No env option exists; mount a one-line settings override (the image ships `bookmarks/settings/custom.py` as a placeholder that `prod.py` star-imports last) with a ConfigMap `subPath`: `SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")`.
 - OIDC is mozilla-django-oidc: **no discovery** — set all four `OIDC_OP_*` endpoint URLs explicitly. The callback **requires a trailing slash** (`https://bookmarks.yourdomain.com/oidc/callback/`), PKCE is on by default (S256), and the token request carries the secret in the POST body — the Authelia client needs `token_endpoint_auth_method: 'client_secret_post'`, not `client_secret_basic`.
 - Set `OIDC_USERNAME_CLAIM=preferred_username` — the default (`email`) turns usernames into full email addresses. Accounts auto-create on first login as regular users; the `admin` superuser remains as a local-login fallback (flip `LD_DISABLE_LOGIN_FORM=True` once the round-trip is verified).
 - Setting `HOST_NAME` makes Django's `ALLOWED_HOSTS` strict — kubelet probes to `/health` must then send an explicit `Host:` header.
@@ -225,7 +225,7 @@ Recipe manager with meal planning and OIDC login.
 
 - Mealie v2 needs a **confidential client** (with a secret) on the Authorization Code flow.
 - **Two** redirect URIs are required: `…/login` and `…/login?direct=1` (the second is for `OIDC_AUTO_REDIRECT=true`).
-- The default admin (`changeme@example.com` / `MyPassword`) stays active until you log in via OIDC and promote your user to admin (Settings → Users), then set `ALLOW_PASSWORD_LOGIN=false`.
+- The default admin (`changeme@example.com` / `MyPassword`) stays active until you log in through OIDC and promote your user to admin (Settings → Users), then set `ALLOW_PASSWORD_LOGIN=false`.
 
 ### TriliumNext Notes
 

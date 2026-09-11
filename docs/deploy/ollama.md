@@ -8,20 +8,20 @@ Local LLM inference on the NAS with a browser chat interface.
 | | |
 |---|---|
 | **Difficulty** | Beginner |
-| **Time Estimate** | 30–45 minutes |
-| **Runs On** | UGREEN DXP6800 Pro NAS (Docker Compose — not k3s) |
-| **Depends On** | NAS RAM upgrade to 16 GB, Traefik (reverse proxy for HTTPS) |
+| **Time estimate** | 30–45 minutes |
+| **Runs on** | UGREEN DXP6800 Pro NAS (Docker Compose — not k3s) |
+| **Depends on** | NAS RAM upgrade to 16 GB, Traefik (reverse proxy for HTTPS) |
 
 !!! warning "Defer until NAS RAM upgrade"
     Ollama and the models it runs are RAM-hungry. The NAS currently has 8 GB DDR5, which leaves insufficient headroom after Plex and Immich are running. Upgrade to 16 GB DDR5 SO-DIMM first (see [personal-cloud-stack.md](../reference/service-selection.md) — Part 7) — then deploy this runbook.
 
     With 16 GB: Plex + Immich use roughly 4–6 GB combined, leaving 10+ GB for Ollama. Models like `llama3.2:3b` (2 GB) or `gemma2:9b` (5 GB) are practical. The NAS uses x86 CPU inference — expect 10–30 tokens/second for 3B models, slower for larger ones.
 
-[Ollama](https://ollama.com) serves local language models via an OpenAI-compatible API. [Open WebUI](https://openwebui.com) provides a chat interface similar to ChatGPT that connects to Ollama. ARM64 note: this runbook targets the x86 NAS. See the [Ollama Docker docs](https://github.com/ollama/ollama) and [Open WebUI docs](https://docs.openwebui.com) for full reference.
+[Ollama](https://ollama.com) serves local language models through an OpenAI-compatible API. [Open WebUI](https://openwebui.com) provides a chat interface similar to ChatGPT that connects to Ollama. ARM64 note: this runbook targets the x86 NAS. See the [Ollama Docker docs](https://github.com/ollama/ollama) and [Open WebUI docs](https://docs.openwebui.com) for full reference.
 
-## Step 1: Docker Compose on NAS
+## Docker Compose on NAS { #step-1-docker-compose-on-nas }
 
-Create a `docker-compose.yml` on the NAS (via the UGREEN NAS Manager Docker interface or SSH):
+Create a `docker-compose.yml` on the NAS (through the UGREEN NAS Manager Docker interface or SSH):
 
 ```yaml
 services:
@@ -63,7 +63,7 @@ volumes:
   open-webui-data:
 ```
 
-## Step 2: Register the OIDC Client in Authelia
+## Register the OIDC client in Authelia { #step-2-register-the-oidc-client-in-authelia }
 
 In `homelab-manifests/apps/authelia/values.yaml`, add under `configMap.identity_providers.oidc.clients`:
 
@@ -82,9 +82,9 @@ In `homelab-manifests/apps/authelia/values.yaml`, add under `configMap.identity_
 
 Commit and upgrade Authelia.
 
-## Step 3: Front the NAS service in the cluster
+## Front the NAS service in the cluster { #step-3-front-the-nas-service-in-the-cluster }
 
-Open WebUI runs on the NAS, so the cluster reaches it via a selector-less `Service` + a manual `EndpointSlice` pointing at the NAS IP — the same pattern Immich uses (`homelab-manifests/apps/immich/manifests/`). No Traefik `ExternalName` allowance is needed.
+Open WebUI runs on the NAS, so the cluster reaches it through a selector-less `Service` + a manual `EndpointSlice` pointing at the NAS IP — the same pattern Immich uses (`homelab-manifests/apps/immich/manifests/`). No Traefik `ExternalName` allowance is needed.
 
 Create `homelab-manifests/apps/nas-services/open-webui.yaml`:
 
@@ -115,7 +115,7 @@ ports:
   - port: 3000
 ```
 
-## Step 4: Expose via Traefik (HTTPRoute)
+## Expose through Traefik (HTTPRoute) { #step-4-expose-via-traefik-httproute }
 
 Attach an `HTTPRoute` to the shared Gateway; TLS is handled by the Gateway's wildcard cert (see [Deploying an App](index.md)). Add it to the same `open-webui.yaml`:
 
@@ -138,9 +138,9 @@ spec:
           port: 3000
 ```
 
-## Step 5: Pull Models
+## Pull models { #step-5-pull-models }
 
-Once Ollama is running, pull models via Docker exec on the NAS. A good starting set:
+Once Ollama is running, pull models with Docker exec on the NAS. A good starting set:
 
 ```bash
 # Small, fast — good for quick questions (2 GB RAM)
@@ -155,7 +155,7 @@ docker exec ollama ollama pull qwen2.5-coder:7b
 
 Find all available models at [ollama.com/library](https://ollama.com/library). Check the model page for RAM requirements — a 7B model needs roughly 5 GB of RAM.
 
-## Step 6: First Login
+## First login { #step-6-first-login }
 
 Open `https://ai.yourdomain.com`. Click **Continue with Authelia** to log in. The first user to log in becomes admin.
 
