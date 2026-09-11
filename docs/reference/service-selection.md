@@ -304,7 +304,7 @@ Saves articles as clean readable copies. Combines bookmark + read-later in one a
 ### 🟡 Network Scanner — NetAlertX
 **Category:** Network Utilities | **Run:** 🖥️ Cluster or 💾 NAS | **RAM:** ~100 MB | **ARM64:** Verify
 
-Scans your network for unknown devices and alerts you (via ntfy). Useful for IoT VLAN auditing — you'll know immediately when a new device appears.
+Scans your network for unknown devices and alerts you (through ntfy). Useful for IoT VLAN auditing — you'll know immediately when a new device appears.
 
 ### 🟡 Wake-on-LAN — Upsnap
 **Category:** Network Utilities | **Run:** 🖥️ Cluster | **RAM:** ~50 MB | **ARM64:** ✅
