@@ -1,6 +1,6 @@
-# Personal Cloud Stack — Complete Service Guide
+# Service selection
 
-A comprehensive review of every awesome-selfhosted category mapped against your specific hardware, existing stack, and day-to-day needs — written against the Turing Pi 2 cluster, UGREEN DXP6800 Pro NAS, slate (a Late-2014 Mac mini running Home Assistant OS as a Proxmox VM), and a dedicated Raspberry Pi for DNS (`pyrite`).
+A comprehensive review of every awesome-selfhosted category mapped against your specific hardware, existing stack, and day-to-day needs — written against the Turing Pi 2 cluster, UGREEN DXP6800 Pro NAS, slate (a Late-2014 Mac mini running Home Assistant OS as a Proxmox VM), and a dedicated Raspberry Pi for DNS (pyrite).
 
 !!! note "Decision record, not the status page"
     This page is the gap analysis that chose the stack (2026-05/06) — it stays as
@@ -13,14 +13,14 @@ A comprehensive review of every awesome-selfhosted category mapped against your 
 
 ---
 
-## Hardware Context
+## Hardware context
 
 | Platform | Specs | Already Running |
 |----------|-------|-----------------|
 | **Cluster (4× CM4)** | ARM64, 32 GB total RAM, 1 TB NFS | Traefik, ArgoCD, Prometheus/Grafana/Loki, Vaultwarden, Nextcloud, Paperless-ngx, Forgejo, Woodpecker |
 | **NAS (DXP6800 Pro)** | x86-64, **8 GB RAM** (expandable) | Plex, Immich |
 | **Home Assistant node (slate — Mac mini)** | x86-64, 16 GB RAM / 256 GB SSD, Proxmox | Home Assistant OS (VM: 2 vCPU, 4 GB) |
-| **DNS node (`pyrite` — Pi 3 Model B)** | ARM64, 1 GB RAM | AdGuard Home (optional 2nd, `marcasite`, for failover) |
+| **DNS node (pyrite — Pi 3 Model B)** | ARM64, 1 GB RAM | AdGuard Home (optional 2nd, marcasite, for failover) |
 
 !!! note "NAS RAM is a meaningful constraint"
     At 8 GB, Plex + Immich can consume 2.5–6 GB under load, leaving 2–5.5 GB
@@ -30,7 +30,7 @@ A comprehensive review of every awesome-selfhosted category mapped against your 
     opens up AI workloads and makes the NAS more comfortable overall. Services
     that need the upgrade are marked `⚠️ NAS RAM upgrade recommended`.
 
-### Cluster RAM Budget
+### Cluster RAM budget
 
 | Layer | Steady-state RAM |
 |-------|-----------------|
@@ -57,14 +57,14 @@ Headroom is comfortable. OCR (Paperless) and CI builds (Woodpecker) are still th
 | ⚪ **Skip / edge case** | Niche, heavy, ARM issues, or not relevant |
 | ⬛ **Shelved / retired** | Decided against or removed after this page was written — see the entry for why |
 | 🖥️ **Cluster** | Run on k3s |
-| 💾 **NAS** | Run via Docker Compose on DXP6800 |
-| 🌐 **DNS** | Run on a dedicated Raspberry Pi (`pyrite`; optional 2nd) |
+| 💾 **NAS** | Run with Docker Compose on DXP6800 |
+| 🌐 **DNS** | Run on a dedicated Raspberry Pi (pyrite; optional 2nd) |
 | ⚠️ | Needs NAS RAM upgrade to run comfortably |
 | 🚫 | Trap — don't self-host this |
 
 ---
 
-## Part 1 — What You Already Have
+## Part 1 — What you already have
 
 | Service | Tool | Notes |
 |---------|------|-------|
@@ -87,18 +87,18 @@ Headroom is comfortable. OCR (Paperless) and CI builds (Woodpecker) are still th
 
 ---
 
-## Part 2 — Foundational Layer (Do These First)
+## Part 2 — Foundational layer (do these first)
 
 These unlock everything else. Add them before the "good additions" below.
 
 ### 🔴 DNS Ad-Blocking — AdGuard Home
-**Category:** DNS | **Run:** 🌐 Raspberry Pi — `pyrite` (optional 2nd, `marcasite`, for failover) | **RAM:** ~100 MB | **ARM64:** ✅ Official multiarch | **Runbook:** [AdGuard Home](../deploy/adguard-home.md)
+**Category:** DNS | **Run:** 🌐 Raspberry Pi — pyrite (optional 2nd, marcasite, for failover) | **RAM:** ~100 MB | **ARM64:** ✅ Official multiarch | **Runbook:** [AdGuard Home](../deploy/adguard-home.md)
 
 Running on a dedicated Pi is the correct pattern: DNS must stay up independently of your cluster. One Pi is enough; a second gives you redundancy. AdGuard Home has *no* native cross-instance sync — when you run two, AdGuard Home runs the [`adguardhome-sync`](https://github.com/bakito/adguardhome-sync) container on the primary to keep the secondary's blocklists and config in lockstep.
 
-This build runs `pyrite`, a Pi 3 Model B (1 GB RAM) — AdGuard Home uses ~100 MB, leaving plenty of headroom. Install via DietPi-Software (ID 126) or the official one-line installer on DietPi / Raspberry Pi OS Lite.
+This build runs pyrite, a Pi 3 Model B (1 GB RAM) — AdGuard Home uses ~100 MB, leaving plenty of headroom. Install with DietPi-Software (ID 126) or the official one-line installer on DietPi / Raspberry Pi OS Lite.
 
-**Setup:** Configure your UDM to advertise `pyrite`'s IP (`10.0.0.20`) as the DNS server via DHCP on each VLAN — and add a second IP once you run `marcasite`. Handing clients two resolvers gives only *partial* failover, though — stub resolvers retry inconsistently and can stall on a dead server for several seconds. For true HA, front the pair with a shared [keepalived](https://www.keepalived.org/) VIP. Note the Pi Zero 2 W (a common pick for the second node) is Wi-Fi-only with no Ethernet port — for DNS infrastructure a USB-Ethernet dongle is worth it.
+**Setup:** Configure your UDM to advertise pyrite's IP (10.0.0.20) as the DNS server through DHCP on each VLAN — and add a second IP once you run marcasite. Handing clients two resolvers gives only *partial* failover, though — stub resolvers retry inconsistently and can stall on a dead server for several seconds. For true HA, front the pair with a shared [keepalived](https://www.keepalived.org/) VIP. The Pi Zero 2 W (a common pick for the second node) is Wi-Fi-only with no Ethernet port — for DNS infrastructure a USB-Ethernet dongle is worth it.
 
 **Replaces:** Google's DNS, your ISP's DNS, in-browser ad blockers.
 
@@ -109,7 +109,7 @@ You already have Traefik. Authelia adds a single login + 2FA layer, wired two di
 - **OIDC** for apps with their own login (Nextcloud, Paperless, Forgejo, Vikunja, …) — they redirect to Authelia and manage their own session. **Do not** put forward-auth in front of these: their API clients (desktop sync, git CLI, mobile apps) send credentials directly and can't follow the redirect.
 - **ForwardAuth** (Traefik middleware) only for apps with *no* login of their own (e.g. Homepage).
 - 2FA (TOTP, WebAuthn) and single sign-on across all of the above in one place.
-- LDAP-compatible user store via **lldap** (Rust, ~30 MB, ARM64 ✅ — lightweight LDAP backend), or flat file for simplicity.
+- LDAP-compatible user store through **lldap** (Rust, ~30 MB, ARM64 ✅ — lightweight LDAP backend), or flat file for simplicity.
 
 **Why before everything else:** every new service you add will want auth. Doing it now means each future service gets SSO for free.
 
@@ -123,7 +123,7 @@ Self-hosted push notifications for everything: backup alerts, Woodpecker pipelin
 
 ---
 
-## Part 3 — High Priority Gaps (Daily Drivers)
+## Part 3 — High priority gaps (daily drivers)
 
 These are the services people use every day that currently rely on commercial clouds.
 
@@ -139,14 +139,14 @@ Deployed choice. FreshRSS remains the feature-rich alternative if your needs out
 ### 🔴 Bookmarks — linkding
 **Category:** Bookmarks | **Run:** 🖥️ Cluster | **RAM:** ~100–150 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](app-catalog.md#linkding)
 
-Minimal, clean, fast. Browser extension for one-click saving. Tags, search, archive via Wayback Machine. Simpler than Wallabag (which is more of a read-later app). Docker ARM64 image confirmed.
+Minimal, clean, fast. Browser extension for one-click saving. Tags, search, archive with Wayback Machine. Simpler than Wallabag (which is more of a read-later app). Docker ARM64 image confirmed.
 
 **Alternatives:** LinkWarden (more features, adds screenshot archiving) or Karakeep (AI tagging).
 
 **Replaces:** Browser bookmarks synced to Firefox/Chrome cloud, Pocket, Raindrop.
 
-### 🔴 Notes — Joplin (sync via Nextcloud) or TriliumNext
-**Category:** Note-Taking | **Run:** 🖥️ Cluster (TriliumNext server) or sync only via Nextcloud | **ARM64:** ✅ | **Runbook:** [App Catalog](app-catalog.md#triliumnext-notes)
+### 🔴 Notes — Joplin (sync through Nextcloud) or TriliumNext
+**Category:** Note-Taking | **Run:** 🖥️ Cluster (TriliumNext server) or sync only through Nextcloud | **ARM64:** ✅ | **Runbook:** [App Catalog](app-catalog.md#triliumnext-notes)
 
 Two options depending on what you want:
 
@@ -169,7 +169,7 @@ The most complete self-hosted task app: lists, kanban, Gantt, calendar view, tea
 ### 🔴 Finance — Actual Budget
 **Category:** Money & Budgeting | **Run:** 🖥️ Cluster | **RAM:** ~100–200 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](app-catalog.md#actual-budget)
 
-**Actual Budget** is the best-in-class local-first personal finance tool: zero-sum (envelope) budgeting, fast SQLite backend, no forced cloud sync. Syncs via a self-hosted server, and supports automatic bank sync via SimpleFIN (US) or GoCardless (EU/UK). Official mobile apps exist but trail the desktop/web experience.
+**Actual Budget** is a full-featured local-first personal finance tool: zero-sum (envelope) budgeting, fast SQLite backend, no forced cloud sync. Syncs through a self-hosted server, and supports automatic bank sync with SimpleFIN (US) or GoCardless (EU/UK). Official mobile apps exist but trail the desktop/web experience.
 
 **Alternative:** **Firefly III** if you prefer double-entry bookkeeping (PHP, more RAM, also ARM64).
 
@@ -200,7 +200,7 @@ This is the automation layer that feeds Plex. Without it, adding new shows/movie
 
 **At 8 GB NAS RAM:** run on the cluster pointing to NFS — all four arr apps handle NFS paths fine and this keeps the NAS comfortable under load.
 
-**At 16 GB NAS RAM:** run everything on the NAS via Docker Compose. This is the better architecture because Sonarr/Radarr can **hardlink** completed downloads directly into the Plex library — a second directory entry pointing at the same inode, with no data copied, rather than a full NFS transfer. Keep all paths under a single root (e.g. `/data/downloads/` and `/data/media/`) so hardlinks work across the same filesystem.
+**At 16 GB NAS RAM:** run everything on the NAS with Docker Compose. This is the better architecture because Sonarr/Radarr can **hardlink** completed downloads directly into the Plex library — a second directory entry pointing at the same inode, with no data copied, rather than a full NFS transfer. Keep all paths under a single root (e.g. `/data/downloads/` and `/data/media/`) so hardlinks work across the same filesystem.
 
 ```
 /data/
@@ -222,7 +222,7 @@ Streams all audio formats, syncs progress across devices, has native iOS/Android
 ### 🔴 E-Book Library — Kavita
 **Category:** Document Mgmt / E-Books | **Run:** 🖥️ Cluster | **RAM:** ~100–200 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](app-catalog.md#kavita)
 
-Web reader + OPDS server for comics, manga, PDF, epub. Clean UI. .NET-based but ARM64 binaries ship officially. Covers your full ebook library via NFS.
+Web reader + OPDS server for comics, manga, PDF, epub. Clean UI. .NET-based but ARM64 binaries ship officially. Covers your full ebook library through NFS.
 
 **Alternatives:** **Komga** (also excellent, more community, Java but ARM64 confirmed), **Calibre-Web** (if you use Calibre as your library manager on desktop).
 
@@ -239,7 +239,7 @@ YAML-configured, Docker-native, integrates with ~100 services (Plex, Sonarr, Nex
 
 ---
 
-## Part 4 — Good Additions (After the Above Are Stable)
+## Part 4 — Good additions (after the above are stable)
 
 ### 🟡 Recipe Manager — Mealie
 **Category:** Recipe Management | **Run:** 🖥️ Cluster | **RAM:** ~200–300 MB | **ARM64:** ✅ Official | **Runbook:** [App Catalog](app-catalog.md#mealie)
@@ -309,7 +309,7 @@ Scans your network for unknown devices and alerts you (via ntfy). Useful for IoT
 ### 🟡 Wake-on-LAN — Upsnap
 **Category:** Network Utilities | **Run:** 🖥️ Cluster | **RAM:** ~50 MB | **ARM64:** ✅
 
-Web dashboard to wake sleeping machines (your desktop, NAS if asleep, etc.) via WOL. Small, Go binary.
+Web dashboard to wake sleeping machines (your desktop, NAS if asleep, etc.) with WOL. Small, Go binary.
 
 ### 🟡 AI Assistant — Ollama + Open-WebUI
 **Category:** Generative AI | **Run:** 💾 NAS (x86) ⚠️ NAS RAM upgrade required | **Runbook:** [Ollama](../deploy/ollama.md)
@@ -332,7 +332,7 @@ Web dashboard to wake sleeping machines (your desktop, NAS if asleep, etc.) via 
 
 ---
 
-## Part 5 — Category-by-Category Verdict (Full Coverage)
+## Part 5 — Category-by-category verdict (full coverage)
 
 Every category from awesome-selfhosted, with a one-line verdict:
 
@@ -357,8 +357,8 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Conference Management** | ⚪ Skip | |
 | **CMS** | ⚪ Skip | Nextcloud covers docs; BookStack covers wiki; Ghost covers blog |
 | **CRM** | ⚪ Skip | Personal use; Monica (personal CRM) is 🟡 if you track relationships |
-| **Database Management** | 🟡 Adminer or pgAdmin | Already in stack via Nextcloud/Paperless; Adminer is ~50 MB |
-| **DNS** | 🔴 AdGuard Home | See Part 2 — runs on a dedicated Pi (`pyrite`) |
+| **Database Management** | 🟡 Adminer or pgAdmin | Already in stack through Nextcloud/Paperless; Adminer is ~50 MB |
+| **DNS** | 🔴 AdGuard Home | See Part 2 — runs on a dedicated Pi (pyrite) |
 | **Document Mgmt** | ✅ Paperless-ngx | |
 | **Document Mgmt — E-Books** | 🔴 Kavita + 🔴 Audiobookshelf | See Part 3 |
 | **Document Mgmt — Library Systems** | ⚪ Skip | Institutional use |
@@ -393,7 +393,7 @@ Every category from awesome-selfhosted, with a one-line verdict:
 | **Money + Budgeting** | 🔴 Actual Budget | See Part 3 |
 | **Monitoring** | ✅ Prometheus/Grafana/Loki + blackbox uptime Probes | |
 | **Network Utilities** | 🟡 NetAlertX + Upsnap | See Part 4 |
-| **Note-taking + Editors** | 🔴 Joplin via Nextcloud or TriliumNext server | See Part 3 |
+| **Note-taking + Editors** | 🔴 Joplin through Nextcloud or TriliumNext server | See Part 3 |
 | **Office Suites** | 🟡 Nextcloud + Collabora Online | Enable as Nextcloud app; ~500 MB extra — [App Catalog](app-catalog.md#collabora-online) |
 | **Password Managers** | ✅ Vaultwarden | |
 | **Pastebins** | 🟡 PrivateBin (~50 MB) if you share code snippets | |
@@ -426,9 +426,9 @@ Every category from awesome-selfhosted, with a one-line verdict:
 
 ---
 
-## Special Topic Notes
+## Special topic notes
 
-### Email — Don't Self-Host Primary
+### Email — don't self-host primary
 
 Self-hosting your own mail server (Mailcow, docker-mailserver, Stalwart) is the most common homelab trap:
 - Residential/datacenter IPs are blacklisted by default for outbound SMTP
@@ -438,14 +438,14 @@ Self-hosting your own mail server (Mailcow, docker-mailserver, Stalwart) is the 
 
 **Recommendation:** Use a privacy-focused email provider (Proton Mail, Fastmail, Migadu) for primary. If you want email aliases without exposing your address, **AnonAddy** or **SimpleLogin** (AGPL, ARM64 ✅, ~200 MB) are self-hostable and let you create throwaway addresses that forward to your real inbox. That is the 90% solution.
 
-### Chat — Matrix/Synapse (If You Need It)
+### Chat — Matrix/Synapse (if you need it)
 
 If you want a self-hosted chat replacing iMessage/WhatsApp for friends/family: **Matrix Synapse** (Python, ~400–800 MB, ARM64 ✅) + **Element Web** client. It federates so your contacts can be on other Matrix servers.
 
 If it's just for yourself: Signal is fine. Don't deploy a chat server unless you have people who'll use it.
 
 
-### Collabora Online (Office Suite)
+### Collabora Online (office suite)
 
 The Nextcloud Collabora integration turns Nextcloud into a full Google Docs replacement. It adds ~500 MB RAM to the cluster but unlocks real-time collaborative editing of `.docx`, `.xlsx`, `.pptx` directly in the browser. Install it as a Nextcloud app (CODE — Collabora Online Development Edition). ARM64 ✅ official.
 
@@ -455,9 +455,9 @@ The Nextcloud Collabora integration turns Nextcloud into a full Google Docs repl
 
 ---
 
-## Part 6 — Recommended Deployment Order
+## Part 6 — Recommended deployment order
 
-If starting fresh, add services in this sequence. AdGuard Home goes on the dedicated DNS Pi (`pyrite`) — everything else goes on the cluster unless marked 💾 NAS. Each item notes where it's documented: a full **runbook**, the shared **catalog**, or **none yet**.
+If starting fresh, add services in this sequence. AdGuard Home goes on the dedicated DNS Pi (pyrite) — everything else goes on the cluster unless marked 💾 NAS. Each item notes where it's documented: a full **runbook**, the shared **catalog**, or **none yet**.
 
 ```
 1.  AdGuard Home              (runbook)        → whole-network ad blocking immediately
@@ -486,7 +486,7 @@ If starting fresh, add services in this sequence. AdGuard Home goes on the dedic
 
 ---
 
-## Part 7 — NAS Upgrade Path
+## Part 7 — NAS upgrade path
 
 At 8 GB RAM, your NAS can sustain:
 - Plex (0.5–2 GB)
@@ -502,7 +502,7 @@ Without the upgrade, Ollama isn't practical and the NAS stays at Plex + Immich (
 
 ---
 
-## Summary: What You're Actually Missing
+## Summary: what you're missing
 
 | Priority | Service | Replaces |
 |----------|---------|---------|

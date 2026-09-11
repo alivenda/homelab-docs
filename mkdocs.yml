@@ -124,6 +124,20 @@ nav:
   - Reference:
       - App catalog: reference/app-catalog.md
       - Service selection: reference/service-selection.md
+      - Decisions:
+          - reference/decisions/index.md
+          - Forgejo over GitHub: reference/decisions/forgejo-over-github.md
+          - Ansible over Terraform: reference/decisions/ansible-over-terraform.md
+          - SQLite on local-path storage: reference/decisions/sqlite-on-local-path.md
+          - Databases on the NAS: reference/decisions/databases-on-nas.md
+          - Garage over MinIO: reference/decisions/garage-over-minio.md
+          - Zone-based firewall: reference/decisions/zone-based-firewall.md
+          - Kubernetes backend for Woodpecker: reference/decisions/woodpecker-kubernetes-backend.md
+          - Forgejo container registry: reference/decisions/forgejo-container-registry.md
+          - Blackbox probes over Uptime Kuma: reference/decisions/blackbox-over-uptime-kuma.md
+          - Arr stack shelved: reference/decisions/arr-stack-shelved.md
+          - mkdocs-redirects dropped: reference/decisions/mkdocs-redirects-dropped.md
+          - Stack gap analysis: reference/decisions/stack-gap-analysis.md
   - Release notes: release-notes.md
 
 extra:
