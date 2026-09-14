@@ -23,8 +23,8 @@ Every job lands in its own bucket on the [Garage S3 store](#s3-object-storage-on
 | Audiobookshelf sync | 06:00 daily | ABS's native backups → `audiobookshelf-backups` | NAS timer — [below](#audiobookshelf-config-garage) |
 | Off-site sync | 07:00 daily | photo library + **the whole Garage store** + Plex config → Backblaze B2 | NAS timer — [below](#offsite-b2) |
 
-!!! note "Everything above is one box; the 07:00 job is what makes it two"
-    Every row but the last lands on the NAS — and Garage itself lives on the same volume as the data it backs up (`/volume1/docker/garage` next to `/volume1/photos`). That covers disk failure and fumbled deletes, not fire/theft/flood. The [off-site job](#offsite-b2) closes it by shipping both the photo library and the entire Garage store to Backblaze B2, so every bucket above inherits an off-site copy without needing its own cloud target.
+!!! note "Everything preceding is one box; the 07:00 job is what makes it two"
+    Every row but the last lands on the NAS — and Garage itself lives on the same volume as the data it backs up (`/volume1/docker/garage` next to `/volume1/photos`). That covers disk failure and fumbled deletes, not fire/theft/flood. The [off-site job](#offsite-b2) closes it by shipping both the photo library and the entire Garage store to Backblaze B2, so every bucket preceding inherits an off-site copy without needing its own cloud target.
 
 ## Strategy: the tiers
 
@@ -34,7 +34,7 @@ Every job lands in its own bucket on the [Garage S3 store](#s3-object-storage-on
 | Tier 2 — Important | Service configs, ArgoCD state, Grafana dashboards | NAS daily + retained 30d |
 | Tier 3 — Replaceable | Container images, media | NAS weekly + retained 14d |
 
-The tiers are the policy; [What runs when](#what-runs-when) is the implementation. The tiers cover application data (DB dumps) and IaC (manifests) but not Kubernetes objects themselves — PVCs, CRDs, secrets in non-Git-tracked namespaces, helm release state. That gap is what [Velero](#velero-for-k8s-native-pvc-backup) closes.
+The tiers are the policy; [What runs when](#what-runs-when) is the implementation. The tiers cover app data (DB dumps) and IaC (manifests) but not Kubernetes objects themselves — PVCs, CRDs, secrets in non-Git-tracked namespaces, helm release state. That gap is what [Velero](#velero-for-k8s-native-pvc-backup) closes.
 
 ## Secrets and key-material recovery
 
@@ -45,7 +45,7 @@ This is **step zero of any real disaster recovery**. Velero and the database-dum
 Every secret in the homelab funnels through **one age keypair**:
 
 - The same recipient — `age164pxwzqulte2t6uh6vpkg4kd84uvk0cks5gzg3wc508lvs0x7syskmykd9` — encrypts every SOPS file across `homelab-ansible`, `homelab-terraform`, and `homelab-secrets`.
-- The private key lives at `~/.config/sops/age/keys.txt`. Its only off-machine copy is a secure-note item in your **externally-hosted password manager** (a hosted service — deliberately not anything this homelab runs).
+- The private key lives at `~/.config/sops/age/keys.txt`. Its only off-machine copy is a secure-note item in your **externally hosted password manager** (a hosted service — deliberately not anything this homelab runs).
 - The Sealed Secrets controller's signing-key backup (`homelab-secrets/sealed-secrets-controller-key.enc.yaml`) is itself SOPS/age-encrypted — so it, too, is locked behind that one age key.
 
 Recovery therefore runs in a strict order, rooted on that external password manager:
@@ -56,11 +56,11 @@ External password manager ──> age private key ──┬──> SOPS files (A
 ```
 
 !!! danger "The external password manager is the keystone — make sure *it* is independently recoverable"
-    Everything below decrypts from one age key whose only off-machine copy is in that manager. If you can't get into it, nothing is recoverable. Confirm now: master password memorized (not stored only inside the vault), and its two-factor **recovery code** printed and kept offline (fireproof safe / second location). Note that **Vaultwarden runs inside this cluster** — never make the cluster's recovery depend on a secrets store the cluster itself hosts. The root of trust must be an externally-hosted manager (or an offline vault export), not Vaultwarden.
+    Everything below decrypts from one age key whose only off-machine copy is in that manager. If you can't get into it, nothing is recoverable. Confirm now: master password memorized (not stored only inside the vault), and its two-factor **recovery code** printed and kept offline (fireproof safe / second location). **Vaultwarden runs inside this cluster** — never make the cluster's recovery depend on a secrets store the cluster itself hosts. The root of trust must be an externally hosted manager (or an offline vault export), not Vaultwarden.
 
 ### Restore the age private key { #step-1-restore-the-age-private-key }
 
-On your machine (or any host that will run `sops`/`tofu`/`ansible`):
+On your machine (or any host that runs `sops`/`tofu`/`ansible`):
 
 ```sh
 mkdir -p ~/.config/sops/age
@@ -97,9 +97,9 @@ A successful decrypt confirms the whole SOPS layer. Each repo unlocks a differen
 
 ### Restore the Sealed Secrets signing keys (cluster rebuild only) { #step-3-restore-the-sealed-secrets-signing-keys-cluster-rebuild-only }
 
-Only needed when the cluster was rebuilt. A fresh Sealed Secrets controller generates a **new** keypair and cannot decrypt secrets that were sealed against the old one — so every `SealedSecret` committed to `homelab-manifests` would be undecryptable. Restoring the backed-up signing keys avoids re-sealing anything.
+Only needed when the cluster was rebuilt. A fresh Sealed Secrets controller generates a **new** keypair and cannot decrypt secrets that were sealed against the old one — so every `SealedSecret` committed to `homelab-manifests` is undecryptable. Restoring the backed-up signing keys avoids re-sealing anything.
 
-!!! warning "Restore ALL keys, not just the day-zero one"
+!!! warning "Restore ALL keys, not the day-zero one"
     The controller rotates keys every 30 days, and each SealedSecret decrypts only under
     the key it was sealed with. The authoritative source is the **automated Garage dump**
     (every key ever minted, shipped daily by the CronJob in
@@ -108,7 +108,7 @@ Only needed when the cluster was rebuilt. A fresh Sealed Secrets controller gene
 
 The dump sits in the `sealed-secrets-keys` bucket behind an rclone `crypt` remote, and nothing needed to open it lives in the cluster — that circularity is deliberate. Rebuild access from two sources:
 
-**S3 credentials** — recover them from the Garage admin CLI on the NAS:
+**S3 credentials** — recover them from the Garage administrator command-line tool on the NAS:
 
 ```sh
 docker exec -ti garage /garage bucket info sealed-secrets-keys    # shows which key has access
@@ -159,7 +159,7 @@ kubectl delete pod -n sealed-secrets -l app.kubernetes.io/name=sealed-secrets
 kubectl get secret -n sealed-secrets -l sealedsecrets.bitnami.com/sealed-secrets-key
 ```
 
-Re-syncing `homelab-manifests` in ArgoCD will now decrypt every existing SealedSecret normally — no manifest changes required. Shred the throwaway `rclone.conf` when done.
+Re-syncing `homelab-manifests` in ArgoCD now decrypts every existing SealedSecret normally — no manifest changes required. Shred the throwaway `rclone.conf` when done.
 
 If Garage itself is gone, fall back to the day-zero export — it only unlocks secrets sealed before the first rotation:
 
@@ -169,7 +169,7 @@ sops --decrypt homelab-secrets/sealed-secrets-controller-key.enc.yaml | kubectl 
 
 ### Drill the whole chain — no dead machine required
 
-A restore path that has never been exercised is a hope, not a backup. The chain above drills read-only in about twenty minutes, with the live cluster untouched.
+A restore path that has never been exercised is a hope, not a backup. The chain preceding drills read-only in about twenty minutes, with the live cluster untouched.
 
 **1 — Simulate the dead machine.** Move the real key aside and confirm decryption actually breaks. A passing drill proves nothing if a stale on-disk key was quietly filling in:
 
@@ -178,7 +178,7 @@ mv ~/.config/sops/age/keys.txt ~/.config/sops/age/keys.txt.aside
 sops --decrypt homelab-secrets/sealed-secrets-controller-key.enc.yaml   # MUST fail
 ```
 
-**2 — Restore from the password manager alone.** Paste the saved key into a throwaway file on tmpfs (RAM-backed — never touches disk, gone on reboot), point SOPS at it, then re-run Steps 1–2 above: `age-keygen -y` must print the expected recipient, and one file from each repo must decrypt.
+**2 — Restore from the password manager alone.** Paste the saved key into a throwaway file on tmpfs (RAM-backed — never touches disk, gone on reboot), point SOPS at it, then re-run Steps 1–2 preceding: `age-keygen -y` must print the expected recipient, and one file from each repo must decrypt.
 
 ```sh
 mkdir -m 700 /tmp/age-drill
@@ -200,7 +200,7 @@ Success = the dump lists every key the controller has ever minted, including one
 
 !!! success "Last drilled: 2026-07-17 — full pass"
     With the on-disk key moved aside: all three repos decrypted from the password-manager
-    copy alone; a `rclone.conf` rebuilt from only the Garage admin CLI + the stored crypt
+    copy alone; a `rclone.conf` rebuilt from only the Garage administrator command-line tool + the stored crypt
     password opened the dump; the dump held both the day-zero and the post-rotation key,
     and the day-zero cert's SHA-256 fingerprint matched the `homelab-secrets` export
     exactly. The documented `jq` strip command was validated against the real dump.
@@ -225,7 +225,7 @@ rm controller-key.yaml   # never commit the plaintext
 This S3-compatible store on the NAS backs every job in [What runs when](#what-runs-when), at `http://10.0.20.50:9000`. Each consumer — etcd, Velero, the Terraform state backend, the NAS-side sync jobs — gets its own bucket and its own scoped key.
 
 !!! warning "Why Garage, not MinIO"
-    MinIO's Community Edition is effectively end-of-life: the `minio/minio` repo was archived (read-only) in **April 2026**, free Docker/Quay image publishing stopped in **October 2025** (last tag `RELEASE.2025-10-15T17-29-55Z`), and the admin console was stripped from CE in **May 2025**. This runbook uses [Garage](https://garagehq.deuxfleurs.fr/) — a maintained, Rust, self-host-focused S3 store — instead.
+    MinIO's Community Edition is effectively end-of-life: the `minio/minio` repo was archived (read-only) in **April 2026**, free Docker/Quay image publishing stopped in **October 2025** (last tag `RELEASE.2025-10-15T17-29-55Z`), and the administrator console was stripped from CE in **May 2025**. This runbook uses [Garage](https://garagehq.deuxfleurs.fr/) — a maintained, Rust, self-host-focused S3 store — instead.
 
 ### Stand up Garage
 
@@ -319,9 +319,9 @@ docker exec -ti garage /garage bucket info etcd-snapshots # expect Objects ≥ 1
 
 This is the primary off-node etcd path (k3s also keeps local snapshots on ruby).
 
-## Velero for k8s-native PVC backup
+## Velero for Kubernetes-native PVC backup { #velero-for-k8s-native-pvc-backup }
 
-Velero's filesystem backup (the **node-agent**, using the kopia uploader — the default since Velero 1.10) snapshots PVC contents and stores them in the Garage store above, in a dedicated `velero` bucket.
+Velero's filesystem backup (the **node-agent**, using the kopia uploader — the default since Velero 1.10) snapshots PVC contents and stores them in the Garage store preceding, in a dedicated `velero` bucket.
 
 !!! note "GitOps-managed in this build"
     Velero runs as two ArgoCD Applications (`bootstrap/velero.yaml` — chart + manifests,
@@ -383,7 +383,7 @@ velero backup create homelab-$(date +%Y%m%d)
 ```
 
 !!! tip "Velero's backups reach B2 without a second target"
-    Velero (and the etcd S3 upload) can point at any S3-compatible target, not just the NAS — Backblaze B2, Wasabi, or Cloudflare R2. This build doesn't do that: Velero writes to Garage on the NAS, and the nightly [off-site job](#offsite-b2) mirrors the whole Garage store to B2. One cloud credential covers every bucket instead of one per consumer, and Velero keeps writing to a LAN-speed target.
+    Velero (and the etcd S3 upload) can point at any S3-compatible target, not the NAS — Backblaze B2, Wasabi, or Cloudflare R2. This build doesn't do that: Velero writes to Garage on the NAS, and the nightly [off-site job](#offsite-b2) mirrors the whole Garage store to B2. One cloud credential covers every bucket instead of one per consumer, and Velero keeps writing to a LAN-speed target.
 
 ## Relational database dumps → Garage
 
@@ -392,7 +392,7 @@ The relational database tier lives on the NAS, not the cluster (see the [Storage
 Two things stay out of this shared job, each for its own reason:
 
 - **Immich** keeps its own dump path — its bundled Postgres on the NAS predates the shared server ([Immich](../deploy/immich.md)), and Immich's built-in scheduled backup already dumps the database itself. Getting those dumps **off-box** is its own sync job — see [Immich database → Garage](#immich-database-garage) below.
-- **Embedded-SQLite apps** — their volumes live on `local-path`, which Velero's node-agent already captures above. One data tier, one backup mechanism; no double-coverage. (Audiobookshelf used to be in this set; it moved to the NAS and now has its own job — see below.)
+- **Embedded-SQLite apps** — their volumes live on `local-path`, which Velero's node-agent already captures preceding. One data tier, one backup mechanism; no double-coverage. (Audiobookshelf used to be in this set; it moved to the NAS and now has its own job — see below.)
 
 ## NAS-side sync jobs: the rclone → Garage pattern
 
@@ -405,9 +405,9 @@ Three apps run on NAS-adjacent hosts outside both Velero's and the Postgres job'
 | [Audiobookshelf](#audiobookshelf-config-garage) | `/volume1/docker/audiobookshelf/metadata/backups` (NAS-local) | 06:00 | `audiobookshelf-backups` | `[garage-abs]` |
 
 !!! warning "Copy, never sync — and mind UGOS updates"
-    Use `rclone copy` (plus the age-based `delete`), never `rclone sync`: `sync` mirrors deletions, so if the app's backup directory is ever empty (reinstall, disk loss) it would wipe the Garage copy too. And because the NAS runs **UGOS Pro** (an appliance OS), these host units live outside Ansible's reach — a major UGOS update can reset them, so the sections below are the recovery reference.
+    Use `rclone copy` (plus the age-based `delete`), never `rclone sync`: `sync` mirrors deletions, so if the app's backup directory is ever empty (reinstall, disk loss) it wipes the Garage copy too. And because the NAS runs **UGOS Pro** (an appliance OS), these host units live outside Ansible's reach — a major UGOS update can reset them, so the sections below are the recovery reference.
 
-Each job gets the standard Garage consumer (the bucket/key/allow trio from [above](#initialize-the-cluster-per-consumer-keys)) and an S3 remote of the same shape in the NAS's `/etc/rclone/rclone.conf` (root-owned, `chmod 600`):
+Each job gets the standard Garage consumer (the bucket/key/allow trio from [preceding](#initialize-the-cluster-per-consumer-keys)) and an S3 remote of the same shape in the NAS's `/etc/rclone/rclone.conf` (root-owned, `chmod 600`):
 
 ```ini
 [garage-<consumer>]
@@ -424,11 +424,11 @@ force_path_style = true     # Garage requires path-style
 
 ### Immich database → Garage
 
-Immich [runs as Docker on the NAS](../deploy/immich.md) with its **own** bundled Postgres, separate from the shared server above. It already backs that database up on a schedule — Immich's built-in job writes a version-stamped dump to `${UPLOAD_LOCATION}/backups/` (e.g. `/volume1/photos/backups/immich-db-backup-20260617T020000-v2.7.5-pg14.19.sql.gz`) nightly at 02:00. What that leaves open is **off-box** durability: those dumps land on the same volume as the photo library, so one volume failure loses the originals *and* their database together, and the [cold-shutdown export](../operate/cold-shutdown.md) only sweeps Garage buckets.
+Immich [runs as Docker on the NAS](../deploy/immich.md) with its **own** bundled Postgres, separate from the shared server preceding. It already backs that database up on a schedule — Immich's built-in job writes a version-stamped dump to `${UPLOAD_LOCATION}/backups/` (for example `/volume1/photos/backups/immich-db-backup-20260617T020000-v2.7.5-pg14.19.sql.gz`) nightly at 02:00. What that leaves open is **off-box** durability: those dumps land on the same volume as the photo library, so one volume failure loses the originals *and* their database together, and the [cold-shutdown export](../operate/cold-shutdown.md) only sweeps Garage buckets.
 
 First confirm Immich's built-in backup is on: **Administration → Settings → Backup Settings → Database Backups** (enabled by default). The library/originals themselves are the bulk data on `${UPLOAD_LOCATION}` — re-uploadable from your devices, not part of this database job.
 
-Garage consumer + `[garage-immich]` remote per the pattern above. The dumps are a local NAS directory, so rclone copies straight off disk.
+Garage consumer + `[garage-immich]` remote per the pattern preceding. The dumps are a local NAS directory, so rclone copies straight off disk.
 
 ??? example "`immich-backup-sync` service + timer"
 
@@ -536,9 +536,9 @@ systemctl list-timers ha-backup-sync.timer     # confirm a NEXT run
 
 Audiobookshelf [runs as a Docker container on the NAS](../reference/app-catalog.md#audiobookshelf), so — unlike the embedded-SQLite apps in the cluster — its `/config` database is **not** on `local-path` and is **not** covered by Velero.
 
-In ABS **Settings → Backups**, enable scheduled backups (daily; keep ~7). ABS writes a consistent archive to `BACKUP_PATH` (default `/metadata/backups`, i.e. `/volume1/docker/audiobookshelf/metadata/backups`) containing the **`/config` database** (users, libraries, OIDC config, the mobile-redirect whitelist) plus item/author images from `/metadata`. The library audio itself is **not** included — that's the original media on `/volume1/media`, re-scannable.
+In ABS **Settings → Backups**, enable scheduled backups (daily; keep ~7). ABS writes a consistent archive to `BACKUP_PATH` (default `/metadata/backups`, that is `/volume1/docker/audiobookshelf/metadata/backups`) containing the **`/config` database** (users, libraries, OIDC config, the mobile-redirect whitelist) plus item/author images from `/metadata`. The library audio itself is **not** included — that's the original media on `/volume1/media`, re-scannable.
 
-Garage consumer + `[garage-abs]` remote per the pattern above. The backups are a local NAS directory, so rclone copies straight off disk.
+Garage consumer + `[garage-abs]` remote per the pattern preceding. The backups are a local NAS directory, so rclone copies straight off disk.
 
 ??? example "`audiobookshelf-backup-sync` service + timer"
 
@@ -588,8 +588,8 @@ Everything so far is one building. `offsite-backup-sync.timer` on the NAS is the
 
 Step 2 is why the other jobs need no cloud target of their own: it takes the entire Garage store off-site, so every bucket in [What runs when](#what-runs-when) — Velero, etcd snapshots, the Postgres dumps, the sealed-secrets keys, the per-app syncs — inherits an off-site copy. Step 1 covers what Garage never sees: the photo library originals, which are bulk data no database dump contains. The `thumbs/` and `encoded-video/` exclusions are regenerable derivatives, so they'd only inflate the bill.
 
-!!! warning "Step 2 uses `sync`, which breaks the copy-never-sync rule above — deliberately"
-    The per-app jobs use `rclone copy` so an empty source can never wipe the Garage copy. Step 2 is the exception: Garage holds retention-managed buckets that shrink when Velero expires a backup, and `copy` would grow the B2 bill forever. The trade is real — anything that wipes Garage locally propagates to B2 at the next 07:00 run. Enable B2 **object lifecycle rules** (keep prior versions ~30 days) so a bad sync is recoverable; B2 versioning is the safety net that makes `sync` acceptable here. Step 1 stays `copy`, so deleting a photo never deletes its off-site original.
+!!! warning "Step 2 uses `sync`, which breaks the copy-never-sync rule preceding — deliberately"
+    The per-app jobs use `rclone copy` so an empty source can never wipe the Garage copy. Step 2 is the exception: Garage holds retention-managed buckets that shrink when Velero expires a backup, and `copy` grows the B2 bill forever. The trade is real — anything that wipes Garage locally propagates to B2 on the next 07:00 run. Enable B2 **object lifecycle rules** (keep prior versions ~30 days) so a bad sync is recoverable; B2 versioning is the safety net that makes `sync` acceptable here. Step 1 stays `copy`, so deleting a photo never deletes its off-site original.
 
 !!! danger "The crypt passphrase is the whole backup"
     `offsite:` is an rclone `crypt` remote — B2 holds ciphertext with obscured filenames. Lose the passphrase and the off-site copy is unrecoverable noise. It belongs in the external password manager beside the age key ([The single root of trust](#the-single-root-of-trust)), **not** only in `/etc/rclone/rclone.conf` on the machine the backup exists to survive. Restoring means recreating the remote from the passphrase first — see the drill below.
@@ -624,7 +624,7 @@ A backup that has never been restored is a hypothesis, not a backup. Once a mont
     # Expected: age164pxwzqulte2t6uh6vpkg4kd84uvk0cks5gzg3wc508lvs0x7syskmykd9
     ```
 
-- [ ] `sops --decrypt` succeeds on a known encrypted file (e.g. `homelab-secrets/sealed-secrets-controller-key.enc.yaml`).
+- [ ] `sops --decrypt` succeeds on a known encrypted file (for example `homelab-secrets/sealed-secrets-controller-key.enc.yaml`).
 - [ ] Database backup timer is active on the NAS, and the bucket holds real objects:
 
     ```bash

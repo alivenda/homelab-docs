@@ -1,4 +1,8 @@
+<!-- vale Vale.Terms = NO -->
+<!-- vale Homelab.Headings = NO -->
 # mkdocs-redirects dropped
+<!-- vale Homelab.Headings = YES -->
+<!-- vale Vale.Terms = YES -->
 
 **Date:** 2026-07
 **Status:** Active

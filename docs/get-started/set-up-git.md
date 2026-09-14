@@ -34,9 +34,9 @@ once Forgejo was running. GitHub keeps serving as the offsite IaC backup either 
 
 ## Create the repos on GitHub { #step-1-create-the-repos-on-github }
 
-You create two Personal Access Tokens (PATs) over the course of this page — one for your local `gh` CLI to create and push to repos, and a second (later, after Kubernetes) for ArgoCD to pull from `homelab-manifests`. Different jobs, different permission scopes.
+You create two Personal Access Tokens (PATs) over the course of this page — one for your local `gh` command-line tool to create and push to repos, and a second (later, after Kubernetes) for ArgoCD to pull from `homelab-manifests`. Different jobs, different permission scopes.
 
-### Token 1: local `gh` CLI and development machine
+### Token 1: local `gh` command-line tool and development machine
 
 Sign in to GitHub. Go to **Settings → Developer Settings → Personal access tokens → Fine-grained tokens → Generate new token**.
 
@@ -47,7 +47,7 @@ Sign in to GitHub. Go to **Settings → Developer Settings → Personal access t
     - Contents — Read and write (push/pull code)
     - Metadata — Read-only (auto-selected baseline)
     - Pull requests — Read and write (optional, for PR discipline)
-    - Secrets — Read and write (optional, if you manage repo secrets by CLI later)
+    - Secrets — Read and write (optional, if you manage repo secrets by command-line tool later)
 
 !!! warning "Fine-grained PATs need 'All repositories' at first"
     Fine-grained PATs scope to specific repos, but you're *creating* repos that don't exist yet — hence "All repositories" for now. Classic PATs with the `repo` scope sidestep this entirely; that's why a lot of guides still use them. Fine-grained is the current recommendation.
@@ -64,7 +64,7 @@ Note this here so you remember to come back. When you wire ArgoCD to `homelab-ma
 
 Save both tokens in Vaultwarden (or your bootstrap password manager if you haven't stood up Vaultwarden yet).
 
-### Install the GitHub CLI
+### Install the GitHub command-line tool
 
 ```bash
 # macOS
@@ -251,7 +251,7 @@ creation_rules:
 ```
 
 !!! note "Skip path_regex"
-    Some earlier guides include a `path_regex: \.enc\.(yaml|yml|json|tfvars)$` line. That regex matches the *input* filename, so encrypting `secrets.tfvars` (which doesn't contain `.enc.`) fails with `no matching creation rules found`. Drop the path_regex for a catch-all that encrypts everything in the repo — which is what you want in `homelab-secrets` and `homelab-terraform` anyway. Commit `.sops.yaml`: it contains only your public key and is safe to share.
+    Some earlier guides include a `path_regex: \.enc\.(yaml|yml|json|tfvars)$` line. That regular expression matches the *input* filename, so encrypting `secrets.tfvars` (which doesn't contain `.enc.`) fails with `no matching creation rules found`. Drop the path_regex for a catch-all that encrypts everything in the repo — which is what you want in `homelab-secrets` and `homelab-terraform` anyway. Commit `.sops.yaml`: it contains only your public key and is safe to share.
 
 Encrypt a file. Heredocs don't work in fish, so this is the bash version followed by a fish equivalent:
 
@@ -284,7 +284,9 @@ The `.enc.tfvars` file IS safe to commit — it's encrypted with your age key. T
 
 Once Forgejo is running, you have three migration paths:
 
-1. **Mirror from GitHub** (read-only Forgejo copy): Forgejo → **New Migration** → "This repository will be a mirror" → paste GitHub URL.
+<!-- vale Google.Will = NO -->
+1. **Mirror from GitHub** (read-only Forgejo copy): Forgejo → **New Migration** → **This repository will be a mirror** → paste GitHub URL.
+<!-- vale Google.Will = YES -->
 2. **Push mirror to GitHub** (Forgejo is primary): in each Forgejo repo, **Settings → Mirror Settings → Add Push Mirror**. Every push to Forgejo auto-syncs to GitHub.
 3. **Full migration:** change Git remote URLs to point to Forgejo, abandon GitHub. Loses the offsite backup benefit.
 

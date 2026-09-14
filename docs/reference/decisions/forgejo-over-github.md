@@ -18,7 +18,7 @@ public `homelab-docs` repo as a read-only copy.
 Forgejo is a community fork of Gitea (itself a Go fork of Gogs) — lightweight,
 ARM64-native, and actively maintained. It includes a built-in container
 registry and supports AGit-flow pull requests over SSH, which removes the need
-for a CLI tool or browser round-trip to open a PR.
+for a command-line tool or browser round-trip to open a PR.
 
 ## Consequences
 

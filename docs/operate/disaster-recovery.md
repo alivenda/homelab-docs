@@ -13,7 +13,7 @@ Something is dead and you're deciding what to do first. This page is **triage an
 
 | What's dead | What you see | Go to |
 |---|---|---|
-| Your workstation | The homelab runs fine; you just can't operate it | [Scenario 1](#scenario-1-your-machine) |
+| Your workstation | The homelab runs fine; you can't operate it | [Scenario 1](#scenario-1-your-machine) |
 | emerald or amethyst | Node `NotReady`; its pods reschedule or go `Pending` | [Scenario 2](#scenario-2-an-agent-node-emerald-or-amethyst) |
 | topaz | Node `NotReady` **and** every `nfs-storage` app hangs | [Scenario 3](#scenario-3-topaz-the-storage-node) |
 | ruby | `kubectl` times out; the apps themselves still serve | [Scenario 4](#scenario-4-ruby-the-control-plane) |
@@ -28,7 +28,7 @@ Something is dead and you're deciding what to do first. This page is **triage an
 Nothing in the homelab is affected — this is about restoring your ability to operate it. This exact chain is the one drilled on 2026-07-17.
 
 1. On the new or reinstalled machine, install the base tooling as each runbook calls for it — `git` and `sops`/`age` are the only two you need before anything else works.
-2. Restore the age key from your (externally-hosted) password manager — [Restore the age private key](../build/backups.md#step-1-restore-the-age-private-key).
+2. Restore the age key from your (externally hosted) password manager — [Restore the age private key](../build/backups.md#step-1-restore-the-age-private-key).
 3. Clone the five repos from Forgejo (`git.yourdomain.com` — it's unaffected); layout and remotes are in [Set up Git](../get-started/set-up-git.md).
 4. Confirm you can decrypt one file from each repo class — [Confirm you can decrypt the repos](../build/backups.md#step-2-confirm-you-can-decrypt-the-repos).
 5. Pull the kubeconfig from ruby — [Get kubectl working on your machine](../build/kubernetes.md#step-0-get-kubectl-working-on-your-machine).
@@ -36,7 +36,7 @@ Nothing in the homelab is affected — this is about restoring your ability to o
 
 ## Scenario 2 — an agent node (emerald or amethyst)
 
-Stateless pods reschedule on their own; what makes an agent-node death more than a long reboot is **`local-path` data**, which lives on the dead node's eMMC. emerald is the designated app-state node (see [the local-path tier](../concepts/storage.md#the-local-path-tier)), so losing emerald means restoring SQLite app data from Velero; losing a node with no `local-path` PVCs is just reflash-and-rejoin.
+Stateless pods reschedule on their own; what makes an agent-node death more than a long reboot is **`local-path` data**, which lives on the dead node's eMMC. emerald is the designated app-state node (see [the local-path tier](../concepts/storage.md#the-local-path-tier)), so losing emerald means restoring SQLite app data from Velero; losing a node with no `local-path` PVCs is reflash-and-rejoin.
 
 1. Check what the node was holding before you rebuild: `kubectl get pv -o wide` — any `local-path` PVs on the dead node mark the apps you'll restore in step 4.
 2. Reflash DietPi on the module — [Flash DietPi OS to all 4 modules](../build/turing-pi.md#step-3-flash-dietpi-os-to-all-4-modules).
@@ -57,8 +57,8 @@ Stateless pods reschedule on their own; what makes an agent-node death more than
 Every `nfs-storage` PVC is served from the single SSD in topaz — the storage SPOF named in the [durability model](../concepts/storage.md#durability-model). Apps hang until it's back; data in the Postgres tier is safe on the NAS. First establish which of the two failures you have: a dead **module** (SSD almost certainly intact) or a dead **SSD**.
 
 1. Reflash the module — [Flash DietPi](../build/turing-pi.md#step-3-flash-dietpi-os-to-all-4-modules) — and reconnect the SSD ([Prepare SATA SSD](../build/turing-pi.md#step-5-prepare-sata-ssd-on-node-3-topaz-node-3) covers the physical side; don't run its format commands on a disk with data).
-2. Re-run `site.yml` from [Ansible](../build/ansible.md). The NFS play is guarded — it only formats a **blank** disk — so on a surviving SSD it just remounts `/data`, re-exports it, and rejoins the agent.
-3. If the SSD survived: the export is back and the data with it. Pods that were hanging on stale NFS mounts may need a kick — `kubectl rollout restart` anything still stuck, then confirm apps serve real data.
+2. Re-run `site.yml` from [Ansible](../build/ansible.md). The NFS play is guarded — it only formats a **blank** disk — so on a surviving SSD it remounts `/data`, re-exports it, and rejoins the agent.
+3. If the SSD survived: the export is back and the data with it. Pods that were hanging on stale NFS mounts might need a kick — `kubectl rollout restart` anything still stuck, then confirm apps serve real data.
 4. If the SSD is dead: replace it, let `site.yml` format and export the empty disk, then restore every `nfs-storage` app from Velero using the delete-the-shells-first flow from [scenario 2](#scenario-2-an-agent-node-emerald-or-amethyst), step 4 — Tier 1 apps from the [strategy table](../build/backups.md#strategy-the-tiers) first.
 5. Verify per [Test your restores](../build/backups.md#test-your-restores): app content present, monitoring (which also lives on topaz) back, ArgoCD green.
 
@@ -99,17 +99,17 @@ The NAS holds the entire Garage store (every backup bucket **and** the Terraform
 
 ## Scenario 6 — total loss
 
-Fire, theft, flood — everything on-site is gone. What survives is exactly what lives off-site today: the IaC (GitHub mirrors), the secrets chain (your externally-hosted password manager plus the encrypted files in the repos), and these docs. All *data* is gone per the [scenario 5 danger box](#drives-lost) — this rebuild restores the services, and devices restock what they still hold.
+Fire, theft, flood — everything on-site is gone. What survives is exactly what lives off-site today: the IaC (GitHub mirrors), the secrets chain (your externally hosted password manager plus the encrypted files in the repos), and these docs. All *data* is gone per the [scenario 5 danger box](#drives-lost) — this rebuild restores the services, and devices restock what they still hold.
 
 1. Confirm the keystone: you can get into your password manager — [the single root of trust](../build/backups.md#the-single-root-of-trust).
 2. On a new machine, clone the five repos from the **GitHub mirrors** — Forgejo lived in the cluster; the mirror wiring is in [Repositories](../concepts/repositories.md#as-built-forgejo-primary-agit-prs-gitops-over-ssh).
 3. Restore the age key and confirm decrypts — [Restore the age private key](../build/backups.md#step-1-restore-the-age-private-key) and [Confirm you can decrypt the repos](../build/backups.md#step-2-confirm-you-can-decrypt-the-repos).
 4. Network first: if the gateway survived, its config did too; otherwise rebuild it from [Network](../build/network.md).
 5. NAS, Garage, and the Postgres tier — the [scenario 5 drives-lost list](#drives-lost).
-6. Flash the nodes ([Turing Pi](../build/turing-pi.md)), bootstrap with [Ansible](../build/ansible.md), bring up k3s and its core per [Kubernetes](../build/kubernetes.md).
+6. Flash the nodes ([Turing Pi](../build/turing-pi.md)), bootstrap with [Ansible](../build/ansible.md), and bring up k3s and its core per [Kubernetes](../build/kubernetes.md).
 7. Wire ArgoCD to the **GitHub mirror** of `homelab-manifests` using the [day-zero pattern](../get-started/set-up-git.md#step-7-wire-argocd-to-homelab-manifests) — the as-built wiring points at Forgejo, which doesn't exist again yet.
 8. Restore the Sealed Secrets signing keys before the apps sync — [Restore the signing keys](../build/backups.md#step-3-restore-the-sealed-secrets-signing-keys-cluster-rebuild-only). The Garage dump died with the NAS, so the day-zero fallback is all you have: it unlocks only secrets sealed before the first rotation. Everything sealed after it must be **re-created from its source** (password manager, provider dashboards) and re-sealed.
-9. Rebuild DNS: `tofu apply` with the restored Cloudflare credentials — the state backend was on the NAS, so re-import the records the apply would otherwise duplicate.
+9. Rebuild DNS: `tofu apply` with the restored Cloudflare credentials — the state backend was on the NAS, so re-import the records the apply otherwise duplicates.
 10. Once Forgejo is redeployed, push the five repos into it and flip ArgoCD back to the [as-built SSH wiring](../concepts/repositories.md#gitops-argocd-pulls-from-forgejo-over-ssh).
 11. Run the full [post-restart verification](cold-shutdown.md#post-restart-verification), then force a complete backup cycle so the new build is protected from day one.
 

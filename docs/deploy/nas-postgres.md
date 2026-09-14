@@ -10,7 +10,7 @@ pods, the NAS runs their databases.
 | | |
 |---|---|
 | **Endpoint** | 10.0.20.50:5433 (LAN-only; UGOS's own Postgres keeps `5432`) |
-| **Image** | `postgres:18` (docker-compose on the NAS) |
+| **Image** | `postgres:18` (Docker Compose on the NAS) |
 | **Backup** | nightly `04:30` → `postgres-backups` Garage bucket, 30-day retention |
 | **Runs on** | NAS (Docker — not k3s) |
 | **Depends on** | Backups (Garage S3), [Storage & Data Architecture](../concepts/storage.md) |
@@ -26,7 +26,7 @@ undoes the design:
   → stays **in-cluster** on `local-path` + `strategy: Recreate`. SQLite is a library inside
   the app process, not a server — there is nothing to centralize, and putting its file on
   network storage is the corruption pattern this architecture exists to prevent. These apps
-  never touch this server.
+  never use this server.
 - **Client/server relational databases** (Nextcloud, Paperless-ngx, Vikunja → PostgreSQL;
   BookStack → MariaDB) → a database + role **here**, connected over the Lab VLAN.
 
@@ -38,8 +38,8 @@ is the tie-breaker.
 ## Why port 5433
 
 UGOS Pro (the NAS appliance OS) runs its **own internal PostgreSQL** on `127.0.0.1:5432`
-for its services. A loopback bind wouldn't technically collide with a bind on the LAN IP,
-but a firmware update could change it, and the standing rule for the appliance is *don't
+for its services. A loopback bind doesn't technically collide with a bind on the LAN IP,
+but a firmware update can change it, and the standing rule for the appliance is *don't
 fight UGOS's config layer*. So this server publishes **10.0.20.50:5433** — every consumer
 `DATABASE_URL` must say port `5433`.
 
@@ -277,13 +277,13 @@ sudo systemctl list-timers postgres-backup.timer
     firmware update can reset them — this page is the recovery reference.
 
 Like every rclone job in this stack: `copy` + age-based `delete`, **never `sync`** — sync
-mirrors deletions, so an empty source would wipe the Garage copy too.
+mirrors deletions, so an empty source wipes the Garage copy too.
 
 ## The restore drill — before the first tenant
 
 A backup pipeline that has never restored anything is a hypothesis, not a backup. Prove it
 with seeded data **before any app depends on this server**, and gate on restored *content*
-— never on exit codes or "Completed" statuses (the same lesson the velero drill in the
+— never on exit codes or "Completed" statuses (the same lesson the Velero drill in the
 [storage architecture](../concepts/storage.md#the-local-path-tier) taught).
 
 ```bash
@@ -316,7 +316,7 @@ Repeat the restore half of this drill monthly against a real app database (resto
 scratch database, sanity-check row counts, drop it).
 
 !!! note "Dump filenames and the NAS clock"
-    `date +%F` in the script uses NAS-local time, which may be a day ahead of UTC — don't
+    `date +%F` in the script uses NAS-local time, which can be a day ahead of UTC — don't
     be surprised when the filename's date doesn't match a UTC `docker logs` timestamp.
 
 ## What about MariaDB?

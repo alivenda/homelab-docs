@@ -1,4 +1,4 @@
-# Homelab Runbooks
+# Homelab runbooks
 
 **Turing Pi 2 Edition — From zero to self-hosted everything**
 
@@ -12,7 +12,7 @@ Build a 4-node k3s cluster on a Turing Pi 2, learn DevOps practices that transfe
 | Network | Ubiquiti UDM rackmount — VLANs, firewall, DHCP |
 | NAS | UGREEN DXP6800 Pro (x86, 8 GB DDR5) — bulk media and Immich |
 | Home Assistant host | slate — repurposed Late-2014 Mac mini (16 GB RAM, 256 GB SSD), Proxmox host running Home Assistant OS in a VM (2 vCPU, 4 GB) |
-| DNS | 1× Raspberry Pi for AdGuard Home (pyrite — this build: Pi 3 Model B; add a 2nd for optional failover) |
+| DNS | 1× Raspberry Pi for AdGuard Home (pyrite — this build: Pi 3 Model B; add a second for optional failover) |
 | Domain | Cloudflare-registered domain (~$10/yr) |
 
 You can substitute hardware, but commands are written against this exact build. Full parts list (PSU, SSD, UPS, and the rest) is in [Prerequisites](get-started/prerequisites.md).
@@ -127,7 +127,7 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
 - The most common ordering confusion: Tailscale (the Network page needs ruby from Turing Pi) and ArgoCD (the Kubernetes page needs a port-forward before Traefik is up). Both are flagged where they appear.
 
 !!! tip "Bookmark this page"
-    When you hit a "when am I supposed to do X" moment three weeks in, the dependency map answers it.
+    When you need to find the build order three weeks in, the dependency map answers it.
 
 ## Version
 

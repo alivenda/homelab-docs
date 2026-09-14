@@ -12,14 +12,18 @@ Continuous peer-to-peer file synchronisation between devices — no cloud relay 
 | **Runs on** | Per-device install (not k3s) |
 | **Depends on** | Networking (static IPs on your LAN) |
 
+<!-- vale Vale.Terms = NO -->
 Syncthing ([syncthing.net](https://syncthing.net)) synchronises folders between devices directly — no central server is required. Each device runs its own Syncthing instance; devices pair with each other using device IDs, and sync happens over your LAN or through Syncthing's global relay network when devices are remote. ARM64 ✅ (native binary and Docker image available). See the [Syncthing documentation](https://docs.syncthing.net) for full reference.
+<!-- vale Vale.Terms = YES -->
 
 **Deployment model:** Syncthing is **not** deployed on k3s. Each device that participates in sync runs its own instance. This runbook covers: your main machine, the NAS, and any other devices you want to include.
 
 !!! note "Why not on k3s?"
     Syncthing in a cluster pod adds latency and complexity without benefit — pods are ephemeral and don't have stable identities. Run Syncthing natively on the machines whose filesystems you want to sync.
 
+<!-- vale Vale.Terms = NO -->
 ## Install Syncthing on each device { #step-1-install-syncthing-on-each-device }
+<!-- vale Vale.Terms = YES -->
 
 ### Your main machine (CachyOS)
 
@@ -37,7 +41,9 @@ systemctl --user enable --now syncthing
 
 The web UI is available at `http://localhost:8384`.
 
+<!-- vale Homelab.Headings = NO -->
 ### NAS (UGREEN DXP6800 Pro)
+<!-- vale Homelab.Headings = YES -->
 
 Run Syncthing as a Docker container on the NAS:
 

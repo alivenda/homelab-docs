@@ -4,6 +4,8 @@ Architecture and tooling decisions for the homelab, recorded so the reasoning
 survives the commit that implemented it. Each record states the context, the
 decision, and what follows from it.
 
+<!-- vale Vale.Terms = NO -->
+
 | Decision | Date | Status |
 |---|---|---|
 | [Forgejo over GitHub](forgejo-over-github.md) | 2025-12 | Active |
@@ -18,3 +20,5 @@ decision, and what follows from it.
 | [Arr stack shelved](arr-stack-shelved.md) | 2026-06 | Active |
 | [mkdocs-redirects dropped](mkdocs-redirects-dropped.md) | 2026-07 | Active |
 | [Stack gap analysis](stack-gap-analysis.md) | 2026-05 | Active |
+
+<!-- vale Vale.Terms = YES -->

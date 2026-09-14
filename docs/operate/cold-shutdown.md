@@ -8,16 +8,16 @@ Powering down the **entire stack** — cluster, NAS, Home Assistant host, networ
 | **Time estimate** | 1–2 hours down, 1–2 hours up (plus however long it stays dark) |
 | **Runs on** | Everything |
 
-An overnight power-down is [Turing Pi's planned shutdown and startup](../build/turing-pi.md#shutdown); longer than that and the secondary effects start to bite — backup jobs silently miss their windows, RTC-less boards drift, and the Sealed Secrets key can cross its rotation boundary while the controller is off. Turing Pi owns the cluster-internal ordering (etcd snapshot, NFS clients before the NFS server); this page is the layer above it: final data captures while everything is still running, the cross-device ordering, transporting the hardware if it's moving, and a cold-start sequence plus verification checklist for the day it all comes back.
+An overnight power-down is [Turing Pi's planned shutdown and startup](../build/turing-pi.md#shutdown); longer than that and the secondary effects start to bite — backup jobs silently miss their windows, RTC-less boards drift, and the Sealed Secrets key can cross its rotation boundary while the controller is off. Turing Pi owns the cluster-internal ordering (etcd snapshot, NFS clients before the NFS server); this page is the layer preceding it: final data captures while everything is still running, the cross-device ordering, transporting the hardware if it's moving, and a cold-start sequence plus verification checklist for the day it all comes back.
 
 ## Before you power anything down
 
 ### Make sure you can log in without the homelab
 
-Vaultwarden runs *inside* the cluster, so it is offline for the entire outage. Anything you might need between power-off and full recovery must live in the externally-hosted password manager (see [Backups's keystone warning](../build/backups.md#secrets-and-key-material-recovery)) — not only in Vaultwarden:
+Vaultwarden runs *inside* the cluster, so it is offline for the entire outage. Anything you might need between power-off and full recovery must live in the externally hosted password manager (see [Backups's keystone warning](../build/backups.md#secrets-and-key-material-recovery)) — not only in Vaultwarden:
 
 - ISP account credentials — especially if you're moving, since you'll be setting up the new WAN before anything self-hosted exists
-- Router/controller admin login, BMC root, NAS admin, Proxmox root
+- Router/controller administrator login, BMC root, NAS administrator, Proxmox root
 - Tailscale account (handy for verifying remote access once back up)
 
 Forgejo is also in the cluster — while it's down, your repos are reachable read-only through their GitHub mirrors.
@@ -100,7 +100,7 @@ Writers stop before the things they write to. Network gear goes last because eve
 
 1. **Home Assistant, then its host** — shut the HAOS VM down cleanly (HA: Settings → System → Hardware → Shutdown, or from the Proxmox UI), then shut down the Proxmox host itself.
 2. **The cluster** — follow [Turing Pi's shutdown](../build/turing-pi.md#shutdown) exactly: amethyst, emerald, ruby; *confirm all three have halted*; then topaz (the NFS server) last.
-3. **The NAS** — only after the cluster is fully down (the etcd S3 upload and the sync jobs above are its last writers). Use the NAS UI's shutdown, or `sudo poweroff` over SSH.
+3. **The NAS** — only after the cluster is fully down (the etcd S3 upload and the sync jobs preceding are its last writers). Use the NAS UI's shutdown, or `sudo poweroff` over SSH.
 4. **Network gear** — gateway, switch, APs. Their configuration persists on-device.
 5. **UPS** — power it off; if it's being transported or stored long-term, disconnect the battery (tape exposed terminals). A jostled lead-acid battery shorting against a chassis is the one genuinely dangerous item in the load.
 
@@ -112,7 +112,7 @@ Skip this section if the hardware stays racked where it is.
 - The CM4s (eMMC), BMC microSD, and SATA SSD are solid-state — no special handling beyond normal padding. Check the BMC's microSD is seated before packing.
 - **The NAS's spinning drives are the most shock-sensitive cargo.** Keep the unit upright and well padded. If the drive bays don't lock firmly, pull the drives, pack each padded and **labeled with its bay number**, and reinsert in the same order at the destination.
 - For longer-term storage, keep the gear somewhere dry and temperature-stable — drives tolerate cold storage far better than humidity swings.
-- The external drive from the bucket export above lives separately from the NAS, wherever the NAS ends up.
+- The external drive from the bucket export preceding lives separately from the NAS, wherever the NAS ends up.
 
 ## Cold start
 
@@ -135,14 +135,14 @@ Reverse dependency order: network → NAS → Home Assistant host → cluster.
 
 4. **The cluster** — follow [Turing Pi's startup](../build/turing-pi.md#startup): topaz first (NFS), then ruby (wait for `Ready`), then emerald and amethyst. ArgoCD reconciles the workloads on its own; give it a few minutes before touching anything.
 
-    !!! tip "UFW may come back half-loaded"
+    !!! tip "UFW can come back half-loaded"
         If `sudo ufw status` on a node fails with *"problem running ip6tables"*, the firewall is in a half-loaded state (empty IPv6 chains). Don't reboot or retry — reset it:
 
         ```bash
         sudo ufw --force disable && sudo ufw enable
         ```
 
-    !!! note "Sealed Secrets may rotate its key at startup"
+    !!! note "Sealed Secrets can rotate its key at startup"
         The controller mints a new sealing key when the active one is **older than 30 days**, evaluated while running — so after a long downtime, expect a new key `Secret` moments after the controller starts. This is normal. The daily key-backup CronJob ships it to Garage within a day; verify it below.
 
 ## Post-restart verification
@@ -154,8 +154,8 @@ Reverse dependency order: network → NAS → Home Assistant host → cluster.
     ```
 
 - [ ] Clocks synced on every node: `chronyc tracking` offset in the millisecond range.
-- [ ] `sudo ufw status` → `active` on all four nodes (see the half-load tip above).
-- [ ] ArgoCD: every Application `Synced`/`Healthy`.
+- [ ] `sudo ufw status` → `active` on all four nodes (see the half-load tip preceding).
+- [ ] ArgoCD: every App `Synced`/`Healthy`.
 - [ ] Public endpoints reachable end-to-end: the blackbox `public-endpoints` Probe drives the `PublicEndpointDown` alert (fires to ntfy if any of the six public HTTPS hosts stay down for 5m), so a quiet inbox already means they're up. To spot-check directly, curl each — every one returns `200`:
 
     ```bash

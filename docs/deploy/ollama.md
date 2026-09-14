@@ -19,7 +19,9 @@ Local LLM inference on the NAS with a browser chat interface.
 
 [Ollama](https://ollama.com) serves local language models through an OpenAI-compatible API. [Open WebUI](https://openwebui.com) provides a chat interface similar to ChatGPT that connects to Ollama. ARM64 note: this runbook targets the x86 NAS. See the [Ollama Docker docs](https://github.com/ollama/ollama) and [Open WebUI docs](https://docs.openwebui.com) for full reference.
 
+<!-- vale Vale.Terms = NO -->
 ## Docker Compose on NAS { #step-1-docker-compose-on-nas }
+<!-- vale Vale.Terms = YES -->
 
 Create a `docker-compose.yml` on the NAS (through the UGREEN NAS Manager Docker interface or SSH):
 
@@ -63,7 +65,9 @@ volumes:
   open-webui-data:
 ```
 
+<!-- vale Vale.Terms = NO -->
 ## Register the OIDC client in Authelia { #step-2-register-the-oidc-client-in-authelia }
+<!-- vale Vale.Terms = YES -->
 
 In `homelab-manifests/apps/authelia/values.yaml`, add under `configMap.identity_providers.oidc.clients`:
 
@@ -115,7 +119,9 @@ ports:
   - port: 3000
 ```
 
-## Expose through Traefik (HTTPRoute) { #step-4-expose-via-traefik-httproute }
+<!-- vale Vale.Terms = NO -->
+## Expose through Traefik (HTTPRoute) { #step-4-expose-through-traefik-httproute }
+<!-- vale Vale.Terms = YES -->
 
 Attach an `HTTPRoute` to the shared Gateway; TLS is handled by the Gateway's wildcard cert (see [Deploying an App](index.md)). Add it to the same `open-webui.yaml`:
 
@@ -153,11 +159,11 @@ docker exec ollama ollama pull gemma2:9b
 docker exec ollama ollama pull qwen2.5-coder:7b
 ```
 
-Find all available models at [ollama.com/library](https://ollama.com/library). Check the model page for RAM requirements — a 7B model needs roughly 5 GB of RAM.
+Find all available models at [Ollama.com/library](https://ollama.com/library). Check the model page for RAM requirements — a 7B model needs roughly 5 GB of RAM.
 
 ## First login { #step-6-first-login }
 
-Open `https://ai.yourdomain.com`. Click **Continue with Authelia** to log in. The first user to log in becomes admin.
+Open `https://ai.yourdomain.com`. Click **Continue with Authelia** to log in. The first user to log in becomes administrator.
 
 Select a model from the dropdown at the top of the chat interface and start a conversation.
 
