@@ -174,7 +174,7 @@ mDNS reflection is a single gateway-level setting, not per-network. UniFi → **
 
 VLAN networks are inert until devices are attached. Two paths: Wi-Fi (SSID-to-VLAN binding) and wired (switch port profile).
 
-### Create Wi-Fi SSIDs { #step-2a-create-Wi-Fi-ssids }
+### Create Wi-Fi SSIDs { #step-2a-create-wifi-ssids }
 
 UniFi Network → **Wi-Fi → Create New SSID** for each row in the SSID mapping table:
 
