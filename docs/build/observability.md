@@ -617,8 +617,16 @@ spec:
 
 !!! warning "Start the exporter before merging the ScrapeConfig"
     If Prometheus gets the target before node-exporter is running, the scrape fails and
-    kube-prometheus-stack's `TargetDown` fires. Bring the container up first, confirm
-    `curl http://10.0.20.50:9100/metrics` returns, then merge.
+    kube-prometheus-stack's `TargetDown` fires. Bring the container up first. Then, on the
+    NAS itself, confirm that the exporter reports the data pool:
+
+    ```bash
+    curl -s http://127.0.0.1:9100/metrics | grep 'mountpoint="/volume1"'
+    ```
+
+    Merge after the output lists `node_filesystem_*` series for `/volume1`. Run the check on
+    the NAS: from the Trusted VLAN, port 9100 times out even when the exporter works.
+    Prometheus scrapes from the Lab VLAN, so that timeout doesn't affect the target.
 
 Two capacity alerts read this job, both keyed to the data pool
 (`mountpoint="/volume1"`) so the small UGOS system partitions and the `/home` bind of
