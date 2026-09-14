@@ -16,13 +16,13 @@ The runbook commands assume this exact hardware. You can substitute (an x86 mini
 | Component | Spec | Notes |
 |---|---|---|
 | Turing Pi 2 cluster board | mini-ITX | |
-| 4× Raspberry Pi CM4 modules | 8 GB RAM + WiFi each — 2× 32 GB eMMC (ruby / Node 1, topaz / Node 3), 2× 16 GB eMMC (emerald / Node 2, amethyst / Node 4) | |
+| 4× Raspberry Pi CM4 modules | 8 GB RAM + Wi-Fi each — 2× 32 GB eMMC (ruby / Node 1, topaz / Node 3), 2× 16 GB eMMC (emerald / Node 2, amethyst / Node 4) | |
 | SATA III SSD | any size 250 GB+ | Cluster NFS storage — connects to topaz (Node 3) |
 | PicoPSU (24-pin) | 120 W | The cluster draws 30–60 W under load. 120 W leaves headroom while staying small and silent. A standard ATX PSU works too, but runs inefficiently at this low draw. |
 | Ubiquiti UDM-Pro or UDM-SE | — | VLANs, firewall, DHCP |
 | UGREEN DXP6800 Pro NAS | or any NAS that runs Docker | Bulk media + Immich + offsite-friendly bulk storage |
 | Dedicated Home Assistant OS host | this build uses **slate**, a repurposed Late-2014 Mac mini (16 GB RAM, 256 GB SSD) running Proxmox, with HAOS as a VM (2 vCPU, 4 GB RAM) | Kept off the cluster so the smart-home hub survives cluster reboots and upgrades. 4 GB for the VM matches HA's reference spec; only raise it for Frigate NVR or long-retention history. A Raspberry Pi 5 (4 GB) running HAOS bare-metal is an equally good dedicated host. |
-| Raspberry Pi for AdGuard Home DNS | pyrite; this build uses a Pi 3 Model B — add a 2nd for optional failover | Run natively rather than on k3s so DNS stays up independently of the cluster |
+| Raspberry Pi for AdGuard Home DNS | pyrite; this build uses a Pi 3 Model B — add a second for optional failover | Run natively rather than on k3s so DNS stays up independently of the cluster |
 | Domain name | registered through Cloudflare, ~$10/yr for `.com` / `.net` / etc. | |
 | UPS (optional) | | Recommended once you start storing real data on the cluster — [sizing in Turing Pi](../build/turing-pi.md#power-ups-nut-for-graceful-shutdown) |
 
@@ -42,13 +42,13 @@ Create these before starting [Set up Git](set-up-git.md). All free tiers are suf
 
 Every workload lives in a namespace. Set conventions now so you can `grep` your cluster meaningfully a year in:
 
-- **System-level (cluster-wide infrastructure):** namespace ends in `-system`. Examples: `metallb-system`, `traefik`, `argocd`, `sealed-secrets`, `monitoring`. Don't host application workloads in these.
+- **System-level (cluster-wide infrastructure):** namespace ends in `-system`. Examples: `metallb-system`, `traefik`, `argocd`, `sealed-secrets`, `monitoring`. Don't host app workloads in these.
 - **One namespace per user-facing app:** `forgejo`, `vaultwarden`, `nextcloud`, `paperless`, `woodpecker`. Don't use `default` for anything you need to clean up later.
 - **All resources for an app** (Deployment, Service, PVC, SealedSecret, HTTPRoute) live in the app's namespace. RBAC and NetworkPolicies operate at namespace granularity, so colocation is what makes those tools effective.
-- **ArgoCD Application objects themselves live in `argocd`.** Each Application points at a manifests path that targets the destination namespace.
+- **ArgoCD App objects themselves live in `argocd`.** Each App points at a manifests path that targets the destination namespace.
 
 !!! tip "Prune stale namespaces"
-    Run `kubectl get ns` periodically and prune anything you don't recognize. A messy namespace list is a sign of sloppy GitOps — every namespace must map to either a system component or an Application in `homelab-manifests/`.
+    Run `kubectl get ns` periodically and prune anything you don't recognize. A messy namespace list is a sign of sloppy GitOps — every namespace must map to either a system component or an App in `homelab-manifests/`.
 
 ## Reality of ARM64 homelabs { #reality-of-arm64-homelabs }
 
@@ -58,7 +58,7 @@ Friction takes these shapes:
 
 - Some Helm charts hardcode amd64 in initContainer images or sidecar versions. Check the `values.yaml` file for `image.tag` fields you can override before assuming a chart works.
 - CI plugin ecosystems (Drone, Woodpecker) lag on multiarch. Plugins that work on your machine might not have arm64 builds. When in doubt, run the build natively inside the runner instead of through a plugin.
-- Vendor images (database GUIs, observability sidecars, niche connectors) are the most common amd64-only offenders. Self-host the open-source equivalent if you hit one.
+- Vendor images (database GUIs, observability sidecars, niche connectors) are the most common amd64-only offenders. Self-host the open source equivalent if you hit one.
 - Multiarch tags are inconsistent. `:latest` might be multiarch while `:1.2.3` is amd64-only, or vice versa. Pin a tag, then verify with `docker manifest inspect <image>:<tag>`.
 
 **Debugging strategy** when a pod refuses to start: check events with `kubectl describe pod`, then run `docker manifest inspect` on the image. If the manifest lists only `linux/amd64`, you have three options — find a community arm64 build, build it yourself from source, or pin that service to a NAS-Docker host that runs amd64.

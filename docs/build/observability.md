@@ -23,12 +23,14 @@ alerts   Prometheus rules ──> Alertmanager ──webhook──> ntfy ──>
 
 - **`kube-prometheus-stack`** (Prometheus + Alertmanager + Grafana + the Prometheus
   Operator and its CRDs) from `prometheus-community/helm-charts`, plus a sibling
-  raw-manifests Application for the sealed secrets, HTTPRoute, and alert rules.
+  raw-manifests App for the sealed secrets, HTTPRoute, and alert rules.
 - **`loki`** — the log store, from `grafana-community/helm-charts`.
 - **`alloy`** — the log collector, from `grafana/helm-charts`.
 
 !!! warning "The Grafana chart repos split — check you're pulling from the right one"
-    grafana.github.io/helm-charts is winding down: the **loki** chart is frozen
+<!-- vale Google.Spacing = NO -->
+<!-- vale Vale.Terms = NO -->
+    grafana.github.io/helm-charts is winding down: the **Loki** chart is frozen
     there (at 7.0.0) and its maintained lineage moved to
     [grafana-community.github.io/helm-charts](https://github.com/grafana-community/helm-charts)
     (same chart, renumbered at 17.x). **Promtail is EOL since March 2026** — do not
@@ -36,11 +38,13 @@ alerts   Prometheus rules ──> Alertmanager ──webhook──> ntfy ──>
     successor as the log collector. Alloy itself, being an active Grafana product,
     **stayed** in grafana.github.io/helm-charts. Three components, two repos —
     check which one you're pulling from.
+<!-- vale Vale.Terms = YES -->
+<!-- vale Google.Spacing = YES -->
 
 ## Before you start: fix node clock sync
 
 DietPi's default time sync is a **oneshot** systemd-timesyncd run, so the kernel's
-"clock synchronised" flag is unset almost all the time and the CM4s (which have no
+"clock synchronized" flag is unset almost all the time and the CM4s (which have no
 RTC) free-run between pokes. Prometheus notices: the stack's default
 `NodeClockNotSynchronising` alert fires on **every node, permanently**. The fix is a
 real NTP daemon, codified in `homelab-ansible` (`site.yml`, `--tags time`): set
@@ -49,7 +53,11 @@ running your own daemon) and install `chrony` — apt removes systemd-timesyncd 
 same transaction, so no second daemon fights over the clock. Run that play before
 deploying the stack and the alert never fires.
 
+<!-- vale Homelab.Headings = NO -->
+<!-- vale Vale.Terms = NO -->
 ## kube-prometheus-stack { #step-1-kube-prometheus-stack }
+<!-- vale Vale.Terms = YES -->
+<!-- vale Homelab.Headings = YES -->
 
 ### The applications
 
@@ -83,14 +91,14 @@ spec:
 
 Two settings here are load-bearing:
 
-- **`prune: false`** — pruning would drop the Prometheus Operator CRDs
+- **`prune: false`** — pruning drops the Prometheus Operator CRDs
   (ServiceMonitor, PodMonitor, PrometheusRule, …) and silently break every scrape
   config that depends on them. Bump the chart deliberately.
 - **`ServerSideApply=true`** — the stack's CRDs are too large for the
   client-side-apply annotation; without SSA the sync fails outright.
 
-The second Application (`kube-prometheus-stack-manifests`) points at
-`infrastructure/kube-prometheus-stack/manifests/` — the sealed Grafana admin
+The second App (`kube-prometheus-stack-manifests`) points at
+`infrastructure/kube-prometheus-stack/manifests/` — the sealed Grafana administrator
 secret, the Grafana HTTPRoute, the alert rules and the sealed ntfy token from
 [Alerting → ntfy](#step-4-alerting-ntfy). Give it `CreateNamespace=true` too: the SealedSecret carries
 `namespace: monitoring`, so without it the manifests app fails until the chart app
@@ -122,7 +130,7 @@ store (`grafana.db`) is **SQLite**, which `nfs-storage` corrupts (see
 [Storage & Data Architecture](../concepts/storage.md)) — but rather than move the
 PVC to `local-path`, keep no state at all: dashboards and datasources are
 provisioned by the chart and its sidecar, alerting lives in
-PrometheusRule + Alertmanager, and login comes from the sealed admin secret.
+PrometheusRule + Alertmanager, and login comes from the sealed administrator secret.
 Nothing in Grafana is worth backing up; a rebuilt pod re-provisions everything from
 git. The one consequence: **dashboards built in the UI are a scratchpad** — export
 the JSON and commit it, or it's gone on the next pod restart.
@@ -132,9 +140,9 @@ and the OIDC callback — wrong or unset breaks login flows through Traefik.
 
 The Loki datasource is added by hand because Loki is a separate chart; Prometheus
 and Alertmanager datasources are provisioned automatically. It points at the
-service port directly — Loki's nginx gateway is disabled ([Loki](#step-2-loki)).
+service port directly — Loki's nginx gateway is turned off ([Loki](#step-2-loki)).
 
-Seal the admin login ([Encrypt your first secret](kubernetes.md#step-13-encrypt-your-first-secret)):
+Seal the administrator login ([Encrypt your first secret](kubernetes.md#step-13-encrypt-your-first-secret)):
 
 ```bash
 GRAFANA_ADMIN_PW=$(openssl rand -base64 24)
@@ -215,17 +223,19 @@ k3s runs the control-plane components (and etcd) **inside the single k3s process
 — the standalone pods these scrape jobs select never exist on this cluster. The
 chart gates each component's default alert rules on the same flag, so this also
 removes `KubeControllerManagerDown` / `KubeSchedulerDown` / `KubeProxyDown` —
-which would otherwise be permanent false positives. Node, kubelet, and apiserver
+which are otherwise permanent false positives. Node, kubelet, and apiserver
 scraping are separate components and stay on.
 
 ## Loki { #step-2-loki }
 
-One Application (`bootstrap/loki.yaml`), chart `loki` from
-**`grafana-community.github.io/helm-charts`** (see the repo-split warning above),
+One App (`bootstrap/loki.yaml`), chart `loki` from
+**`grafana-community.github.io/helm-charts`** (see the repo-split warning preceding),
 same namespace as the stack so Grafana reaches it without cross-namespace DNS.
-`prune: false` again — pruning would drop the StatefulSet mid-flight.
+`prune: false` again — pruning drops the StatefulSet mid-flight.
 
+<!-- vale Vale.Terms = NO -->
 ??? example "infrastructure/loki/values.yaml"
+<!-- vale Vale.Terms = YES -->
 
     ```yaml
     deploymentMode: Monolithic   # the chart's current name for SingleBinary
@@ -285,7 +295,7 @@ The decisions, briefly:
 - **Monolithic mode** is the right shape for a homelab: one pod, one PVC, no object
   store. A few hundred MB of logs a day does not need microservices.
 - **Retention must be explicit.** Loki keeps logs *forever* by default — without
-  the compactor block the PVC just fills. The compactor runs inside the single
+  the compactor block the PVC fills. The compactor runs inside the single
   binary and enforces the 14-day window.
 - **Same storage treatment as Prometheus:** Loki's TSDB index + WAL have the same
   non-POSIX trouble on NFS, so `local-path` + the topaz pin. Logs are
@@ -296,12 +306,14 @@ The decisions, briefly:
 
 ## Alloy — the log collector { #step-3-alloy-the-log-collector }
 
-One Application (`bootstrap/alloy.yaml`), chart `alloy` from
-**grafana.github.io/helm-charts** (it stayed put), `prune: false` so a sync never
+One App (`bootstrap/alloy.yaml`), chart `alloy` from
+`grafana.github.io/helm-charts` (it stayed put), `prune: false` so a sync never
 rolls the DaemonSet across every node at once. Alloy tails `/var/log/pods` on each
 node and pushes to Loki:
 
+<!-- vale Vale.Terms = NO -->
 ??? example "infrastructure/alloy/values.yaml"
+<!-- vale Vale.Terms = YES -->
 
     ```yaml
     alloy:
@@ -400,8 +412,8 @@ What's deliberate here:
 - **`stage.cri`** strips the `timestamp stream flags` wrapper containerd puts on
   every line.
 - **Positions on a hostPath:** Alloy records how far it has read under
-  `storagePath`. The chart default is an emptyDir — every pod restart would
-  re-ingest every log file from the beginning. The `/var/lib/alloy` hostPath keeps
+  `storagePath`. The chart default is an emptyDir — every pod restart
+  re-imports every log file from the beginning. The `/var/lib/alloy` hostPath keeps
   positions across restarts (the same trick the old promtail chart used with
   `/run/promtail`).
 
@@ -409,9 +421,9 @@ What's deliberate here:
 
 !!! note "Come back to this step after ntfy"
     Alertmanager publishes to the ntfy server, which doesn't exist until ntfy. The
-    stack runs fine without it — alerts just have nowhere to go yet.
+    stack runs fine without it — alerts have nowhere to go yet.
 
-Alertmanager is configured in the same kube-prometheus-stack `values.yaml`. The
+Alertmanager is configured in the same `kube-prometheus-stack` `values.yaml`. The
 routing: everything lands on ntfy (topic `alerts`) except the `Watchdog`
 heartbeat, which is *meant* to fire forever and goes to a null receiver.
 
@@ -483,8 +495,8 @@ The details that matter:
 
 The chart's default rules already cover node down, PVC pressure, crash loops, and
 scrape-target down. What they *can't* know about is your backup jobs and
-certificates — a `PrometheusRule` in the manifests Application fills the gap
-(deploy it after Backups, which provides the velero metrics):
+certificates — a `PrometheusRule` in the manifests App fills the gap
+(deploy it after Backups, which provides the Velero metrics):
 
 ??? example "manifests/alert-rules.yaml (abridged)"
 
@@ -527,7 +539,7 @@ certificates — a `PrometheusRule` in the manifests Application fills the gap
     ```
 
 !!! warning "Rules without the release label silently never load"
-    kube-prometheus-stack's default `ruleSelector` only loads PrometheusRules
+    `kube-prometheus-stack`'s default `ruleSelector` only loads PrometheusRules
     carrying its Helm release label (`ruleSelectorNilUsesHelmValues`) — the same
     gotcha as ServiceMonitors. Omit `release: kube-prometheus-stack` and the rule
     applies cleanly, shows up in `kubectl get prometheusrules`, and is never
@@ -536,21 +548,21 @@ certificates — a `PrometheusRule` in the manifests Application fills the gap
 ### Black-box probes (blackbox-exporter)
 
 Prometheus only scrapes `/metrics` — it can't dial an arbitrary TCP port or exercise a
-public URL end-to-end. A small **blackbox-exporter** Application
+public URL end-to-end. A small **blackbox-exporter** App
 (`infrastructure/blackbox-exporter`, raw manifests) fills both gaps with declarative
 `Probe` CRDs feeding the same rule → Alertmanager → ntfy pipeline:
 
 - **NAS Postgres reachability** — a bare TCP connect to the shared database server
   every 30s. Five apps share that server, so `NasPostgresDown` (critical) turns
-  "everything just broke" into one root-cause alert. The probe never authenticates —
-  no DB credentials touch the monitoring path.
+  "everything broke" into one root-cause alert. The probe never authenticates —
+  no DB credentials reach the monitoring path.
 - **Public endpoints** — an HTTPS GET of the published `*.yourdomain.com` URLs every
   60s, exercising the full external path (DNS → Traefik → TLS → Authelia → app).
   `PublicEndpointDown` and `PublicEndpointCertExpiringSoon` (both warning) catch broken
   routes and the served wildcard cert nearing expiry. These probes replaced Uptime Kuma
   — see the [App Catalog retirement note](../reference/app-catalog.md#uptime-kuma).
 
-Like the custom rules above, `Probe` objects are only selected if they carry the
+Like the custom rules preceding, `Probe` objects are only selected if they carry the
 `release: kube-prometheus-stack` label.
 
 ### NAS host metrics (node-exporter off-cluster)
@@ -558,15 +570,16 @@ Like the custom rules above, `Probe` objects are only selected if they carry the
 `node-exporter` ships as a DaemonSet, so it covers the k3s nodes and **nothing else**.
 The NAS is not in the cluster, which left the single most consequential disk in the
 estate unmonitored: it holds the S3 bucket every Velero backup and etcd snapshot is
-written to, the shared Postgres tier, and the photo library. Nothing could alert on it
+written to, the shared Postgres tier, and the photo library. No rule caught it
 filling up.
 
 The blackbox `NasPostgresDown` probe does not close this gap — it answers "is the port
-reachable", not "is the disk about to fill". Those are different failures, and only one
+reachable," not "is the disk about to fill." Those are different failures, and only one
 of them gives you warning.
 
 Run node-exporter on the NAS itself as a container, alongside the other NAS stacks:
 
+<!-- vale Vale.Terms = NO -->
 ```yaml
 # /volume1/docker/node-exporter/docker-compose.yml
 services:
@@ -592,6 +605,7 @@ services:
         max-size: "10m"
         max-file: "3"
 ```
+<!-- vale Vale.Terms = YES -->
 
 Then point Prometheus at it. An off-cluster host has no Service or Pod to discover, so
 `ServiceMonitor`/`PodMonitor` cannot express this — the operator's `ScrapeConfig` CRD is
@@ -617,7 +631,7 @@ spec:
 
 !!! warning "Start the exporter before merging the ScrapeConfig"
     If Prometheus gets the target before node-exporter is running, the scrape fails and
-    kube-prometheus-stack's `TargetDown` fires. Bring the container up first, confirm
+    `kube-prometheus-stack`'s `TargetDown` fires. Bring the container up first, confirm
     `curl http://10.0.20.50:9100/metrics` returns, then merge.
 
 Two capacity alerts read this job, both keyed to the data pool
@@ -626,14 +640,14 @@ the same device don't double-fire: `NasVolumeFillingUp` (warning, >85% for 1h) a
 `NasVolumeAlmostFull` (critical, >95% for 15m).
 
 There is deliberately **no** "NAS unreachable" alert. `NasPostgresDown` and the stock
-`TargetDown` both already fire on that event — a third rule would page twice for one
+`TargetDown` both already fire on that event — a third rule pages twice for one
 outage.
 
 ## DNS + HTTPRoute { #step-5-dns-httproute }
 
 1. Add `grafana` to the service list in the Cloudflare [Terraform](terraform.md) module
    and apply — one A record per service, no wildcard.
-2. HTTPRoute in the manifests Application, same shape as every other service:
+2. HTTPRoute in the manifests App, same shape as every other service:
 
 ```yaml
 # manifests/httproute.yaml
@@ -679,6 +693,7 @@ next pod restart.
 
 ## Verification
 
+<!-- vale Vale.Terms = NO -->
 - [ ] All pods Running:
 
     ```bash
@@ -687,6 +702,7 @@ next pod restart.
     # kube-state-metrics, node-exporter ×4, loki-0, alloy ×4,
     # blackbox-exporter — all Running
     ```
+<!-- vale Vale.Terms = YES -->
 
 - [ ] Grafana reachable at `https://grafana.yourdomain.com`; login `admin` /
   password from the SealedSecret.

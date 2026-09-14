@@ -32,14 +32,14 @@ config, background jobs, and OIDC.
 | Cache + file locking | ephemeral Valkey pod | Not a system of record — no PVC, nothing to back up |
 
 !!! danger "Leave the chart's bundled databases off"
-    The [nextcloud/helm](https://github.com/nextcloud/helm) chart ships `postgresql`,
+    The [`nextcloud/helm`](https://github.com/nextcloud/helm) chart ships `postgresql`,
     `mariadb`, and `redis` Bitnami subcharts, and its default is an **internal SQLite
     database** (`internalDatabase.enabled: true`) — on an NFS PVC, that's the
-    [SQLite-on-NFS corruption pattern](../concepts/storage.md#why-this-isnt-just-use-the-default-storageclass).
+    [SQLite-on-NFS corruption pattern](../concepts/storage.md#why-this-isnt-use-the-default-storageclass).
     The subcharts now also pull from `bitnamilegacy/*` — the frozen, unmaintained image
     catalog Bitnami left behind in 2025 (the chart even sets
     `global.security.allowInsecureImages: true` to permit them). The values file
-    disables all of them: `internalDatabase.enabled: false`, external DB and external
+    disables all of them: `internalDatabase.enabled: false`, external DB, and external
     Redis only.
 
 ## Provision the database on the NAS { #step-1-provision-the-database-on-the-nas }
@@ -61,9 +61,9 @@ The nightly backup needs **no** configuration: the dump script enumerates
 after the next 04:30 run. Checking that it actually did is part of
 [verification](#verification).
 
-## One SealedSecret for admin + DB credentials { #step-2-one-sealedsecret-for-admin-db-credentials }
+## One SealedSecret for administrator + DB credentials { #step-2-one-sealedsecret-for-admin-db-credentials }
 
-The chart reads the admin bootstrap credentials and the DB credentials from existing
+The chart reads the administrator bootstrap credentials and the DB credentials from existing
 Secrets — both point at one `SealedSecret`, with key names matching the chart defaults:
 
 ```bash
@@ -80,8 +80,8 @@ kubectl create secret generic nextcloud-secrets \
   > apps/nextcloud/manifests/nextcloud-sealed.yaml
 ```
 
-Save both plaintexts to Vaultwarden. The admin credentials are only *consumed* at first
-install — the image's autoconfig creates the admin account and connects the DB from
+Save both plaintexts to Vaultwarden. The administrator credentials are only *consumed* at first
+install — the image's autoconfig creates the administrator account and connects the DB from
 these env vars, so the web setup wizard never appears.
 
 ## Values — the decisions that matter { #step-3-values-the-decisions-that-matter }
@@ -109,14 +109,14 @@ externalDatabase:
 
 **Files** — one PVC on `nfs-storage` holding all of `/var/www/html` (code, config,
 apps, data). The chart can split the data directory onto a second PVC
-(`persistence.nextcloudData`), but both would land on the same class here, so it's one
-volume until there's a reason.
+(`persistence.nextcloudData`), but both land on the same class here, so it's one
+volume until a reason arises.
 
 **Cache + file locking** — a single-container Valkey pod committed to
 `apps/nextcloud/manifests/valkey.yaml` (no PVC, no auth, memory-capped, snapshots off),
 wired in through the chart's `externalRedis` block. This gives Nextcloud distributed
 caching *and* transactional file locking. Don't use the `redis` subchart for this: it's
-`bitnamilegacy` (see above) and provisions durable PVCs for what is, by
+`bitnamilegacy` (see preceding) and provisions durable PVCs for what is, by
 [architecture](../concepts/storage.md#the-four-storage-tiers), ephemeral data.
 
 **Background jobs as a crond sidecar:**
@@ -141,7 +141,7 @@ startupProbe:
 
 !!! warning "First boot does minutes of work — on ARM + NFS, many minutes"
     The first start unpacks the Nextcloud release onto the NFS PVC and runs the
-    installer. The chart's liveness probe (10s delay) will kill and restart the pod
+    installer. The chart's liveness probe (10s delay) stops and restarts the pod
     mid-install without a startup probe, looping forever. This replaces the old
     runbook's "pin to a 32 GB node" advice — the eMMC size never mattered; probe
     patience did.
@@ -208,7 +208,7 @@ spec:
     the no-SSA `-manifests` app like every other app's.
 
 No auth middleware on this route — Nextcloud is an OIDC app ([OIDC login](#step-7-oidc-login-through-authelia)), and ForwardAuth
-would break every sync client ([Authelia](authelia.md)).
+breaks every sync client ([Authelia](authelia.md)).
 
 ## Register the applications and sync { #step-5-register-the-applications-and-sync }
 
@@ -315,7 +315,7 @@ $NC_EXEC su -s /bin/sh -c "php occ user_oidc:provider Authelia \
 ```
 
 The login page now offers **Login with Authelia** alongside the local form. The local
-form stays — it's the admin account's only way in, and the break-glass path if Authelia
+form stays — it's the administrator account's only way in, and the break-glass path if Authelia
 is down (`/login?direct=1` if the OIDC redirect is ever made automatic).
 
 ## Prove the backups { #step-8-prove-the-backups }
@@ -323,7 +323,7 @@ is down (`/login?direct=1` if the OIDC redirect is ever made automatic).
 Two backup paths, two gates — and per the house rule, gate on **bytes and objects**,
 never on `Completed`:
 
-**Files (velero):**
+**Files (Velero):**
 
 ```bash
 velero backup create nextcloud-bytes-check \
@@ -354,9 +354,9 @@ Object count up by one, with a `nextcloud-<date>.dump` of non-trivial size.
 
 - **HSTS** — already handled by the `ResponseHeaderModifier` on the HTTPRoute ([Routing](#step-4-routing));
   if it's still flagged, the route filter isn't applying.
-- **Maintenance window** — heavy daily background jobs default to running whenever, i.e.
+- **Maintenance window** — heavy daily background jobs default to running whenever, that is
   during usage. Pin them to the small hours (the value is the **UTC** start hour of a
-  4-hour window; pick one clear of the 04:00 UTC velero run):
+  4-hour window; pick one clear of the 04:00 UTC Velero run):
 
     ```bash
     kubectl -n nextcloud exec deploy/nextcloud -c nextcloud -- \
@@ -390,14 +390,14 @@ single-instance noise.
 - [ ] `https://nextcloud.yourdomain.com` loads the login page over the wildcard cert — no setup wizard.
 - [ ] **Login with Authelia** round-trips: 2FA at Authelia, lands back in Nextcloud as your lldap user (human-readable username, not a hash).
 - [ ] Desktop client syncs a file; it appears on a second device/web within a minute.
-- [ ] Admin → Basic settings: mode is *Cron*, *Last job execution* under 5 minutes old.
-- [ ] Admin → Overview security check shows no reverse-proxy, `overwriteprotocol`, or HSTS warnings — and the [Settle the security check](#step-9-settle-the-security-check) items are settled.
+- [ ] Administrator → Basic settings: mode is *Cron*, *Last job execution* under 5 minutes old.
+- [ ] Administrator → Overview security check shows no reverse-proxy, `overwriteprotocol`, or HSTS warnings — and the [Settle the security check](#step-9-settle-the-security-check) items are settled.
 - [ ] Velero `PodVolumeBackup` for the Nextcloud volume shows **bytes > 0** ([Prove the backups](#step-8-prove-the-backups)).
 - [ ] `nextcloud-<date>.dump` landed in `postgres-backups` after the nightly run.
-- [ ] Admin password, DB password, and OIDC client secret all in Vaultwarden.
+- [ ] Administrator password, DB password, and OIDC client secret all in Vaultwarden.
 
 !!! tip "Later"
     The chart bundles a serverinfo Prometheus exporter (`metrics.enabled`) and a
     Collabora subchart — both deliberately out of scope here. Collabora gets its own
     [App Catalog entry](../reference/app-catalog.md#collabora-online); wire metrics into
-    kube-prometheus-stack when there's a dashboard to justify the token setup.
+    `kube-prometheus-stack` when there's a dashboard to justify the token setup.

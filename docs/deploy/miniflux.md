@@ -16,7 +16,7 @@ Reader API endpoints for mobile clients, and very low RAM.
 The deployed truth is `homelab-manifests/apps/miniflux/`; this runbook records
 the decisions and the bring-up procedure, not the YAML.
 
-## Why this graduated from the App Catalog
+## Why this graduated from the app catalog
 
 The catalog row for this slot was **FreshRSS** — written while the choice was
 still open ("pick Miniflux if you prefer lightweight and fast"). Deployment
@@ -29,7 +29,7 @@ data directory. That changes the shape twice over:
 - **There is no storage tier at all.** The FreshRSS row said `nfs-storage`,
   2 Gi; Miniflux mounts nothing — no PVC, not even an emptyDir. The pod is
   the cluster's first fully stateless workload, which *inverts* the usual
-  velero gate (see Verification).
+  Velero gate (see Verification).
 
 No first-party Helm chart exists — only third-party repackages, the same
 avoidable dependency ntfy and Homepage reject — so raw manifests. And because
@@ -56,7 +56,7 @@ CREATE DATABASE miniflux OWNER miniflux;
 !!! warning "Use `\password`, not `CREATE ROLE … PASSWORD '…'`"
     An inline password travels through two shells (yours, then `docker exec`)
     before psql ever sees it. During an earlier bring-up that path silently
-    produced a role that rejected the very password just pasted — quoting en
+    produced a role that rejected the very password pasted — quoting en
     route is the prime suspect. `\password` prompts inside psql itself,
     bypassing every shell layer, and confirms by double entry.
 
@@ -78,7 +78,7 @@ Everything non-secret sits inline in the Deployment:
 - `RUN_MIGRATIONS=1` — migrations run at startup against the NAS; the
   startupProbe allows five minutes for the first boot.
 - `CREATE_ADMIN=1` + `ADMIN_USERNAME` (password from the SealedSecret) —
-  idempotent: creates the local admin only if absent. This is the bootstrap
+  idempotent: creates the local administrator only if absent. This is the bootstrap
   and break-glass account; [SSO: OIDC client](#step-4-sso-oidc-client) retires it from daily use.
 - `METRICS_COLLECTOR=1` + `METRICS_ALLOWED_NETWORKS=10.42.0.0/16` —
   Prometheus scrapes `/metrics` on the app listener, gated by source network
@@ -92,7 +92,7 @@ Two gotchas the env-only surface hides:
 
 1. **`DATABASE_URL` accepts the key=value DSN form** — prefer it over the
    URL form: `user=miniflux password=… host=10.0.20.50 port=5433
-   dbname=miniflux sslmode=disable`. A URL-form DSN requires
+   dbname=miniflux sslmode=turn off`. A URL-form DSN requires
    percent-encoding the password, which is exactly the class of silent
    breakage the [Database](#step-1-database-on-the-nas) hex password already side-steps.
 2. **`enableServiceLinks: false` stays on by convention.** Miniflux reads
@@ -110,7 +110,7 @@ One SealedSecret, three keys (exact seal command in the app README):
 |---|---|
 | `DATABASE_URL` | key=value DSN carrying the [Database](#step-1-database-on-the-nas) password |
 | `OAUTH2_CLIENT_SECRET` | OIDC client-secret plaintext (`openssl rand -hex 32`) |
-| `ADMIN_PASSWORD` | local break-glass admin password |
+| `ADMIN_PASSWORD` | local break-glass administrator password |
 
 Plaintexts to your password manager.
 
@@ -147,12 +147,12 @@ lldap names. `OAUTH2_USER_CREATION=1` auto-provisions any Authelia user on
 first OIDC login.
 
 **After** the OIDC round-trip is verified for all users: log in locally as
-the admin, promote your own OIDC-provisioned account to administrator
+the administrator, promote your own OIDC-provisioned account to administrator
 (Settings → Users), then set `DISABLE_LOCAL_AUTH=1` in the Deployment. The
 username/password form disappears and OIDC becomes the only door; the
 break-glass path is flipping the variable back off through Git.
 
-## DNS, routing, application { #step-5-dns-routing-application }
+## DNS, routing, app { #step-5-dns-routing-app }
 
 - `rss` A record through the Terraform Cloudflare module (`var.services`), and
   run `tofu apply` **before the first browser lookup** — the UDM caches an
@@ -172,7 +172,7 @@ break-glass path is flipping the variable back off through Git.
 - [ ] Argo CD: `miniflux` **Synced/Healthy**.
 - [ ] `https://rss.yourdomain.com` loads.
 - [ ] OIDC round-trip for **two different users** — the second proves
-      auto-provisioning, not just your own pre-existing session.
+      auto-provisioning, not your own pre-existing session.
 - [ ] Subscribe to a real feed; entries fetch and render (a live fetch, not
       a spinner).
 - [ ] Pod logs clean — no errors, nothing `forbidden`.
@@ -180,6 +180,6 @@ break-glass path is flipping the variable back off through Git.
 - [ ] Prometheus target up (`/metrics` through the ServiceMonitor).
 - [ ] **Backup gate (database):** a `miniflux-<date>.dump` object in the
       Garage `postgres-backups` bucket after the nightly NAS run.
-- [ ] **Backup gate (inverted):** after the next velero nightly, **zero**
+- [ ] **Backup gate (inverted):** after the next Velero nightly, **zero**
       PVC-backed `PodVolumeBackup` with real bytes in namespace `miniflux`
       — for a stateless pod, a backup showing up means a PVC snuck in.

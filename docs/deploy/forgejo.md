@@ -10,23 +10,27 @@ Self-hosted Git server — the cluster's primary Git host.
 | **URL** | https://git.yourdomain.com — SSH: git@git.yourdomain.com (same IP, see [Routing](#step-4-routing-https-git-over-ssh)) |
 | **Namespace** | `forgejo` |
 | **Chart** | `forgejo` from `code.forgejo.org/forgejo-helm` (OCI), version-pinned |
-| **ArgoCD Applications** | `forgejo` (chart) + `forgejo-manifests` (HTTPRoute, repos PVC, admin SealedSecret) |
+| **ArgoCD Applications** | `forgejo` (chart) + `forgejo-manifests` (HTTPRoute, repos PVC, administrator SealedSecret) |
 | **Storage** | DB + config on `local-path` (node-pinned); repos + LFS on `nfs-storage` |
+<!-- vale Google.WordListCase = NO -->
 | **Auth** | Authelia OIDC (auto-registration from lldap); local `forgejo_admin` = break-glass |
+<!-- vale Google.WordListCase = YES -->
 | **Depends on** | Traefik (Gateway + wildcard TLS), Authelia (SSO), MetalLB (SSH LoadBalancer) |
 | **Difficulty** | Intermediate |
 | **Time estimate** | 45 minutes |
 
-Deploying with the official Helm chart (not docker-compose) keeps the Git server inside the cluster's GitOps lifecycle: ArgoCD reconciles it, an HTTPRoute gives HTTPS off the shared Gateway, a MetalLB `LoadBalancer` carries Git-over-SSH on the *same* IP, and accounts come from your lldap directory through Authelia OIDC.
+Deploying with the official Helm chart (not Docker Compose) keeps the Git server inside the cluster's GitOps lifecycle: ArgoCD reconciles it, an HTTPRoute gives HTTPS off the shared Gateway, a MetalLB `LoadBalancer` carries Git-over-SSH on the *same* IP, and accounts come from your lldap directory through Authelia OIDC.
 
 !!! warning "Chart key naming"
-    The Forgejo chart inherits Gitea's chart-internal `gitea.` value prefix (Forgejo forked it). This is not a bug — check the chart README at [code.forgejo.org/forgejo-helm](https://code.forgejo.org/forgejo-helm/forgejo-helm) for any value-name changes when you bump the chart.
+<!-- vale Vale.Terms = NO -->
+    The Forgejo chart inherits Gitea's chart-internal `gitea.` value prefix (Forgejo forked it). This is not a bug — check the chart README at [code.Forgejo.org/forgejo-helm](https://code.forgejo.org/forgejo-helm/forgejo-helm) for any value-name changes when you bump the chart.
+<!-- vale Vale.Terms = YES -->
 
 ## Storage: split the DB from the repos
 
 The chart keeps the SQLite database **and** the git repositories under one `/data` tree by default — but they want different storage tiers:
 
-- **SQLite cannot live on NFS.** It needs POSIX byte-range locking, which NFS does not do reliably — it *will* corrupt the database. The DB must sit on a node-local `local-path` volume.
+- **SQLite cannot live on NFS.** It needs POSIX byte-range locking, which NFS does not do reliably — it corrupts the database. The DB must sit on a node-local `local-path` volume.
 - **Git repositories are bulk data** and are perfectly happy on NFS (git serialises writes with atomic renames, not byte-range locks).
 
 So keep the chart's main `/data` PVC on `local-path` (small — DB, `app.ini`, avatars, attachments) and mount a *second* `nfs-storage` PVC for the repositories and LFS, relocating them with `[repository] ROOT` and `[lfs] PATH`.
@@ -36,9 +40,11 @@ So keep the chart's main `/data` PVC on `local-path` (small — DB, `app.ini`, a
 
 Because the DB's `local-path` PV is node-local and `ReadWriteOnce`, the pod is pinned to that node. Pin it to a worker with eMMC headroom, **off the control plane**, and ideally **off the node running your identity layer** (Authelia + lldap) — git operations (clone, pack, gc, indexing) are CPU-spiky and you don't want them contending with every app's login path. On this cluster that's `emerald` (the `workload=heavy` worker).
 
-## Seal the admin credentials { #step-1-seal-the-admin-credentials }
+<!-- vale Google.WordListCase = NO -->
+## Seal the administrator credentials { #step-1-seal-the-admin-credentials }
+<!-- vale Google.WordListCase = YES -->
 
-Forgejo needs a bootstrap admin. Even with SSO this is your **break-glass** login for when Authelia or lldap is down — so seal it, don't skip it. Don't pass the password with `--set` (it leaks into shell history and `ps`):
+Forgejo needs a bootstrap administrator account. Even with SSO this is your **break-glass** login for when Authelia or lldap is down — so seal it, don't skip it. Don't pass the password with `--set` (it leaks into shell history and `ps`):
 
 ```bash
 # Generate
@@ -159,7 +165,7 @@ spec:
       --values values.yaml
     ```
 
-    Pin `--version` to a current release on [code.forgejo.org/forgejo-helm](https://code.forgejo.org/forgejo-helm/forgejo-helm).
+    Pin `--version` to a current release on [code.Forgejo.org/forgejo-helm](https://code.forgejo.org/forgejo-helm/forgejo-helm).
 
 ## GitOps-managed install (recommended) { #step-3-gitops-managed-install-recommended }
 
@@ -188,10 +194,12 @@ spec:
       - ServerSideApply=true
 ```
 
-The second `forgejo-manifests` Application points at `infrastructure/forgejo/manifests/` (HTTPRoute, repos PVC, admin SealedSecret). Give it `CreateNamespace=true` but **not** `ServerSideApply` — SSA plus a Gateway-API HTTPRoute is a permanent-OutOfSync trap.
+<!-- vale Google.WordListCase = NO -->
+The second `forgejo-manifests` app points at `infrastructure/forgejo/manifests/` (HTTPRoute, repos PVC, administrator SealedSecret). Give it `CreateNamespace=true` but **not** `ServerSideApply` — SSA plus a Gateway-API HTTPRoute is a permanent-OutOfSync trap.
+<!-- vale Google.WordListCase = YES -->
 
-!!! note "Applications register on merge"
-    The app-of-apps `root.yaml` is live, so committing `bootstrap/forgejo.yaml` and merging is enough — root creates the Application on its next sync. No manual `kubectl apply`.
+!!! note "Apps register on merge"
+    The app-of-apps `root.yaml` is live, so committing `bootstrap/forgejo.yaml` and merging is enough — root creates the app on its next sync. No manual `kubectl apply`.
 
 ## Routing — HTTPS + Git-over-SSH { #step-4-routing-https-git-over-ssh }
 
@@ -217,7 +225,7 @@ spec:
           port: 3000
 ```
 
-**Git-over-SSH** is raw TCP, which the HTTP Gateway can't carry. Expose it with the chart's own `service.ssh` as a MetalLB `LoadBalancer` (configured in [Values](#step-2-values)). The trick that keeps a *single* hostname is to **share the Traefik gateway's IP**: ports 22 and 443 don't collide, so MetalLB will co-locate both Services on `10.0.20.200`, and `git@git.yourdomain.com` resolves to the same record as the web UI.
+**Git-over-SSH** is raw TCP, which the HTTP Gateway can't carry. Expose it with the chart's own `service.ssh` as a MetalLB `LoadBalancer` (configured in [Values](#step-2-values)). The trick that keeps a *single* hostname is to **share the Traefik gateway's IP**: ports 22 and 443 don't collide, so MetalLB co-locates both Services on `10.0.20.200`, and `git@git.yourdomain.com` resolves to the same record as the web UI.
 
 Sharing requires the **same** `allow-shared-ip` key on **both** Services. Add it to Traefik's Service in `apps/traefik/values.yaml`:
 
@@ -233,24 +241,34 @@ The chart maps the Service's port 22 to container port 2222 (the rootless image'
 !!! note "Why not a TCPRoute?"
     The Gateway API *can* route TCP, but that needs the experimental channel plus a dedicated TCP listener on the Gateway — neither is configured here (HTTP/HTTPS listeners only). The shared-IP `LoadBalancer` is the simpler path and reuses the IP you already have.
 
+<!-- vale Google.WordListCase = NO -->
+<!-- vale Vale.Terms = NO -->
 ## Single sign-on (Authelia OIDC) { #step-5-single-sign-on-authelia-oidc }
+<!-- vale Vale.Terms = YES -->
+<!-- vale Google.WordListCase = YES -->
 
-Forgejo keeps its own user system, so it's an **OIDC client** of Authelia (not ForwardAuth — its Git CLI/API clients can't follow an auth redirect). Two halves:
+Forgejo keeps its own user system, so it's an **OIDC client** of Authelia (not ForwardAuth — its Git command-line tool and API clients can't follow an auth redirect). Two halves:
 
 **a. Register the client in Authelia.** Follow the *OIDC client* recipe in the [deploy pattern](index.md): add a `forgejo` client under `configMap.identity_providers.oidc.clients` in `apps/authelia/values.yaml`, commit, and let Authelia roll. Key specifics for Forgejo:
 
 - **Callback:** `https://git.yourdomain.com/user/oauth2/authelia/callback` — the path segment (`authelia`) **must** equal the source name you set in step (b).
-- **Scopes:** include `groups`; set `claims_policy: 'default'` so the group cn lands in the ID token (Forgejo reads groups for admin mapping).
+- **Scopes:** include `groups`; set `claims_policy: 'default'` so the group cn lands in the ID token (Forgejo reads groups for administrator mapping).
 - **Token auth:** `client_secret_basic`.
-- The client secret is the **pbkdf2 hash** in Authelia's values; the **plaintext** lives only in Forgejo's OAuth source (below) and your password manager — **no SealedSecret for it**.
+<!-- vale Google.WordListCase = NO -->
+- The client secret is the **pbkdf2 hash** in Authelia's values; the **plaintext** lives only in Forgejo's OAuth 2.0 source (below) and your password manager — **no SealedSecret for it**.
+<!-- vale Google.WordListCase = YES -->
 
-**b. Add the OAuth source in Forgejo.** Log in as `forgejo_admin`, then **Site Administration → Authentication Sources → Add Authentication Source**:
+<!-- vale Google.WordListCase = NO -->
+**b. Add the OAuth 2.0 source in Forgejo.** Log in as `forgejo_admin`, then **Site Administration → Authentication Sources → Add Authentication Source**:
+<!-- vale Google.WordListCase = YES -->
+
+<!-- vale Google.WordListCase = NO -->
 
 | Field | Value |
 |---|---|
-| Authentication Type | **OAuth2** *(select first — it reveals the rest)* |
-| Authentication Name | `authelia` *(must match the callback path above)* |
-| OAuth2 Provider | **OpenID Connect** |
+| Authentication Type | **OAuth 2.0** *(select first — it reveals the rest)* |
+| Authentication Name | `authelia` *(must match the callback path preceding)* |
+| OAuth 2.0 Provider | **OpenID Connect** |
 | Client ID (Key) | `forgejo` |
 | Client Secret | *(the OIDC plaintext)* |
 | OpenID Connect Auto Discovery URL | `https://auth.yourdomain.com/.well-known/openid-configuration` |
@@ -259,9 +277,11 @@ Forgejo keeps its own user system, so it's an **OIDC client** of Authelia (not F
 | Group Claim value for administrator users | `homelab-admins` |
 | Skip Local Two Factor Authentication | ✓ *(Authelia already enforces 2FA)* |
 
-The group fields appear once Provider = OpenID Connect. The admin-group value keys on the lldap group **cn** (`homelab-admins`), not lldap's built-in `lldap_admin` — see the [deploy pattern](index.md) for why.
+<!-- vale Google.WordListCase = YES -->
 
-??? tip "CLI alternative"
+The group fields appear once Provider = OpenID Connect. The administrator-group value keys on the lldap group **cn** (`homelab-admins`), not lldap's built-in `lldap_admin` — see the [deploy pattern](index.md) for why.
+
+??? tip "Command-line alternative"
     ```bash
     forgejo admin auth add-oauth --name authelia --provider openidConnect \
       --key forgejo --secret '<plaintext>' \
@@ -271,12 +291,16 @@ The group fields appear once Provider = OpenID Connect. The admin-group value ke
     ```
 
 !!! warning "Groups are captured at login"
-    A user's admin bit is decided from the `groups` claim **at login**. After changing someone's lldap groups, they must fully log out of *both* Forgejo and Authelia and back in.
+    A user's administrator bit is decided from the `groups` claim **at login**. After changing someone's lldap groups, they must fully log out of *both* Forgejo and Authelia and back in.
 
 ## First login and SSH key { #step-6-first-login-ssh-key }
 
-1. Browse to `https://git.yourdomain.com`, log in once as `forgejo_admin` (break-glass) to confirm the cert and add the OAuth source ([Single sign-on](#step-5-single-sign-on-authelia-oidc)).
-2. Log out, then **Sign in with authelia** — you're redirected through Authelia, and a Forgejo account is auto-created from your lldap identity (admin if you're in `homelab-admins`).
+<!-- vale Google.WordListCase = NO -->
+1. Browse to `https://git.yourdomain.com`, log in once as `forgejo_admin` (break-glass) to confirm the cert and add the OAuth 2.0 source ([Single sign-on](#step-5-single-sign-on-authelia-oidc)).
+<!-- vale Google.WordListCase = YES -->
+<!-- vale Vale.Terms = NO -->
+2. Log out, then **Sign in with Authelia** — you're redirected through Authelia, and a Forgejo account is auto-created from your lldap identity (administrator if you're in `homelab-admins`).
+<!-- vale Vale.Terms = YES -->
 3. Add your SSH key under **User Settings → SSH / GPG Keys**.
 
 ## Verification
@@ -302,5 +326,7 @@ The group fields appear once Provider = OpenID Connect. The admin-group value ke
     ssh -T git@git.yourdomain.com            # "Hi there, <user>! ... does not provide shell access"
     ```
 
-- [ ] OIDC round-trip: **Sign in with authelia** logs you in; a `homelab-admins` member lands as a Forgejo admin.
+<!-- vale Vale.Terms = NO -->
+- [ ] OIDC round-trip: **Sign in with Authelia** logs you in; a `homelab-admins` member lands as a Forgejo administrator.
+<!-- vale Vale.Terms = YES -->
 - [ ] HTTPS clone/push works; if you committed the Applications, `kubectl get application -n argocd forgejo forgejo-manifests` shows `Synced/Healthy`.

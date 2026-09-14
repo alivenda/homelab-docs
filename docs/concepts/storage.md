@@ -38,11 +38,13 @@ disk, real relational databases on x86 hardware (the NAS), caches in memory. Dur
 everywhere is **backups to Garage S3, not redundancy** — there is one real disk, by
 design (the storage SPOF is mitigated by backups, see [Backups](../build/backups.md)).
 
-## Why this isn't "just use the default StorageClass"
+## Why this isn't "use the default StorageClass"
 
 Two hardware facts drive every choice below:
 
-1. **SQLite corrupts on NFS.** [sqlite.org/howtocorrupt](https://www.sqlite.org/howtocorrupt.html)
+<!-- vale Vale.Terms = NO -->
+1. **SQLite corrupts on NFS.** [SQLite.org/howtocorrupt](https://www.sqlite.org/howtocorrupt.html)
+<!-- vale Vale.Terms = YES -->
    §2.1: *"This is especially true of network filesystems and NFS in particular… database
    corruption might result."* A large share of self-hosted apps embed SQLite (linkding, Actual Budget, the Arr stack, Forgejo, Vaultwarden, and others) and several have no
    other backend. They **cannot** sit on `nfs-storage`.
@@ -71,9 +73,9 @@ re-applying that annotation on **every restart** — which fights a custom defau
 `nfs-storage`. The cluster disables it (`--disable local-storage` in
 `homelab-ansible/site.yml`) and hands "default" cleanly to `nfs-storage`.
 
-The fix for SQLite apps is **not** to undo that disable — it's to run a **separate,
+The fix for SQLite apps is **not** to undo that turn off — it's to run a **separate,
 non-default** [rancher/local-path-provisioner](https://github.com/rancher/local-path-provisioner)
-as its own ArgoCD app. Because it's *our* manifest, not k3s's bundled one, k3s never
+as its own ArgoCD app. Because it's *your* manifest, not k3s's bundled one, k3s never
 touches it or re-marks defaults, so it coexists with `nfs-storage`. SQLite apps opt in
 with `storageClassName: local-path` + `strategy: Recreate` (the volume is RWO and pins to
 a single node). Velero's node-agent (filesystem/kopia backup) captures these volumes —
@@ -106,7 +108,7 @@ Shape of the layer:
   not one Postgres per app.
 - **One MariaDB container** for the MySQL-only apps (BookStack; optionally Ghost, Monica) —
   deferred until one of them actually deploys.
-- Cluster apps connect over the Lab VLAN via `DATABASE_URL`, credentials from a `SealedSecret`.
+- Cluster apps connect over the Lab VLAN through `DATABASE_URL`, credentials from a `SealedSecret`.
 - **Backups:** nightly `pg_dump` / `mysqldump` per database to Garage S3 ([Backups](../build/backups.md)), gated by a
   seeded restore drill. Move to pgBackRest / WAL archiving later for point-in-time
   recovery.
@@ -121,7 +123,9 @@ Shape of the layer:
     Run it as an ordinary in-cluster pod with no durable volume — there's nothing to back up
     and no reason to send it to the NAS.
 
+<!-- vale Homelab.Headings = NO -->
 ### Why not CloudNativePG (in-cluster Postgres)?
+<!-- vale Homelab.Headings = YES -->
 
 [CloudNativePG](https://cloudnative-pg.io/) is genuinely good and **fully self-hosted** —
 Apache-2.0, a CNCF Sandbox project, ships official `arm64` images, and backs up to *your own*

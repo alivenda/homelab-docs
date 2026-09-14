@@ -19,9 +19,9 @@ records the decisions and the bring-up procedure, not the YAML.
 
 ## Why raw manifests — there is no official chart
 
-The paperless-ngx project publishes **no first-party Helm chart**. Its GitHub org
+The Paperless-ngx project publishes **no first-party Helm chart**. Its GitHub org
 contains only `paperless-ngx`, `ansible`, `builder`, and `gh-docs-index` (verified
-2026-06), and the upstream-documented deployments are docker compose and bare metal.
+2026-06), and the upstream-documented deployments are Docker compose and bare metal.
 Everything on Artifact Hub is a third-party repackage — the same avoidable dependency
 this cluster already rejected for ntfy.
 
@@ -43,7 +43,7 @@ Service, an HTTPRoute — one ArgoCD `Application` in `bootstrap/paperless.yaml`
 |---|---|---|
 | Relational DB | NAS shared Postgres 10.0.20.50:5433, db + role `paperless` | The [relational tier](../concepts/storage.md#relational-databases-on-the-nas-not-the-cluster) — real databases don't run on CM4 eMMC |
 | Documents, search index, consume, export | Four `nfs-storage` PVCs | Bulk flat files. With the DB external there is **no SQLite in the data dir**, so NFS is safe |
-| Redis (Celery broker + cache) | In-cluster `paperless-redis`, emptyDir, persistence off | Cache tier — not a system of record, nothing to back up (velero-excluded) |
+| Redis (Celery broker + cache) | In-cluster `paperless-redis`, emptyDir, persistence off | Cache tier — not a system of record, nothing to back up (Velero-excluded) |
 | Credentials + OIDC provider config | `paperless-secrets` SealedSecret | The OIDC JSON embeds a plaintext secret — see [SSO](#step-3-sso-oidc-client-with-one-twist) |
 
 !!! danger "The consume dir is NFS — polling is not optional"
@@ -56,7 +56,7 @@ Service, an HTTPRoute — one ArgoCD `Application` in `bootstrap/paperless.yaml`
     Kubernetes injects Docker-link-style discovery env
     (`<SERVICE>_PORT=tcp://<ClusterIP>:<port>`) for every Service in the
     namespace — so the app's own Service injects
-    `PAPERLESS_PORT=tcp://10.43.x.x:8000`, the exact variable paperless-ngx reads
+    `PAPERLESS_PORT=tcp://10.43.x.x:8000`, the exact variable Paperless-ngx reads
     as its webserver port. Granian exits on the non-integer value, the pod loops
     on its startup probe, and the route serves Traefik's "no available server"
     503 while everything *around* the pod looks healthy. The Deployment sets
@@ -81,7 +81,7 @@ appears (Verification below).
 ## Secrets { #step-2-secrets }
 
 One SealedSecret, four keys, sealed per the
-[standard pattern](index.md): `PAPERLESS_SECRET_KEY` (generate, e.g.
+[standard pattern](index.md): `PAPERLESS_SECRET_KEY` (generate, for example
 `openssl rand -base64 48`), `PAPERLESS_DBPASS` (the [Database on the NAS](#step-1-database-on-the-nas) role password),
 `PAPERLESS_ADMIN_PASSWORD` (the local break-glass superuser, auto-created at first
 start), and `PAPERLESS_SOCIALACCOUNT_PROVIDERS` ([SSO](#step-3-sso-oidc-client-with-one-twist)). The exact seal command is
@@ -91,7 +91,7 @@ in `apps/paperless/README.md`.
 
 Paperless speaks OIDC natively through django-allauth, so it takes the **OIDC client**
 mode from [the app pattern](index.md) — the route stays plain (the
-mobile app and API tokens authenticate directly; ForwardAuth would break both).
+mobile app and API tokens authenticate directly; ForwardAuth breaks both).
 
 Register the client in Authelia's values (already done in
 `apps/authelia/values.yaml`), per the
@@ -103,9 +103,9 @@ load-bearing**:
 https://paperless.yourdomain.com/accounts/oidc/authelia/login/callback/
 ```
 
-The twist: paperless has **no settings UI for OIDC** — it reads the whole provider
+The twist: Paperless has **no settings UI for OIDC** — it reads the whole provider
 config, *including the plaintext client secret*, from one env var. So unlike the
-"paste the plaintext into the app's OAuth settings" case, the plaintext here lives in
+"paste the plaintext into the app's OAuth 2.0 settings" case, the plaintext here lives in
 the SealedSecret, as the `PAPERLESS_SOCIALACCOUNT_PROVIDERS` JSON:
 
 ```json
@@ -123,7 +123,7 @@ change one, change both. `PAPERLESS_APPS=allauth.socialaccount.providers.openid_
 
 !!! warning "Gate the seal on reading the Secret back"
     The `secret` field is buried *inside* the JSON blob, and it's the substitution
-    everyone misses when filling in the seal command (ask how we know). The failure
+    everyone misses when filling in the seal command (this is the most common mistake). The failure
     is maddeningly indirect: Authelia validates the client and redirect fine, then
     every token exchange dies `invalid_client` no matter what digest is registered.
     Before testing login, read the live value back and eyeball the `secret` field:
@@ -135,13 +135,15 @@ change one, change both. `PAPERLESS_APPS=allauth.socialaccount.providers.openid_
 
     Two restart rules while iterating here: Authelia reads its config **at startup
     only** (a values/ConfigMap sync does *not* roll the StatefulSet — `kubectl
-    rollout restart statefulset -n authelia authelia`), and the same goes for
-    paperless env after a Secret change (`kubectl rollout restart deployment -n
-    paperless paperless`).
+    rollout restart statefulset -n Authelia Authelia`), and the same goes for
+    Paperless env after a Secret change (`kubectl rollout restart deployment -n
+    Paperless Paperless`).
 
-!!! warning "Link the admin account after first OIDC login"
-    An OIDC login that doesn't match an existing paperless user **creates a new
+!!! warning "Link the administrator account after first OIDC login"
+    An OIDC login that doesn't match an existing Paperless user **creates a new
+<!-- vale Google.FirstPerson = NO -->
     user**. Log in once as the local `admin`, then **My Profile → Connected social
+<!-- vale Google.FirstPerson = YES -->
     accounts → Connect** to bind your Authelia identity to it. Leave
     `PAPERLESS_DISABLE_REGULAR_LOGIN` unset until OIDC has round-tripped; flip it
     (and `PAPERLESS_REDIRECT_LOGIN_TO_SSO`) later if you want SSO-only.
@@ -149,13 +151,13 @@ change one, change both. `PAPERLESS_APPS=allauth.socialaccount.providers.openid_
 ## Routing { #step-4-routing }
 
 `paperless` is already present in the Cloudflare module's `var.services` (pre-staged),
-so DNS needs **no change** — just confirm the record resolves. The `HTTPRoute` attaches
+so DNS needs **no change** — confirm the record resolves. The `HTTPRoute` attaches
 to the shared Gateway's `websecure` listener as usual; no middleware
 ([deploy pattern](index.md)).
 
-## Register the application and sync { #step-5-register-the-application-and-sync }
+## Register the app and sync { #step-5-register-the-app-and-sync }
 
-`bootstrap/paperless.yaml`: single Application, `prune: false` (document archive — a
+`bootstrap/paperless.yaml`: single App, `prune: false` (document archive — a
 path typo must not tear down PVCs), client-side apply (HTTPRoute + SSA = permanent
 OutOfSync), `CreateNamespace`. Branch → PR → merge; ArgoCD does the rest. Note the
 Authelia values change rolls Authelia itself — do that merge **before** testing login.
@@ -181,7 +183,7 @@ scanner exists.
 - [ ] `https://paperless.yourdomain.com` loads over the wildcard cert; local `admin` login works
 - [ ] OIDC round-trips: logout → *Log in with Authelia* → 2FA → back in as the linked user
 - [ ] Drop a test PDF in the consume dir → document appears with OCR'd, searchable text
-- [ ] **velero gate**: after the next 04:00 UTC run, the `PodVolumeBackup`s for
+- [ ] **Velero gate**: after the next 04:00 UTC run, the `PodVolumeBackup`s for
       `paperless-data` / `paperless-media` show **non-zero bytes** — never trust
       `Completed`:
 

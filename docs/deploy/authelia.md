@@ -7,7 +7,7 @@ Single sign-on, two-factor authentication, and OIDC provider for all cluster ser
 
 | | |
 |---|---|
-| **URL** | https://auth.yourdomain.com (Authelia) · https://lldap.yourdomain.com (lldap admin UI) |
+| **URL** | https://auth.yourdomain.com (Authelia) · https://lldap.yourdomain.com (lldap administrator UI) |
 | **Namespaces** | `authelia`, `lldap` |
 | **Chart** | `authelia/authelia` (Helm); lldap is raw manifests (Deployment/PVC/Service) |
 | **Storage** | SQLite on `local-path` for both — Authelia `/config` (1Gi), lldap `/data` (1Gi) |
@@ -213,7 +213,7 @@ openssl genrsa -out /tmp/oidc.jwk.RS256.pem 4096
 
 ### Seal the Authelia secret { #step-5-seal-the-authelia-secret }
 
-The chart consumes a single Secret through `secret.existingSecret`. It projects five **fixed** keys into `/secrets/internal/` and auto-generates the matching `AUTHELIA_*_FILE` env vars — several were renamed in 4.38, so let the chart manage them rather than hand-rolling `pod.env`. The OIDC JWKS key is a **sixth** key that `existingSecret` ignores; it's mounted separately through `secret.additionalSecrets` ([Install Authelia](#step-6-install-authelia-via-helm)). Seal all six into one `authelia-secrets` Secret — the `authentication.ldap.password.txt` value is the `authelia` service-account password from [Create the service account](#step-3-create-the-authelia-service-account-in-lldap):
+The chart consumes a single Secret through `secret.existingSecret`. It projects five **fixed** keys into `/secrets/internal/` and auto-generates the matching `AUTHELIA_*_FILE` env vars — several were renamed in 4.38, so let the chart manage them rather than hand-rolling `pod.env`. The OIDC JWKS key is a **sixth** key that `existingSecret` ignores; it's mounted separately through `secret.additionalSecrets` ([Install Authelia](#step-6-install-authelia-through-helm)). Seal all six into one `authelia-secrets` Secret — the `authentication.ldap.password.txt` value is the `authelia` service-account password from [Create the service account](#step-3-create-the-authelia-service-account-in-lldap):
 
 ```bash
 # The password you gave the `authelia` user in lldap (service-account step):
@@ -251,7 +251,7 @@ The five built-in keys use fixed names the chart expects — do not rename them:
     `storage.encryption.key` encrypts data at rest in Authelia's database. If you
     re-seal this Secret later and let `openssl rand` mint a **new** value, Authelia
     aborts at startup with `the configured encryption key does not appear to be
-    valid for this database`. When you re-seal for *any* reason — e.g. to fix the
+    valid for this database`. When you re-seal for *any* reason — for example to fix the
     LDAP password — carry the existing `storage.encryption.key` over verbatim
     rather than regenerating it. If the database is still empty (no 2FA enrolled
     yet), the quickest recovery is to delete the Authelia PVC and let it recreate a
@@ -259,13 +259,13 @@ The five built-in keys use fixed names the chart expects — do not rename them:
 
 !!! tip "Mind the shell with special characters"
     If the LDAP password contains a `$`, `` ` ``, or `\`, set it with single quotes
-    (as above) or `read -s AUTHELIA_LDAP_PASS` — double quotes let the shell expand
+    (as preceding) or `read -s AUTHELIA_LDAP_PASS` — double quotes let the shell expand
     it and you seal the wrong value, which surfaces later as an LDAP bind failure
     (`LDAP Result Code 49 "Invalid Credentials"`).
 
 Commit `authelia-secrets-sealed.yaml` to `homelab-manifests/apps/authelia/`.
 
-### Install Authelia with Helm { #step-6-install-authelia-via-helm }
+### Install Authelia with Helm { #step-6-install-authelia-through-helm }
 
 Add the chart repo and inspect the values reference:
 
@@ -389,10 +389,10 @@ helm upgrade --install authelia authelia/authelia \
   --values homelab-manifests/apps/authelia/values.yaml
 ```
 
-Pin `--version` to the latest release listed on [charts.authelia.com](https://charts.authelia.com/).
+Pin `--version` to the latest release listed on [`charts.authelia.com`](https://charts.authelia.com/).
 
-!!! warning "Leave OIDC disabled until the first client exists"
-    The `oidc` block above sets `enabled: false`. Authelia 4.39 aborts at startup
+!!! warning "Leave OIDC turned off until the first client exists"
+    The `oidc` block preceding sets `enabled: false`. Authelia 4.39 aborts at startup
     if the provider is enabled with an empty `clients` list:
     `identity_providers: oidc: option 'clients' must have one or more clients
     configured`. Nothing needs OIDC at bring-up — ForwardAuth covers the
@@ -455,7 +455,7 @@ Open `https://auth.yourdomain.com` and log in with your personal lldap user. Wit
     Authelia only exposes device registration when at least one `access_control`
     rule uses `two_factor`. With only `bypass`/`one_factor` rules, the settings
     page reports *"There are no protected applications that require a second factor
-    method"* and refuses to register anything — the catch-all in [Install Authelia](#step-6-install-authelia-via-helm) is set to
+    method"* and refuses to register anything — the catch-all in [Install Authelia](#step-6-install-authelia-through-helm) is set to
     `two_factor` for exactly this reason.
 
 !!! note "Filesystem notifier — read the verification message from disk"
@@ -466,7 +466,7 @@ Open `https://auth.yourdomain.com` and log in with your personal lldap user. Wit
     kubectl -n authelia exec authelia-0 -- cat /config/notification.txt
     ```
     Follow the link, then scan the QR with a dedicated TOTP authenticator app
-    (e.g. Ente Auth, Aegis) — keeping the second factor out of the same vault as
+    (for example Ente Auth, Aegis) — keeping the second factor out of the same vault as
     your passwords. The same notifier applies to any future password-reset message
     until `notifier.smtp` is configured.
 
@@ -477,10 +477,10 @@ Once logged in, any service whose HTTPRoute attaches an `authelia-forwardauth` m
 Each app that has its own user system gets an OIDC client entry added to the `configMap.identity_providers.oidc.clients` list in `values.yaml`.
 
 !!! warning "Enable the provider with your first client"
-    The provider ships disabled (`enabled: false`, [Install Authelia](#step-6-install-authelia-via-helm)). When you add the
+    The provider ships turned off (`enabled: false`, [Install Authelia](#step-6-install-authelia-through-helm)). When you add the
     **first** client, set `identity_providers.oidc.enabled: true` in the same
     change — enabling it with an empty `clients` list crashes Authelia, and a
-    populated list with the provider still disabled does nothing.
+    populated list with the provider still turned off does nothing.
 
 The general pattern for a confidential client is:
 
@@ -500,7 +500,7 @@ clients:
 ```
 
 !!! note "claims_policy required for groups in the ID token"
-    As of Authelia 4.39, group membership is **not** included in the ID token by default. A client that reads groups from the **ID token** must set `claims_policy: default` to reference the claims policy defined in `configMap.identity_providers.oidc.claims_policies` — without it, apps like Mealie (`OIDC_ADMIN_GROUP`) and Donetick (`admin_groups`) authenticate users but never see their groups. Apps that instead read groups from the **userinfo endpoint** (e.g. Argo CD with `enableUserInfoGroups`) get them from the `groups` scope alone and don't need the policy.
+    As of Authelia 4.39, group membership is **not** included in the ID token by default. A client that reads groups from the **ID token** must set `claims_policy: default` to reference the claims policy defined in `configMap.identity_providers.oidc.claims_policies` — without it, apps like Mealie (`OIDC_ADMIN_GROUP`) and Donetick (`admin_groups`) authenticate users but never see their groups. Apps that instead read groups from the **userinfo endpoint** (for example Argo CD with `enableUserInfoGroups`) get them from the `groups` scope alone and don't need the policy.
 
 !!! warning "Match the lldap group cn, not lldap's internal name"
     Authelia forwards each lldap group's **cn verbatim** in the `groups` claim. App RBAC that maps a group to a role must use that exact name — this cluster maps a dedicated **`homelab-admins`** group (created in lldap), **not** lldap's built-in `lldap_admin`. Group membership is captured at login, so re-login after any group change. (Argo CD's OIDC bring-up hit exactly this — the first mapping used the wrong group name and every SSO login landed with no permissions.)
@@ -531,4 +531,4 @@ Each app's runbook covers its specific `redirect_uris` and configuration. Do not
 - [ ] `https://auth.yourdomain.com` loads the Authelia login portal.
 - [ ] Log in with your lldap user — session is established; enrol TOTP at `auth.yourdomain.com/settings/two-factor-authentication`.
 - [ ] `https://lldap.yourdomain.com` redirects to Authelia login before showing the lldap UI.
-- [ ] A service using the ForwardAuth middleware (e.g., Homepage) redirects to `auth.yourdomain.com` for unauthenticated requests.
+- [ ] A service using the ForwardAuth middleware (for example, Homepage) redirects to `auth.yourdomain.com` for unauthenticated requests.

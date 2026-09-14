@@ -12,9 +12,9 @@ Central hub for all smart home devices.
 | **Runs on** | NAS, dedicated device, or k3s (host networking) |
 
 !!! tip "Three deployment targets, in increasing capability"
-    1. **docker-compose on the NAS (this runbook)** — the Container install; does **not** support add-ons like Z-Wave JS UI or ESPHome.
+    1. **Docker Compose on the NAS (this runbook)** — the Container install; does **not** support add-ons like Z-Wave JS UI or ESPHome.
     2. **Home Assistant OS on a dedicated mini-PC or VM** — the production answer; full add-on support.
-    3. **Helm chart on k3s with hostNetwork** — only if you really want everything in the cluster and you've thought through how mDNS/SSDP discovery will work behind cluster networking.
+    3. **Helm chart on k3s with hostNetwork** — only if you really want everything in the cluster and you've thought through how mDNS/SSDP discovery works behind cluster networking.
 
     The compose path below is the simplest of the three; use option 2 if you need add-ons.
 
@@ -22,7 +22,7 @@ Central hub for all smart home devices.
     This homelab uses **option 2**: Home Assistant OS as a Proxmox VM on **slate** (a repurposed Late-2014 Mac mini) at 10.0.20.21, so Z-Wave/Zigbee/ESPHome add-ons and the backup pipeline in [Backups](../build/backups.md) all work. The compose path below is kept as the simplest general option.
 
 !!! warning "HAOS-on-Proxmox: EFI key gotcha"
-    Create the VM as `q35` with OVMF (UEFI) and **uncheck "Pre-Enroll keys" on the EFI disk**, or HAOS won't boot.
+    Create the VM as `q35` with OVMF (UEFI) and **clear "Pre-Enroll keys" on the EFI disk**, or HAOS won't boot.
 
 ## Install
 
@@ -56,7 +56,7 @@ docker compose up -d
 Same pattern as Immich — front the Home Assistant host (here, slate's HAOS VM at 10.0.20.21) with a selector-less `Service` + a manual `EndpointSlice` pointing at its IP, then attach an `HTTPRoute` for `ha.yourdomain.com`. See [Immich's runbook](immich.md) for the manifest shape and [Deploying an App](index.md) for the routing pattern.
 
 !!! warning "Home Assistant rejects reverse-proxied requests by default"
-    Set `http.use_x_forwarded_for: true` and `http.trusted_proxies:` in HA's `configuration.yaml`, or HA returns `400 Bad Request` behind Traefik. For an **off-cluster** backend like slate's VM, Traefik's egress to the LAN is SNAT'd to the k3s node, so HA sees the **node IP** — trust the node IPs (10.0.20.10–10.0.20.13), not the pod CIDR. (Only an *in-cluster* HA would trust the pod CIDR 10.42.0.0/16.)
+    Set `http.use_x_forwarded_for: true` and `http.trusted_proxies:` in HA's `configuration.yaml`, or HA returns `400 Bad Request` when behind Traefik. For an **off-cluster** backend like slate's VM, Traefik's egress to the LAN is SNAT'd to the k3s node, so HA sees the **node IP** — trust the node IPs (10.0.20.10–10.0.20.13), not the pod CIDR. (Only an *in-cluster* HA trusts the pod CIDR 10.42.0.0/16.)
 
 ## Verification
 

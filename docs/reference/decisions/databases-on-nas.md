@@ -5,7 +5,7 @@
 
 ## Context
 
-Apps that outgrow SQLite need PostgreSQL. The cluster could run an in-cluster
+Apps that outgrow SQLite need PostgreSQL. The cluster can run an in-cluster
 PostgreSQL operator (CloudNativePG, Zalando, CrunchyData), but CM4 nodes have
 limited RAM and eMMC storage, and the NAS already has an x86 CPU, real disks,
 and Docker.

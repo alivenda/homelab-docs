@@ -28,14 +28,16 @@ Quick reference for tasks in this guide:
 | Manage systemd unit | `ansible.builtin.systemd_service` | `state` + `enabled` in one task |
 | Apply kubectl manifest | `kubernetes.core.k8s` | `state: present/absent`, `definition:` inline or `src:` |
 | Helm release | `kubernetes.core.helm` | `release_name`, `chart_ref`, `values` + `release_state` |
-| Wait for k8s resource | `kubernetes.core.k8s_info` | Loop with `until:` until ready |
+| Wait for Kubernetes resource | `kubernetes.core.k8s_info` | Loop with `until:` until ready |
 | Template a config file | `ansible.builtin.template` | Jinja2 with handlers for reload |
 | Reboot the host | `ansible.builtin.reboot` | Built-in wait-for-reconnect handling |
 
 The two k3s install tasks in the [k3s playbooks](#step-8-k3s-playbooks) section intentionally use `ansible.builtin.shell`. The k3s upstream install is a curl-piped script — wrapping it in a more idiomatic module doesn't improve correctness and obscures the canonical install path. Use `creates: /usr/local/bin/k3s` on the task to keep it idempotent.
 
+<!-- vale Vale.Terms = NO -->
 !!! tip "If you run ansible-lint"
-    The k3s install tasks trip `command-instead-of-module` on ansible-lint's `basic` profile or higher. The curl-pipe is the canonical upstream install path, not an oversight — scope the exception narrowly with `# noqa: command-instead-of-module` on each install task rather than disabling the rule globally.
+<!-- vale Vale.Terms = YES -->
+    The k3s install tasks trip `command-instead-of-module` on `ansible-lint`'s `basic` profile or higher. The curl-pipe is the canonical upstream install path, not an oversight — scope the exception narrowly with `# noqa: command-instead-of-module` on each install task rather than disabling the rule globally.
 
 !!! tip
     Add the `kubernetes.core` collection to your `requirements.yml` before Kubernetes: `ansible-galaxy collection install kubernetes.core`. The `kubeconfig:` parameter on `kubernetes.core.k8s` lets you run cluster ops from your machine against the remote API.
@@ -59,7 +61,7 @@ ansible --version
 
 Turing Pi's `dietpi.txt` sets each node's static IP (`AUTO_SETUP_NET_USESTATIC=1`) and hostname at first boot, so the nodes come up directly on their planned addresses (10.0.20.10–.13) — there's no DHCP-to-static transition to manage. A matching DHCP reservation in UDM → Clients is optional belt-and-suspenders.
 
-Copy your key to the **`dietpi`** user — DietPi's default admin account. Ansible logs in as `dietpi` and escalates with `sudo` rather than logging in as root:
+Copy your key to the **`dietpi`** user — DietPi's default administrator account. Ansible logs in as `dietpi` and escalates with `sudo` rather than logging in as root:
 
 ```bash
 ssh-keygen -t ed25519 -C "ansible@homelab"   # If you don't have one
@@ -69,7 +71,7 @@ done
 ```
 
 !!! tip "Harden SSH once the key works"
-    After key auth works for `dietpi`, disable root login and password auth on each node — set `PermitRootLogin no` and `PasswordAuthentication no` in `/etc/ssh/sshd_config`, then `sudo systemctl restart ssh`. Key-only, non-root is the baseline before exposing anything.
+    After key auth works for `dietpi`, turn off root login and password auth on each node — set `PermitRootLogin no` and `PasswordAuthentication no` in `/etc/ssh/sshd_config`, then `sudo systemctl restart ssh`. Key-only, non-root is the baseline before exposing anything.
 
 ## Project structure { #step-3-project-structure }
 
@@ -83,7 +85,7 @@ homelab-ansible/
     └── secrets.sops.yaml   # sops-encrypted; safe to commit
 ```
 
-For a 4-node cluster, a single `site.yml` containing all plays keeps things readable in one screen. If the file grows past ~200 lines or you frequently need to re-run just one phase (and `--tags` / `--start-at-task` aren't enough), split into `playbooks/bootstrap.yml`, `playbooks/k3s-server.yml`, etc., and add a top-level `site.yml` of `import_playbook:` lines.
+For a 4-node cluster, a single `site.yml` containing all plays keeps things readable in one screen. If the file grows past ~200 lines or you frequently need to re-run one phase (and `--tags` / `--start-at-task` aren't enough), split into `playbooks/bootstrap.yml`, `playbooks/k3s-server.yml`, etc., and add a top-level `site.yml` of `import_playbook:` lines.
 
 ### Collections (`requirements.yml`)
 
@@ -324,10 +326,10 @@ The four plays from Steps 6–8 concatenate into one file — adding a `name:` t
     sync, UFW, an ArgoCD Helm bootstrap, Tailscale subnet routers, and the AdGuard DNS
     appliance — and the cluster-shaped plays (bootstrap, UFW, RAMlog) now target a
     `k3s_cluster` group instead of `all`, so the DNS Pi can share the inventory without
-    inheriting cluster assumptions. The four plays above remain the core;
+    inheriting cluster assumptions. The four plays preceding remain the core;
     `homelab-ansible`'s `site.yml` and README are the authoritative play inventory.
 
-## Secrets with sops + age { #step-10-secrets-via-sops-age }
+## Secrets with sops + age { #step-10-secrets-through-sops-age }
 
 The cluster token lives encrypted in `secrets/secrets.sops.yaml` and is decrypted at runtime by the `community.sops` lookup in the inventory — the **same sops + age mechanism** as the `homelab-secrets` repo (Git). That gives you one repo-side secrets tool, consistent with the [Sealed Secrets two-layer model](kubernetes.md#step-12-sealed-secrets-cluster-side-secret-management) (sops + age repo-side, Sealed Secrets cluster-side).
 
@@ -350,7 +352,7 @@ ansible-playbook site.yml --limit emerald  # one node
 ```
 
 !!! tip "Commit everything"
-    Commit everything to your `homelab-ansible` repo — including the *encrypted* `secrets/secrets.sops.yaml`. The age private key (`~/.config/sops/age/keys.txt`) lives outside the repo and never gets committed. Combined with ArgoCD watching `homelab-manifests`, you have full infrastructure-as-code: bare-metal provisioning and application deployment, both from Git.
+    Commit everything to your `homelab-ansible` repo — including the *encrypted* `secrets/secrets.sops.yaml`. The age private key (`~/.config/sops/age/keys.txt`) lives outside the repo and never gets committed. Combined with ArgoCD watching `homelab-manifests`, you have full infrastructure-as-code: bare-metal provisioning and app deployment, both from Git.
 
 ## Verification
 
