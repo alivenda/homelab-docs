@@ -261,7 +261,7 @@ every subsequent PR until it's fixed — keep `main` green.
 
 ## Sample pipeline (build → push → bump manifest)
 
-The Kubernetes backend doesn't have a Docker socket. Use [BuildKit]( SPAN0  (rootless) to build OCI images directly inside a build pod — no daemon, no socket mount, no privileged container.
+The Kubernetes backend doesn't have a Docker socket. Use [BuildKit](https://github.com/moby/buildkit) (rootless) to build OCI images directly inside a build pod — no daemon, no socket mount, no privileged container.
 
 !!! note "Kaniko was archived in June 2025"
     Earlier versions of this runbook recommended kaniko. The kaniko project was archived upstream; BuildKit's rootless image (`moby/buildkit:rootless`) is the maintained replacement and works identically for CI-style "build and push" flows.

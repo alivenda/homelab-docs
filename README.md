@@ -35,11 +35,11 @@ checked with [Vale](https://vale.sh):
 ```bash
 sudo pacman -S vale                # once
 vale sync                          # fetches the Google style package
-vale --no-exit --minAlertLevel=warning docs/
+vale --minAlertLevel=warning docs/
 ```
 
-CI runs the same lint but doesn't block a merge on it yet — the style rewrite is still in
-flight. Only `mkdocs build --strict` gates the merge today.
+CI runs both `mkdocs build --strict` and `vale --minAlertLevel=warning` — a broken link,
+anchor, or style violation fails the pipeline.
 
 ## Related repos
 

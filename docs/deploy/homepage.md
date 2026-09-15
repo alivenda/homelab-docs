@@ -133,7 +133,7 @@ The source of truth for *which* tiles exist is the Cloudflare module's `var.serv
 !!! tip "Order widget-bearing tiles first within each group"
     The `row` layout makes every tile in a row share the tallest tile's height. A widget tile (it carries a stats strip) is taller than a plain tile, so interleaving the two leaves gaps under the plain ones. Put the widget-bearing services at the **top of each group** and the plain tiles after; rows then come out even. Leave a comment saying so — "tidying" the list back into semantic order re-rags the grid.
 
-Icons resolve against the [dashboard-icons]( SPAN4  set by bare filename. **Verify each name exists** (a typo renders a broken image, not an error) — the two non-obvious ones in this stack are `argo-cd.png` (not `argocd`) and `lldap.png` (not `ldap`).
+Icons resolve against the [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) set by bare filename. **Verify each name exists** (a typo renders a broken image, not an error) — the two non-obvious ones in this stack are `argo-cd.png` (not `argocd`) and `lldap.png` (not `ldap`).
 
 ## Deployment
 
