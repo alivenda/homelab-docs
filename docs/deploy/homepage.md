@@ -107,10 +107,10 @@ Homepage expects nine files under `/app/config`; **all nine must exist as Config
         href: https://nextcloud.yourdomain.com
         description: Files, calendar, contacts
         icon: nextcloud.png
-    - Vikunja:
-        href: https://tasks.yourdomain.com
-        description: Tasks & projects
-        icon: vikunja.png
+    - Miniflux:
+        href: https://rss.yourdomain.com
+        description: RSS reader
+        icon: miniflux.png
     # ... Immich, Paperless-ngx, Vaultwarden, Home Assistant, ntfy
 
 - Operations:
@@ -223,7 +223,7 @@ The other live services stay **tile-only on purpose** — the stat didn't earn a
 - **Grafana** — stateless here, so its UI users are wiped on every restart; the only durable credential is an *administrator* service-account token. Storing administrator creds to render a panel count fails the value-vs-blast-radius test.
 - **Home Assistant** — its long-lived access tokens cannot be scoped read-only; a widget token is full control of the home.
 - **Plex** — the only stat is active-stream count, and streaming is local-only here. No remote value.
-- **Vikunja / Miniflux** — task and unread counts that duplicate what the apps surface themselves; not worth a per-app token.
+- **Miniflux** — unread counts that duplicate what the app surfaces itself; not worth a per-app token.
 
 When in doubt, leave the tile plain.
 

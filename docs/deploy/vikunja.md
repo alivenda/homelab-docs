@@ -1,7 +1,9 @@
 # Vikunja
 
-!!! success "Status — Live"
-    Live in the cluster, database on NAS PostgreSQL.
+!!! warning "Status — Retired (2026-09)"
+    Vikunja was removed from this cluster. It went unused: no task or kanban workflow
+    needed it. The runbook below describes the deployment as it ran, and it still
+    works if you want a self-hosted task manager.
 
 Task management — lists, kanban, labels, due dates, reminders, with mobile and
 desktop clients.

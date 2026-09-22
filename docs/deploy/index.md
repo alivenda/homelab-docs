@@ -32,7 +32,7 @@ apps/<app>/
 ## Choose the workload mode { #step-1-choose-the-workload-mode }
 
 - **Helm chart** when upstream maintains one (for example Vaultwarden). The `Application` uses the multi-source `$values` pattern: chart from the upstream Helm repo + `valueFiles: [$values/apps/<app>/values.yaml]`. Pin `targetRevision` and add a `# renovate:` comment so Renovate tracks the chart.
-- **Raw manifests** when there's no good chart — most simple apps (linkding, Mealie, ntfy). Commit a `Deployment` + `Service` + `PVC` to `apps/<app>/manifests/`. **Pin the image tag — never `:latest`.**
+- **Raw manifests** when there's no good chart — most simple apps (Actual Budget, Mealie, ntfy). Commit a `Deployment` + `Service` + `PVC` to `apps/<app>/manifests/`. **Pin the image tag — never `:latest`.**
 
 ## Secrets (SealedSecret) { #step-2-secrets-sealedsecret }
 
@@ -97,7 +97,7 @@ Pick one mode per app.
 
 ### OIDC client (the app speaks OIDC to Authelia)
 
-For apps with their own user system (Immich, Grafana, Forgejo, Vikunja, …). The HTTPRoute stays plain — no middleware. Register the client in `homelab-manifests/apps/authelia/values.yaml` under `configMap.identity_providers.oidc.clients`, commit, and roll Authelia **before** you configure the app:
+For apps with their own user system (Immich, Grafana, Forgejo, Miniflux, …). The HTTPRoute stays plain — no middleware. Register the client in `homelab-manifests/apps/authelia/values.yaml` under `configMap.identity_providers.oidc.clients`, commit, and roll Authelia **before** you configure the app:
 
 ```yaml
 - client_id: 'appname'

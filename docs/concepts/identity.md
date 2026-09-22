@@ -28,7 +28,7 @@ Authelia protects services in two fundamentally different ways. Using the wrong 
 | Mode | When to use | How it works | Apps using it |
 |------|-------------|-------------|----------------|
 | **ForwardAuth** | Apps with **no** login page of their own | Traefik intercepts every request, asks Authelia "is this user authenticated?", and either passes the request through or redirects to the Authelia login portal. | Homepage, and any service without its own login screen. |
-| **OIDC** | Apps with **their own** user system | The app redirects to Authelia for login, receives a token, and manages its own session — Traefik is not involved in the auth check. | Nextcloud, Forgejo, Paperless-ngx, Vikunja, Actual Budget, Mealie, Audiobookshelf, BookStack, and any app with a built-in user system. |
+| **OIDC** | Apps with **their own** user system | The app redirects to Authelia for login, receives a token, and manages its own session — Traefik is not involved in the auth check. | Nextcloud, Forgejo, Paperless-ngx, Miniflux, Actual Budget, Mealie, Audiobookshelf, BookStack, and any app with a built-in user system. |
 
 <!-- vale Google.Quotes = YES -->
 

@@ -92,11 +92,11 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
  ├─→ Immich          (NAS-Docker — not on k3s, see runbook for why)
  ├─→ Home Assistant  (slate — Mac mini / Proxmox VM)
  ├─→ Homepage        (cluster — config-heavy dashboard)
- ├─→ Vikunja         (cluster — DB on NAS Postgres)
  └─→ Miniflux        (cluster — DB on NAS Postgres, stateless app)
 
 ─── Applications · full runbooks · planned ─────────────────────
  ├─→ Arr Stack       (shelved — physical-media-first library)
+ ├─→ Vikunja         (retired 2026-09 — unused)
  ├─→ BookStack       (cluster — MariaDB on NAS)
  ├─→ Syncthing       (per-device — not k3s)
  ├─→ RustDesk Server (cluster — TCP/UDP relay via MetalLB)
@@ -105,7 +105,7 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
 
 ─── Applications · catalog (one shared pattern) ──────────────
  │  See: Deploying an App (pattern) + App Catalog
- ├─→ live:    Actual Budget · Audiobookshelf · Collabora · Donetick · linkding
+ ├─→ live:    Actual Budget · Audiobookshelf · Collabora · Donetick
  └─→ planned: Kavita · Mealie · TriliumNext
 ```
 
@@ -113,9 +113,9 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
 
 | Status | Apps |
 |---|---|
-| Live | Actual Budget · Audiobookshelf · Collabora Online · Donetick · linkding |
+| Live | Actual Budget · Audiobookshelf · Collabora Online · Donetick |
 | Planned | Kavita · Mealie · TriliumNext Notes |
-| Retired | Uptime Kuma |
+| Retired | linkding · Uptime Kuma |
 
 → [App Catalog](reference/app-catalog.md) for the per-app deltas, [Deploying an App](deploy/index.md) for the shared pattern.
 

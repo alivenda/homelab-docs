@@ -29,9 +29,9 @@ Personal budgeting (envelope method) with OIDC login.
 **Gotchas**
 
 - OIDC support in Actual is **in preview** — enabled with `ACTUAL_OPENID_*` env, and the config surface can change between releases. Verify against current Actual docs **and the server source** at deploy. Everything below was verified against actual-server **v26.6.0** (`packages/sync-server/src/accounts/openid.ts` + `load-config.js`).
-- Config is **env-only** — no ConfigMap. The server writes its own `/data/config.json`; there is no settings-override file (the linkding contrast).
+- Config is **env-only** — no ConfigMap. The server writes its own `/data/config.json`; there is no settings-override file.
 - Storage is SQLite, so **local-path, never `nfs-storage`** — the catalog originally listed NFS, which corrupts SQLite. One PVC at `/data` covers the whole data tree.
-- OIDC **supports discovery**: set `ACTUAL_OPENID_DISCOVERY_URL` to the Authelia issuer base (`https://auth.yourdomain.com`); `Issuer.discover()` appends `/.well-known/openid-configuration` (no need to spell out the four endpoints, the linkding contrast).
+- OIDC **supports discovery**: set `ACTUAL_OPENID_DISCOVERY_URL` to the Authelia issuer base (`https://auth.yourdomain.com`); `Issuer.discover()` appends `/.well-known/openid-configuration` (no need to spell out the four endpoints).
 - The redirect is **built from `ACTUAL_OPENID_SERVER_HOSTNAME`**, not the request scheme — `https://budget.yourdomain.com/openid/callback` (**no** trailing slash) — so there is no TLS-proxy `http://` redirect bug, and the Authelia `redirect_uris` must match exactly.
 - The authorization request **sends PKCE S256** (`require_pkce: true`), and the token exchange uses `openid-client`'s default **`client_secret_basic`** — not `client_secret_post`.
 - Username = `preferred_username` from the **userinfo** endpoint, so the `profile` scope is required. No group→role mapping → no `groups` scope, no `claims_policy`.
@@ -170,29 +170,6 @@ React PWA + API). Verified against **v0.1.75** (latest stable; newer tags are
   from the **ID token**, so it needs the `groups` scope + an Authelia
   `claims_policy` — left unused here.
 
-### linkding
-
-Bookmark manager with a browser extension and OIDC login.
-
-| Field | Value |
-|---|---|
-| Workload | raw manifests — `sissbruecker/linkding` (standard variant) |
-| Namespace / hostname | `linkding` / `bookmarks.yourdomain.com` |
-| Service port | 9090 |
-| Storage | `local-path`, 2 Gi — SQLite + favicons/previews under `/etc/linkding/data`; **not** NFS (corrupts SQLite) |
-| Secret keys | `OIDC_RP_CLIENT_SECRET`, `LD_SUPERUSER_PASSWORD` |
-| Auth | OIDC client (own user system — **not** ForwardAuth) |
-
-**Gotchas**
-
-- Use the **standard** image variant, not `-plus` — `-plus` bundles Chromium for HTML snapshot archiving, far too heavy for Pi-class nodes.
-- linkding cannot detect a TLS-terminating proxy, so the OIDC `redirect_uri` goes out as `http://` and the provider rejects it ([linkding#1366](https://github.com/sissbruecker/linkding/issues/1366)). No env option exists; mount a one-line settings override (the image ships `bookmarks/settings/custom.py` as a placeholder that `prod.py` star-imports last) with a ConfigMap `subPath`: `SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")`.
-- OIDC is mozilla-django-oidc: **no discovery** — set all four `OIDC_OP_*` endpoint URLs explicitly. The callback **requires a trailing slash** (`https://bookmarks.yourdomain.com/oidc/callback/`), PKCE is on by default (S256), and the token request carries the secret in the POST body — the Authelia client needs `token_endpoint_auth_method: 'client_secret_post'`, not `client_secret_basic`.
-- Set `OIDC_USERNAME_CLAIM=preferred_username` — the default (`email`) turns usernames into full email addresses. Accounts auto-create on first login as regular users; the `admin` superuser remains as a local-login fallback (flip `LD_DISABLE_LOGIN_FORM=True` once the round-trip is verified).
-- Setting `HOST_NAME` makes Django's `ALLOWED_HOSTS` strict — kubelet probes to `/health` must then send an explicit `Host:` header.
-- No metrics endpoint — no ServiceMonitor.
-- For the browser extension, generate the API token in the UI (Settings → Integrations) after first login.
-
 ## Planned
 
 ### Kavita
@@ -251,6 +228,34 @@ Hierarchical note-taking with a server + desktop/web sync.
 - Pin the image tag — TriliumNext moves fast and the sync protocol version must match between the server and the desktop clients.
 
 ## Retired
+
+### linkding
+
+!!! warning "Retired (2026-09)"
+    linkding was removed from this cluster. It went unused: browser bookmarks in Firefox
+    already cover the need. The notes below describe the deployment as it ran, and they
+    still apply if you want a self-hosted bookmark manager.
+
+Bookmark manager with a browser extension and OIDC login.
+
+| Field | Value |
+|---|---|
+| Workload | raw manifests — `sissbruecker/linkding` (standard variant) |
+| Namespace / hostname | `linkding` / `bookmarks.yourdomain.com` |
+| Service port | 9090 |
+| Storage | `local-path`, 2 Gi — SQLite + favicons/previews under `/etc/linkding/data`; **not** NFS (corrupts SQLite) |
+| Secret keys | `OIDC_RP_CLIENT_SECRET`, `LD_SUPERUSER_PASSWORD` |
+| Auth | OIDC client (own user system — **not** ForwardAuth) |
+
+**Gotchas**
+
+- Use the **standard** image variant, not `-plus` — `-plus` bundles Chromium for HTML snapshot archiving, far too heavy for Pi-class nodes.
+- linkding cannot detect a TLS-terminating proxy, so the OIDC `redirect_uri` goes out as `http://` and the provider rejects it ([linkding#1366](https://github.com/sissbruecker/linkding/issues/1366)). No env option exists; mount a one-line settings override (the image ships `bookmarks/settings/custom.py` as a placeholder that `prod.py` star-imports last) with a ConfigMap `subPath`: `SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")`.
+- OIDC is mozilla-django-oidc: **no discovery** — set all four `OIDC_OP_*` endpoint URLs explicitly. The callback **requires a trailing slash** (`https://bookmarks.yourdomain.com/oidc/callback/`), PKCE is on by default (S256), and the token request carries the secret in the POST body — the Authelia client needs `token_endpoint_auth_method: 'client_secret_post'`, not `client_secret_basic`.
+- Set `OIDC_USERNAME_CLAIM=preferred_username` — the default (`email`) turns usernames into full email addresses. Accounts auto-create on first login as regular users; the `admin` superuser remains as a local-login fallback (flip `LD_DISABLE_LOGIN_FORM=True` once the round-trip is verified).
+- Setting `HOST_NAME` makes Django's `ALLOWED_HOSTS` strict — kubelet probes to `/health` must then send an explicit `Host:` header.
+- No metrics endpoint — no ServiceMonitor.
+- For the browser extension, generate the API token in the UI (Settings → Integrations) after first login.
 
 ### Uptime Kuma
 
