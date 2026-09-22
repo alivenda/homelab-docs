@@ -1,7 +1,9 @@
 # Vikunja
 
-!!! success "Status — Live"
-    Live in the cluster, database on NAS PostgreSQL.
+!!! warning "Status — Retired (2026-09)"
+    Vikunja was removed from this cluster. It went unused: no task or kanban workflow
+    needed it. The runbook below describes the deployment as it ran, and it still
+    works if you want a self-hosted task manager.
 
 Task management — lists, kanban, labels, due dates, reminders, with mobile and
 desktop clients.
@@ -16,7 +18,9 @@ desktop clients.
 The deployed truth is `homelab-manifests/apps/vikunja/`; this runbook records the
 decisions and the bring-up procedure, not the YAML.
 
+<!-- vale Homelab.Headings = NO -->
 ## Why this graduated from the App Catalog
+<!-- vale Homelab.Headings = YES -->
 
 Vikunja used to be a catalog row that said `nfs-storage` for everything. That row was
 written assuming the default engine — and Vikunja's default is **SQLite**, which makes
@@ -97,12 +101,12 @@ origin (`https://auth.yourdomain.com`, no path): Vikunja runs OIDC discovery aga
 it.
 
 No group→team mapping: Vikunja reads teams from a custom `vikunja_groups` claim with a
-`{name, oidcID}` structure that Authelia would have to fabricate through a claims policy.
+`{name, oidcID}` structure that Authelia has to fabricate through a claims policy.
 Teams are managed in-app instead. Local registration is off
 (`VIKUNJA_SERVICE_ENABLEREGISTRATION=false`); OIDC auto-provisioning is a separate
 code path and unaffected — any Authelia user gets a Vikunja account on first login.
 
-## DNS, routing, application { #step-5-dns-routing-application }
+## DNS, routing, app { #step-5-dns-routing-app }
 
 - `tasks` A record through the Terraform Cloudflare module (`var.services`), `tofu apply`.
 - `HTTPRoute` on the shared Gateway, **no ForwardAuth** — Vikunja is an OIDC client
@@ -116,9 +120,9 @@ code path and unaffected — any Authelia user gets a Vikunja account on first l
 - [ ] Argo CD: `vikunja` **Synced/Healthy**.
 - [ ] `https://tasks.yourdomain.com` loads; version visible at `/api/v1/info`.
 - [ ] OIDC round-trip for **two different users** — the second proves
-      auto-provisioning, not just your own pre-existing session.
+      auto-provisioning, not your own pre-existing session.
 - [ ] Create a task, complete it, reload — state survives (DB write path).
 - [ ] Attach a file to a task (files PVC write path).
-- [ ] Backup gates: velero `PodVolumeBackup` **bytes** for `vikunja-files` (never
+- [ ] Backup gates: Velero `PodVolumeBackup` **bytes** for `vikunja-files` (never
       trust `Completed`), and a `vikunja-<date>.dump` object in the Garage
       `postgres-backups` bucket after the nightly NAS run.

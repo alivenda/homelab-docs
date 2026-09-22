@@ -71,14 +71,16 @@ curl -sfL https://get.k3s.io | sh -s - \
   --disable local-storage
 ```
 
-!!! note "Disable servicelb, but keep the cloud controller"
-    This disables `servicelb` (MetalLB replaces it) but **does not** pass `--disable-cloud-controller`. With servicelb disabled, that flag takes effect, and because k3s still runs the kubelet with `cloud-provider=external`, nodes get the `node.cloudprovider.kubernetes.io/uninitialized=true:NoSchedule` taint with nothing to remove it — pods don't schedule unless you deploy your own external CCM ([k3s#6554](https://github.com/k3s-io/k3s/issues/6554)). Keep the embedded cloud controller; it clears that taint and assigns node addresses.
+<!-- vale Google.WordListCase = NO -->
+!!! note "Turn off servicelb, but keep the cloud controller"
+    This turns off `servicelb` (MetalLB replaces it) but **does not** pass `--disable-cloud-controller`. With servicelb turned off, that flag takes effect, and because k3s still runs the kubelet with `cloud-provider=external`, nodes get the `node.cloudprovider.kubernetes.io/uninitialized=true:NoSchedule` taint with nothing to remove it — pods don't schedule unless you deploy your own external CCM ([k3s#6554](https://github.com/k3s-io/k3s/issues/6554)). Keep the embedded cloud controller; it clears that taint and assigns node addresses.
+<!-- vale Google.WordListCase = YES -->
 
 !!! note "Why `--cluster-init`"
-    Without `--cluster-init`, k3s defaults to a sqlite datastore (via kine). `--cluster-init` initializes the embedded etcd datastore instead — required for the `k3s etcd-snapshot` flow in Step 10. The CPU/memory overhead is modest on a CM4 with 8 GB RAM, and you can join additional server nodes later for HA without rebuilding.
+    Without `--cluster-init`, k3s defaults to a SQLite datastore (through kine). `--cluster-init` initializes the embedded etcd datastore instead — required for the `k3s etcd-snapshot` flow in Step 10. The CPU/memory overhead is modest on a CM4 with 8 GB RAM, and you can join additional server nodes later for HA without rebuilding.
 
 !!! warning "Token reuse"
-    The token you generate above is the join secret for the entire cluster. Step 3 uses the **same value** on every agent node. Generate once, store in your password manager, paste in both places.
+    The token you generate in the preceding step is the join secret for the entire cluster. Step 3 uses the **same value** on every agent node. Generate once, store in your password manager, paste in both places.
 
 ## Join worker nodes { #step-3-join-worker-nodes }
 
@@ -90,7 +92,7 @@ curl -sfL https://get.k3s.io | \
   K3S_TOKEN=<paste_token_from_Step_2> sh -
 ```
 
-Verify from your machine: `kubectl get nodes` (should show all 4 nodes Ready).
+Verify from your machine: `kubectl get nodes` (shows all 4 nodes Ready).
 
 ## Label nodes by capacity { #step-4-label-nodes-by-capacity }
 
@@ -106,7 +108,7 @@ kubectl label nodes topaz kubernetes.io/role=worker storage=large role=nfs
 kubectl label nodes amethyst kubernetes.io/role=worker storage=small
 ```
 
-In this build the labels are managed declaratively — each host's `node_labels` in the `homelab-ansible` inventory is the source of truth, applied by the `labels` play — so treat the commands above as the imperative reference for what the play does.
+In this build the labels are managed declaratively — each host's `node_labels` in the `homelab-ansible` inventory is the source of truth, applied by the `labels` play — so treat the preceding commands as the imperative reference for what the play does.
 
 !!! note "Three labels, three different jobs"
     `storage=large/small` records raw eMMC size (32 GB modules are ruby and topaz) and is **not** a placement signal — the two large-disk nodes are the control plane and the NFS/monitoring server, exactly where app data must *not* go. Placement uses the other two labels: `workload=heavy` (emerald-only) takes the spiky workloads the [Prerequisites](../get-started/prerequisites.md) runbook warns about — Paperless OCR and Woodpecker builds — and `app-state=true` (also emerald-only) marks the designated home for node-local `local-path` app data, so SQLite apps and their PVs land together on one known node. `node-role.kubernetes.io/control-plane=true` on ruby is only a **label**, not a taint — k3s doesn't taint its server by default. To hard-fence ruby, taint it (`kubectl taint nodes ruby node-role.kubernetes.io/control-plane=:NoSchedule`), but that also evicts the lighter app pods this build intentionally runs on ruby.
@@ -118,7 +120,9 @@ curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scrip
 chmod 700 get_helm.sh && ./get_helm.sh
 ```
 
+<!-- vale Vale.Terms = NO -->
 ## Install MetalLB { #step-6-install-metallb }
+<!-- vale Vale.Terms = YES -->
 
 ```bash
 helm repo add metallb https://metallb.github.io/metallb
@@ -149,7 +153,9 @@ spec:
 ```
 
 !!! note "Source of truth"
-    These manifests live at `homelab-manifests/infrastructure/metallb/{ipaddresspool,l2advertisement}.yaml` and are applied by ArgoCD (the `metallb` Application) once GitOps is wired; the YAML above is shown inline for learning context. Edit the repo, not your local copy, so the changes survive a rebuild.
+    These manifests live at `homelab-manifests/infrastructure/metallb/{ipaddresspool,l2advertisement}.yaml` <!-- vale Google.WordListCase = NO -->
+and are applied by ArgoCD (the `metallb` App) once GitOps is wired; the preceding YAML is shown inline for learning context.
+<!-- vale Google.WordListCase = YES --> Edit the repo, not your local copy, so the changes survive a rebuild.
 
 !!! warning "MetalLB pool vs DHCP"
     MetalLB's pool (10.0.20.200–10.0.20.250) **must be excluded from the Lab VLAN DHCP scope**. The [Network plan](network.md#network-plan) bounds Lab VLAN DHCP to .100–.199 for exactly this reason — if you change either side, change both. Without the bound, UDM eventually hands out an address in .200–.250 to a random device and you get intermittent IP conflicts that are a nightmare to debug. In UniFi Network: Settings → Networks → Lab → DHCP Range must stay 10.0.20.100–10.0.20.199.
@@ -167,12 +173,14 @@ helm upgrade --install nfs-provisioner \
   --set storageClass.defaultClass=true
 ```
 
+<!-- vale Vale.Terms = NO -->
 ## Install ArgoCD { #step-8-install-argocd }
+<!-- vale Vale.Terms = YES -->
 
 !!! note "If you ran Ansible"
     The `argocd` play bootstraps ArgoCD with the **Helm chart** (`argo-cd`, version pinned
     in `site.yml`) — skip the manual install below and go straight to retrieving the
-    initial admin secret. Once GitOps is wired ([Wire ArgoCD to homelab-manifests](../get-started/set-up-git.md#step-7-wire-argocd-to-homelab-manifests)),
+    initial administrator secret. Once GitOps is wired ([Wire ArgoCD to homelab-manifests](../get-started/set-up-git.md#step-7-wire-argocd-to-homelab-manifests)),
     ArgoCD manages itself from `homelab-manifests` and the chart pin there takes over.
 
 ```bash
@@ -190,7 +198,9 @@ Save the printed password to your password manager. (Once Vaultwarden is up, it 
 !!! note "Why `--server-side`"
     The upstream `install.yaml` is large enough that a client-side `kubectl apply` can hit the 256 KB annotation limit on the embedded CRDs. The current ArgoCD docs recommend server-side apply with `--force-conflicts` for the initial install.
 
+<!-- vale Vale.Terms = NO -->
 ## Access ArgoCD (before Traefik is up) { #step-9-access-argocd-before-traefik-is-up }
+<!-- vale Vale.Terms = YES -->
 
 ArgoCD has no Ingress yet — Traefik is the next page. To reach the UI in the meantime, port-forward:
 
@@ -207,7 +217,9 @@ Then:
 - Password: the value you decoded from the secret in [Install ArgoCD](#step-8-install-argocd).
 
 !!! tip "Port-forward is the bootstrap path"
-    After Traefik is up, you add an HTTPRoute so argocd.yourdomain.com works without port-forwarding. The port-forward method is the bootstrap path that works regardless.
+<!-- vale Vale.Terms = NO -->
+    After Traefik is up, you add an HTTPRoute so ArgoCD.yourdomain.com works without port-forwarding. The port-forward method is the bootstrap path that works regardless.
+<!-- vale Vale.Terms = YES -->
 
 ## Control-plane redundancy (SPOF awareness) { #step-10-control-plane-redundancy-spof-awareness }
 
@@ -263,14 +275,14 @@ kubectl get pods -A | grep -v Running    # settles to nothing crash-looping
 kubectl get secret -n sealed-secrets -l sealedsecrets.bitnami.com/sealed-secrets-key
 ```
 
-Finish with ArgoCD: every Application `Synced`/`Healthy`.
+Finish with ArgoCD: every app `Synced`/`Healthy`.
 
 !!! tip "Back up the k3s token"
     Document your K3S_TOKEN in your password manager the day you stand the cluster up. Losing it on top of losing ruby turns a 2-hour rebuild into a full cluster rebuild.
 
 ## Sealed Secrets (cluster-side secret management) { #step-12-sealed-secrets-cluster-side-secret-management }
 
-You have two flavors of secrets: those that live in `homelab-secrets` as sops + age (Terraform tfvars, Cloudflare tokens consumed by your machine) and those that need to be Kubernetes Secrets at runtime (DB passwords, OAuth client secrets, image-pull credentials). Don't commit raw `kubectl create secret` commands to Git — install Sealed Secrets so you can commit encrypted manifests to `homelab-manifests` safely.
+You have two flavors of secrets: those that live in `homelab-secrets` as sops + age (Terraform tfvars, Cloudflare tokens consumed by your machine) and those that need to be Kubernetes Secrets at runtime (DB passwords, OAuth 2.0 client secrets, image-pull credentials). Don't commit raw `kubectl create secret` commands to Git — install Sealed Secrets so you can commit encrypted manifests to `homelab-manifests` safely.
 
 ```bash
 helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
@@ -354,7 +366,7 @@ Servers go first, one at a time, then agents. This is the **opposite** of the Di
 OS-update order (agents first, `ruby` last), and getting it backwards is the one way to
 actually break the cluster: the Kubernetes version-skew policy lets a kubelet lag the
 API server by up to three minors, but a kubelet must **never lead it**. Upgrade an agent
-first and it may refuse to register with the older control plane.
+first and it might refuse to register with the older control plane.
 
 ### Pre-flight { #pre-flight }
 

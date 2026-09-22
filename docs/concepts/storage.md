@@ -22,7 +22,7 @@ once and a per-app storage line never reads as arbitrary again.
     - `local-path` standalone provisioner — **live** (`infrastructure/local-path-provisioner`).
       k3s was installed with `--disable local-storage`, so the built-in class is gone; this
       separate provisioner gives SQLite apps a correct home. The SQLite apps (Vaultwarden,
-      lldap, Forgejo, linkding, and others) live on it, and a backup→restore drill confirmed
+      lldap, Forgejo, Actual Budget, and others) live on it, and a backup→restore drill confirmed
       local-path volumes round-trip through Velero (see [the local-path tier](#the-local-path-tier)).
     - NAS relational DB — **live** (PostgreSQL 18 on the NAS at 10.0.20.50:5433, see
       [NAS PostgreSQL](../deploy/nas-postgres.md)); databases are provisioned per app at each app's
@@ -38,11 +38,13 @@ disk, real relational databases on x86 hardware (the NAS), caches in memory. Dur
 everywhere is **backups to Garage S3, not redundancy** — there is one real disk, by
 design (the storage SPOF is mitigated by backups, see [Backups](../build/backups.md)).
 
-## Why this isn't "just use the default StorageClass"
+## Why this isn't "use the default StorageClass"
 
 Two hardware facts drive every choice below:
 
-1. **SQLite corrupts on NFS.** [sqlite.org/howtocorrupt](https://www.sqlite.org/howtocorrupt.html)
+<!-- vale Vale.Terms = NO -->
+1. **SQLite corrupts on NFS.** [SQLite.org/howtocorrupt](https://www.sqlite.org/howtocorrupt.html)
+<!-- vale Vale.Terms = YES -->
    §2.1: *"This is especially true of network filesystems and NFS in particular… database
    corruption might result."* A large share of self-hosted apps embed SQLite (linkding, Actual Budget, the Arr stack, Forgejo, Vaultwarden, and others) and several have no
    other backend. They **cannot** sit on `nfs-storage`.
@@ -71,9 +73,9 @@ re-applying that annotation on **every restart** — which fights a custom defau
 `nfs-storage`. The cluster disables it (`--disable local-storage` in
 `homelab-ansible/site.yml`) and hands "default" cleanly to `nfs-storage`.
 
-The fix for SQLite apps is **not** to undo that disable — it's to run a **separate,
+The fix for SQLite apps is **not** to undo that turn off — it's to run a **separate,
 non-default** [rancher/local-path-provisioner](https://github.com/rancher/local-path-provisioner)
-as its own ArgoCD app. Because it's *our* manifest, not k3s's bundled one, k3s never
+as its own ArgoCD app. Because it's *your* manifest, not k3s's bundled one, k3s never
 touches it or re-marks defaults, so it coexists with `nfs-storage`. SQLite apps opt in
 with `storageClassName: local-path` + `strategy: Recreate` (the volume is RWO and pins to
 a single node). Velero's node-agent (filesystem/kopia backup) captures these volumes —
@@ -106,7 +108,7 @@ Shape of the layer:
   not one Postgres per app.
 - **One MariaDB container** for the MySQL-only apps (BookStack; optionally Ghost, Monica) —
   deferred until one of them actually deploys.
-- Cluster apps connect over the Lab VLAN via `DATABASE_URL`, credentials from a `SealedSecret`.
+- Cluster apps connect over the Lab VLAN through `DATABASE_URL`, credentials from a `SealedSecret`.
 - **Backups:** nightly `pg_dump` / `mysqldump` per database to Garage S3 ([Backups](../build/backups.md)), gated by a
   seeded restore drill. Move to pgBackRest / WAL archiving later for point-in-time
   recovery.
@@ -121,7 +123,9 @@ Shape of the layer:
     Run it as an ordinary in-cluster pod with no durable volume — there's nothing to back up
     and no reason to send it to the NAS.
 
+<!-- vale Homelab.Headings = NO -->
 ### Why not CloudNativePG (in-cluster Postgres)?
+<!-- vale Homelab.Headings = YES -->
 
 [CloudNativePG](https://cloudnative-pg.io/) is genuinely good and **fully self-hosted** —
 Apache-2.0, a CNCF Sandbox project, ships official `arm64` images, and backs up to *your own*
@@ -150,8 +154,8 @@ One real disk means durability is **backups, not redundancy** — applied consis
 These predate this record and need to be reconciled as each app is touched:
 
 - ~~Audit the App Catalog for SQLite apps still on `nfs-storage`~~ — **done (2026-07
-  audit):** every SQLite app sits on `local-path` — Vaultwarden, lldap, linkding,
-  Actual Budget, Donetick, ntfy, Woodpecker, and Forgejo's data volume (Forgejo's *repos*
+  audit):** every SQLite app sits on `local-path` — Vaultwarden, lldap, Actual Budget,
+  Donetick, ntfy, Woodpecker, and Forgejo's data volume (Forgejo's *repos*
   deliberately stay on `nfs-storage`: flat Git files, not SQLite).
 - **BookStack and Reactive Resume assume cluster-hosted databases** — revise their DB sections to
   point at the NAS server when each app is deployed. (Nextcloud and Paperless-ngx are done —

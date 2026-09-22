@@ -1,10 +1,10 @@
-# Arr Stack
+# Arr stack
 
 !!! warning "Shelved — not deployed (2026-06-16)"
     The manifests were written but this stack is **not deployed**, and the
     bring-up is **shelved**. The library is built mainly from **physical media**
     — ripped straight into Plex, which handles metadata on its own — and the
-    occasional not-publicly-available title isn't reachable through the
+    occasional not-publicly available title isn't reachable through the
     **public** torrent indexers this stack depends on. Private trackers (the
     ratio-enforcing communities where rare content lives) are invite-only and
     not in use, so a public-torrent automation stack doesn't fit the actual
@@ -31,7 +31,7 @@ stack runs on the cluster and feeds **Plex**, which runs on the NAS.
     This stack intentionally omits a request portal (Seerr/Jellyseerr) — content
     is added directly in the arr apps. A Plex-facing request UI can be added
     later if wanted: `seerr/seerr` (the maintained Overseerr+Jellyseerr merger,
-    arm64, listens on 5055, SQLite config in `/app/config` → `local-path`) would
+    arm64, listens on 5055, SQLite config in `/app/config` → `local-path`) can
     drop in as another Deployment, with an **unauthenticated** HTTPRoute (it has
     its own Plex login).
 
@@ -80,7 +80,7 @@ The single most important decision. Each app has **two** kinds of state:
   `local-path` class, pinned to the app-state node (emerald) with
   `nodeSelector: app-state=true` + `strategy: Recreate`. **An earlier revision
   put every `/config` on `nfs-storage` — that was wrong** and is the same trap
-  documented for linkding / Actual Budget / Donetick. See
+  documented for Actual Budget / Donetick. See
   [Storage & Data Architecture](../concepts/storage.md).
 - **`/data` (downloads + media) → one RWX NFS export on the NAS.** Bulk media is
   TB-scale and Plex reads it locally on the NAS, so the media library lives on
@@ -108,18 +108,18 @@ each app mounts it at `/data`:
 
 NFS supports `link()`, so hardlinks work across this export with the apps on the
 cluster and Plex on the NAS reading the same files locally. (A future move of the
-whole stack to NAS-side Docker would make hardlinks node-local with no NFS hop —
+whole stack to NAS-side Docker makes hardlinks node-local with no NFS hop —
 an optimisation, not a requirement; see the end of this runbook.)
 
 ### Download client routes through a VPN
 
 qBittorrent runs with a **gluetun** sidecar in the same pod. gluetun brings up a
-WireGuard/OpenVPN tunnel and a kill-switch; both containers share the pod network
+WireGuard/OpenVPN tunnel and a stop-switch; both containers share the pod network
 namespace, so **all** of qBittorrent's traffic exits through the VPN and nothing
 leaks to the home WAN IP if the tunnel drops. This replaces Arr Stack's original
 no-VPN qBittorrent.
 
-### Manifests + Application layout
+### Manifests + app layout
 
 Raw manifests in `apps/arr/manifests/` (one `Deployment`+`Service` per app, the
 shared PVCs, the NFS PV, the `Middleware`, the `HTTPRoute`s, the gluetun
@@ -148,7 +148,7 @@ old loose `apps/arr/*.yaml`.
 
 On the NAS (10.0.20.50):
 
-1. Create the unified layout above under one shared folder (e.g.
+1. Create the unified layout preceding under one shared folder (for example,
    `/volume1/data`), `downloads/` and `media/{tv,movies,music}` as siblings.
 2. Export it over NFS to the four node IPs 10.0.20.10-13 (Lab VLAN),
    read-write, mapping/allowing **UID/GID 1000** so the apps can write.
@@ -220,9 +220,9 @@ WebUI is unreachable unless you punch two holes:
 `FIREWALL_OUTBOUND_SUBNETS` lets Sonarr/Radarr/Lidarr and Traefik reach
 `qbittorrent:8080`; without it the HTTPRoute 502s and download-client tests fail.
 gluetun needs `securityContext.capabilities.add: [NET_ADMIN]` (it creates
-`/dev/net/tun` itself and falls back to wireguard-go — no host device mount or
+`/dev/net/tun` itself and falls back to WireGuard-go — no host device mount or
 kernel module on the CM4s). Its `livenessProbe` runs gluetun's own healthcheck so
-a dead tunnel restarts the sidecar and re-arms the kill-switch.
+a dead tunnel restarts the sidecar and re-arms the stop-switch.
 
 ## Auth (ForwardAuth) { #step-3-auth-forwardauth }
 
@@ -254,7 +254,7 @@ The app won't go fully Healthy until [NAS NFS export](#step-1-nas-nfs-export-pre
 
 ## First-run wiring { #step-6-first-run-wiring }
 
-1. **qBittorrent password** — the image prints a *random temporary* admin
+1. **qBittorrent password** — the image prints a *random temporary* administrator
    password to its logs on first start:
    `kubectl -n arr logs deploy/qbittorrent -c qbittorrent | grep -i password`.
    Log in at https://qbt.yourdomain.com, set a permanent one (Settings → Web UI),
@@ -271,13 +271,13 @@ The app won't go fully Healthy until [NAS NFS export](#step-1-nas-nfs-export-pre
 
 ## Optional future — move the stack to the NAS
 
-If you later run the arr stack in NAS-side Docker (e.g. after a NAS RAM upgrade),
+If you later run the arr stack in NAS-side Docker (for example, after a NAS RAM upgrade),
 hardlinks become node-local with no NFS hop. Stop the cluster Deployments, copy
 the `local-path` configs to NAS local storage, recreate the unified `/data`
 layout in a compose file, and front each NAS UI through Traefik with a
 selector-less `Service` + `EndpointSlice` (the Immich pattern), re-creating the
 ForwardAuth `Middleware` in that namespace. Not required — the cluster + NFS
-design above works today.
+design preceding works today.
 
 ## Verification
 
@@ -291,5 +291,5 @@ design above works today.
 - [ ] A test grab completes and lands (hardlinked) in the right
       `/data/media/<type>` folder; Plex sees it.
 - [ ] `PodVolumeBackup` for each `config` volume shows **bytes > 0** after the
-      04:00 UTC velero run (not just `Completed`).
+      04:00 UTC Velero run (not `Completed`).
 - [ ] All API keys + the qBittorrent password + the VPN config in Vaultwarden.

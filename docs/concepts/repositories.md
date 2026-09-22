@@ -4,9 +4,13 @@ How this build's Git repos are structured, hosted, and kept secret-free.
 
 | | |
 |---|---|
+<!-- vale Vale.Terms = NO -->
 | **Repos** | 5 — docs, ansible, manifests, terraform, secrets |
+<!-- vale Vale.Terms = YES -->
 | **Primary host** | Forgejo — git.yourdomain.com (deploy and SSO details: [Forgejo](../deploy/forgejo.md)) |
+<!-- vale Google.OxfordComma = NO -->
 | **GitHub's role** | Push mirror only — offsite IaC backup, not where you push or open PRs |
+<!-- vale Google.OxfordComma = YES -->
 | **PR workflow** | AGit — `git push origin HEAD:refs/for/main -o topic=TOPIC` |
 | **CI gate** | Woodpecker's `pull_request` pipeline runs on the AGit PR before merge — see [Woodpecker](../deploy/woodpecker.md) |
 | **ArgoCD wiring** | App-of-apps over SSH — one `Application` per component, reconciled by `bootstrap/root.yaml` — see the `homelab-manifests` README |
@@ -40,7 +44,9 @@ Each repo has a distinct purpose, security boundary, and consumer:
 - Different CI pipelines: Terraform repo runs `terraform plan`, manifests repo runs YAML lint.
 - Cleaner blame and history when each repo has one concern.
 
+<!-- vale Vale.Terms = NO -->
 ## As-built state { #as-built-forgejo-primary-agit-prs-gitops-over-ssh }
+<!-- vale Vale.Terms = YES -->
 
 This build runs **Pattern C** from the hosting-pattern table in [Set up Git](../get-started/set-up-git.md#choose-a-hosting-pattern): Forgejo, self-hosted at git.yourdomain.com, is primary. GitHub holds a **push mirror** — free offsite backup of the infrastructure-as-code — and is never pushed to or opened a PR against directly.
 
@@ -69,7 +75,9 @@ guarantee GitHub Actions gave, now self-hosted.
     instead of updating the first — Forgejo keys the PR to the topic string. Reuse the
     exact same topic for every push in one review cycle.
 
+<!-- vale Vale.Terms = NO -->
 ### Pull from Forgejo with ArgoCD { #gitops-argocd-pulls-from-forgejo-over-ssh }
+<!-- vale Vale.Terms = YES -->
 
 Once Kubernetes and Forgejo are both up, ArgoCD stops needing a GitHub PAT. It watches
 `homelab-manifests` over **SSH**, authenticated with a repo credential committed as a

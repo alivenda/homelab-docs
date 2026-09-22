@@ -1,4 +1,4 @@
-# Homelab Runbooks
+# Homelab runbooks
 
 **Turing Pi 2 Edition — From zero to self-hosted everything**
 
@@ -12,7 +12,7 @@ Build a 4-node k3s cluster on a Turing Pi 2, learn DevOps practices that transfe
 | Network | Ubiquiti UDM rackmount — VLANs, firewall, DHCP |
 | NAS | UGREEN DXP6800 Pro (x86, 8 GB DDR5) — bulk media and Immich |
 | Home Assistant host | slate — repurposed Late-2014 Mac mini (16 GB RAM, 256 GB SSD), Proxmox host running Home Assistant OS in a VM (2 vCPU, 4 GB) |
-| DNS | 1× Raspberry Pi for AdGuard Home (pyrite — this build: Pi 3 Model B; add a 2nd for optional failover) |
+| DNS | 1× Raspberry Pi for AdGuard Home (pyrite — this build: Pi 3 Model B; add a second for optional failover) |
 | Domain | Cloudflare-registered domain (~$10/yr) |
 
 You can substitute hardware, but commands are written against this exact build. Full parts list (PSU, SSD, UPS, and the rest) is in [Prerequisites](get-started/prerequisites.md).
@@ -92,11 +92,11 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
  ├─→ Immich          (NAS-Docker — not on k3s, see runbook for why)
  ├─→ Home Assistant  (slate — Mac mini / Proxmox VM)
  ├─→ Homepage        (cluster — config-heavy dashboard)
- ├─→ Vikunja         (cluster — DB on NAS Postgres)
  └─→ Miniflux        (cluster — DB on NAS Postgres, stateless app)
 
 ─── Applications · full runbooks · planned ─────────────────────
  ├─→ Arr Stack       (shelved — physical-media-first library)
+ ├─→ Vikunja         (retired 2026-09 — unused)
  ├─→ BookStack       (cluster — MariaDB on NAS)
  ├─→ Syncthing       (per-device — not k3s)
  ├─→ RustDesk Server (cluster — TCP/UDP relay via MetalLB)
@@ -105,7 +105,7 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
 
 ─── Applications · catalog (one shared pattern) ──────────────
  │  See: Deploying an App (pattern) + App Catalog
- ├─→ live:    Actual Budget · Audiobookshelf · Collabora · Donetick · linkding
+ ├─→ live:    Actual Budget · Audiobookshelf · Collabora · Donetick
  └─→ planned: Kavita · Mealie · TriliumNext
 ```
 
@@ -113,9 +113,9 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
 
 | Status | Apps |
 |---|---|
-| Live | Actual Budget · Audiobookshelf · Collabora Online · Donetick · linkding |
+| Live | Actual Budget · Audiobookshelf · Collabora Online · Donetick |
 | Planned | Kavita · Mealie · TriliumNext Notes |
-| Retired | Uptime Kuma |
+| Retired | linkding · Uptime Kuma |
 
 → [App Catalog](reference/app-catalog.md) for the per-app deltas, [Deploying an App](deploy/index.md) for the shared pattern.
 
@@ -127,7 +127,7 @@ NAS PostgreSQL           ← shared DB server (NAS Docker — not k3s)
 - The most common ordering confusion: Tailscale (the Network page needs ruby from Turing Pi) and ArgoCD (the Kubernetes page needs a port-forward before Traefik is up). Both are flagged where they appear.
 
 !!! tip "Bookmark this page"
-    When you hit a "when am I supposed to do X" moment three weeks in, the dependency map answers it.
+    When you need to find the build order three weeks in, the dependency map answers it.
 
 ## Version
 

@@ -13,18 +13,18 @@ End-to-end pipeline: push code, auto-build container images, deploy to k3s throu
 | **Namespace** | `woodpecker` |
 | **Chart** | `woodpecker/woodpecker` (umbrella: `server` + `agent` subcharts) |
 | **Storage** | SQLite on `local-path` (server, 2Gi) + `woodpecker-ci-scratch` (agent, per-pipeline) |
-| **Auth** | Forgejo OAuth2 (`WOODPECKER_ADMIN` gate) |
+| **Auth** | Forgejo OAuth 2.0 (`WOODPECKER_ADMIN` gate) |
 | **Runs on** | k3s cluster (32 GB node) |
 | **Depends on** | Kubernetes, Traefik, Backups, Forgejo |
 | **Difficulty** | Intermediate–Advanced |
 | **Time estimate** | 2–3 hours |
 
-## OAuth2 app in Forgejo { #step-1-oauth2-app-in-forgejo }
+## OAuth 2.0 app in Forgejo { #step-1-oauth2-app-in-forgejo }
 
-**Site Admin → Applications → OAuth2 Applications.**
+**Site Administrator → Applications → OAuth 2.0 Applications.**
 
 - **Redirect URI:** `https://ci.yourdomain.com/authorize`
-- **Application Name:** `Woodpecker`
+- **App Name:** `Woodpecker`
 
 Save the **Client ID** and **Client Secret** to Vaultwarden.
 
@@ -32,8 +32,8 @@ Save the **Client ID** and **Client Secret** to Vaultwarden.
     Forgejo refuses webhooks to private/loopback IPs by default, and
     `ci.yourdomain.com` resolves to the cluster gateway (a `10.x` address). Setting
     `ALLOW_LOCALNETWORKS = true` **alone is not enough** — Forgejo still denies the
-    delivery with *"webhook can only call allowed HTTP servers"*. Add your domain to
-    `[webhook] ALLOWED_HOST_LIST` (e.g. `*.yourdomain.com`). And the Forgejo chart
+    delivery with *"webhook can only call allowed HTTP servers."* Add your domain to
+    `[webhook] ALLOWED_HOST_LIST` (for example `*.yourdomain.com`). And the Forgejo chart
     updates `app.ini` but does **not** roll the pod on a config change — run
     `kubectl -n forgejo rollout restart deployment forgejo` for it to take effect.
 
@@ -77,7 +77,7 @@ kubectl create secret generic woodpecker-secrets \
 ### Helm values
 
 The chart is an **umbrella** wrapping two subcharts, `server` and `agent`. Every
-value **must** nest under one of them — a top-level key (e.g. `nodeSelector:`) is
+value **must** nest under one of them — a top-level key (for example `nodeSelector:`) is
 **silently ignored**. `values.yaml`:
 
 ```yaml
@@ -125,12 +125,12 @@ agent:
     workload: heavy
 ```
 
-The kubernetes backend's step pods need RBAC in the namespace; the chart creates
+The Kubernetes backend's step pods need RBAC in the namespace; the chart creates
 the Role/RoleBinding for you with `agent.serviceAccount.rbac.create` (default `true`).
 
-!!! warning "Forge env vars: server only — and FORGEJO vs GITEA"
+!!! warning "Forge env vars: server only — and Forgejo vs GITEA"
     Put `WOODPECKER_FORGEJO*` on the **server**, never the agent — agent-side forge
-    config is a known footgun ([woodpecker-ci/helm#272](https://github.com/woodpecker-ci/helm/issues/272),
+    config is a known footgun ([`woodpecker-ci/helm#272`](https://github.com/woodpecker-ci/helm/issues/272),
     "forge not configured"). Also: Woodpecker ≥ 2.x ships a dedicated Forgejo
     provider (`WOODPECKER_FORGEJO_*`); older versions only had `WOODPECKER_GITEA_*`,
     which still works against Forgejo (same API). On an older chart, swap
@@ -147,12 +147,12 @@ helm upgrade --install woodpecker woodpecker/woodpecker \
   --values values.yaml
 ```
 
-Pin `--version` to a current release listed on [woodpecker-ci/helm](https://github.com/woodpecker-ci/helm).
+Pin `--version` to a current release listed on [`woodpecker-ci/helm`](https://github.com/woodpecker-ci/helm).
 
 ### GitOps-managed install (recommended)
 
 Commit two ArgoCD `Application`s, exactly as [Forgejo's GitOps-managed install](forgejo.md#step-3-gitops-managed-install-recommended): the chart
-Application with the multi-source `$values` pattern, plus a second Application for
+App with the multi-source `$values` pattern, plus a second App for
 the raw manifests (HTTPRoute, the sealed secret, the scratch StorageClass).
 
 ```yaml
@@ -181,12 +181,12 @@ spec:
       - ServerSideApply=true
 ```
 
-The second `woodpecker-manifests` Application points at
+The second `woodpecker-manifests` App points at
 `infrastructure/woodpecker/manifests/` — give it `CreateNamespace=true` but **not**
 `ServerSideApply` (the same Gateway-API HTTPRoute trap as Forgejo). One of those
 manifests is the scratch StorageClass the agent points at. The default
 `nfs-storage` class archives every deleted PVC (a safety net for real app data) —
-wrong for disposable per-pipeline scratch, which would otherwise pile up unbounded.
+wrong for disposable per-pipeline scratch, which otherwise piles up unbounded.
 A dedicated class with `archiveOnDelete: "false"` (same provisioner) makes it
 genuinely disposable:
 
@@ -212,10 +212,10 @@ volumeBindingMode: Immediate
 
 Standard HTTPRoute for `ci.yourdomain.com`. Same shape as [Vaultwarden HTTPRoute](vaultwarden.md#step-3-httproute) — change the backend service to `woodpecker-server`, port `80` (the server subchart's Service port; the `woodpecker-server` name comes from the mandatory `woodpecker` release name).
 
-## Why kubernetes backend (not docker) { #step-6-why-kubernetes-backend-not-docker }
+## Why Kubernetes backend (not Docker) { #step-6-why-kubernetes-backend-not-docker }
 
 - Each pipeline step becomes its own pod, scheduled by k3s. Resource limits and node selectors work.
-- **No `/var/run/docker.sock` mount in the agent.** The original compose mount was a privileged escape risk. The kubernetes backend doesn't need it — image builds happen in dedicated build pods.
+- **No `/var/run/docker.sock` mount in the agent.** The original compose mount was a privileged escape risk. The Kubernetes backend doesn't need it — image builds happen in dedicated build pods.
 - Cross-architecture builds: pin steps to amd64 or arm64 with `nodeSelector` on the build pod if you ever add x86 nodes.
 
 !!! warning "Pipeline images must be ARM64"
@@ -255,13 +255,13 @@ check validates the **whole tree** every run, so one broken manifest on `main` r
 every subsequent PR until it's fixed — keep `main` green.
 
 !!! note "AGit PRs do trigger Woodpecker"
-    With the Forgejo webhook delivering ([OAuth2 app in Forgejo](#step-1-oauth2-app-in-forgejo)), an AGit pull request
+    With the Forgejo webhook delivering ([OAuth 2.0 app in Forgejo](#step-1-oauth2-app-in-forgejo)), an AGit pull request
     (`git push origin HEAD:refs/for/main -o topic=…`) fires a `pull_request` event
     and the gate runs **before merge** — no Forgejo Actions runner needed.
 
 ## Sample pipeline (build → push → bump manifest)
 
-The kubernetes backend doesn't have a Docker socket. Use [BuildKit](https://github.com/moby/buildkit) (rootless) to build OCI images directly inside a build pod — no daemon, no socket mount, no privileged container.
+The Kubernetes backend doesn't have a Docker socket. Use [BuildKit]( SPAN0  (rootless) to build OCI images directly inside a build pod — no daemon, no socket mount, no privileged container.
 
 !!! note "Kaniko was archived in June 2025"
     Earlier versions of this runbook recommended kaniko. The kaniko project was archived upstream; BuildKit's rootless image (`moby/buildkit:rootless`) is the maintained replacement and works identically for CI-style "build and push" flows.
@@ -301,14 +301,14 @@ steps:
 ```
 
 !!! note "Registry auth for BuildKit"
-    For pushes to a private Forgejo registry, mount a Docker-config-format Secret at `/home/user/.docker/config.json` in the build pod (Woodpecker `volumes:` or k8s backend pod-template overrides). The same `config.json` pattern works for any OCI registry.
+    For pushes to a private Forgejo registry, mount a Docker-config-format Secret at `/home/user/.docker/config.json` in the build pod (Woodpecker `volumes:` or Kubernetes backend pod-template overrides). The same `config.json` pattern works for any OCI registry.
 
 !!! tip "Forgejo's built-in container registry"
     Enable Forgejo's container registry under `[packages]` in `app.ini` so pipelines push/pull images without Docker Hub.
 
 ## Renovate: keep dependencies and image tags current
 
-Your CI pipeline above builds your own images. Third-party versions (helm charts, terraform providers, GitHub Actions, pip and ansible deps, image tags) need a different update strategy. [Renovate](https://docs.renovatebot.com/) watches your repos for outdated versions and opens PRs to bump them.
+Your CI pipeline preceding builds your own images. Third-party versions (helm charts, Terraform providers, GitHub Actions, pip and Ansible deps, image tags) need a different update strategy. [Renovate](https://docs.renovatebot.com/) watches your repos for outdated versions and opens PRs to bump them.
 
 ### Hosted vs self-hosted
 
@@ -331,7 +331,7 @@ Every homelab repo ships a `renovate.json` that extends `config:recommended` and
 }
 ```
 
-`config:recommended` auto-discovers k8s manifests, helm values, terraform, GitHub Actions, pip requirements, ansible-galaxy, Dockerfile, and more — no explicit `fileMatch` overrides needed for the standard cases.
+`config:recommended` auto-discovers Kubernetes manifests, helm values, Terraform, GitHub Actions, pip requirements, `ansible-galaxy`, Dockerfile, and more — no explicit `fileMatch` overrides needed for the standard cases.
 
 ### Per-repo grouping rules
 
@@ -342,11 +342,11 @@ Each repo adds a single grouping rule for its primary manager so related bumps l
 | `homelab-ansible` | `matchManagers: ["ansible-galaxy"]` → `groupName: "ansible collections"` |
 | `homelab-docs` | `matchManagers: ["pip_requirements"]` → `groupName: "mkdocs python deps"` |
 | `homelab-terraform` | `matchManagers: ["terraform"]` → `groupName: "terraform providers"` |
-| `homelab-manifests` | (none — see custom regex below) |
+| `homelab-manifests` | (none — see custom regular expression below) |
 
-### Custom regex for pinned chart versions
+### Custom regular expression for pinned chart versions
 
-`homelab-manifests` pins helm chart versions in two non-standard places — a `--version` flag in a README install snippet, and a `targetRevision:` line in an ArgoCD `bootstrap/*.yaml` Application. Neither is a path the built-in managers scan. A `customManagers` regex keyed off a `# renovate:` annotation makes those pins trackable:
+`homelab-manifests` pins helm chart versions in two non-standard places — a `--version` flag in a README install snippet, and a `targetRevision:` line in an ArgoCD `bootstrap/*.yaml` App. Neither is a path the built-in managers scan. A `customManagers` regular expression keyed off a `# renovate:` annotation makes those pins trackable:
 
 ```json
 "customManagers": [
@@ -365,7 +365,7 @@ Each repo adds a single grouping rule for its primary manager so related bumps l
 ]
 ```
 
-To use it, drop a comment directly above the pin:
+To use it, drop a comment directly preceding the pin:
 
 ```yaml
 # renovate: datasource=helm depName=traefik registryUrl=https://traefik.github.io/charts
@@ -438,4 +438,4 @@ Pin `--version` to a current release listed on [goharbor/harbor-helm](https://gi
     # Expected: 'ci(myapp): bump to <sha>'
     ```
 
-- [ ] ArgoCD reconciles the new image. In ArgoCD UI, the Application status briefly shows `OutOfSync` then returns to `Synced`. The pod is now running the new tag.
+- [ ] ArgoCD reconciles the new image. In ArgoCD UI, the App status briefly shows `OutOfSync` then returns to `Synced`. The pod is now running the new tag.

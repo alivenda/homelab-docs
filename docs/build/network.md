@@ -8,7 +8,7 @@ VLAN plan, firewall, and remote access with Tailscale. Builds the network model 
 | **Time estimate** | 2–3 hours |
 | **Runs on** | UDM + a Turing Pi node for Tailscale subnet routing |
 | **Prerequisites** | UDM powered and reachable on default LAN |
-| **Targets** | UniFi OS 5.x · Network application 10.x |
+| **Targets** | UniFi OS 5.x · Network app 10.x |
 
 !!! warning "UDM version assumption"
     The firewall section targets the **Policy Engine / Zone-Based Firewall** introduced in UniFi OS 4 and current in 5.x. On UniFi OS 3.x or earlier, the firewall is configured under **Settings → Firewall → LAN IN** with a different model (default-allow + targeted drops) and these steps don't apply 1:1. Check **System → About** in the UniFi UI to confirm your version.
@@ -27,7 +27,7 @@ This table is the authoritative source for every later runbook (Terraform `unifi
 **Globals**
 
 - DHCP lease: 86400s (1 day)
-- IPv6: disabled on both WAN and LAN (see [Disable IPv6](#step-1c-disable-ipv6-wan-side-too))
+- IPv6: turned off on both WAN and LAN (see [Turn off IPv6](#step-1c-disable-ipv6-wan-side-too))
 - IGMP snooping: **on** (on the UDM's built-in switch, see [Enable IGMP snooping](#step-1d-enable-igmp-snooping-on-the-udm)) — required for mDNS reflector to forward multicast cleanly across VLANs
 - Multicast DNS (mDNS): **global gateway reflector set to Auto** — the UDM retransmits common mDNS (AirPlay, Cast, HomeKit, Bonjour) across **all** VLANs; it isn't a per-network toggle. Custom mode (allowlist services, scope to chosen VLANs) is the hardening option — see [Enable the global Multicast DNS proxy](#step-1e-enable-the-global-multicast-dns-proxy)
 - UDM upstream DNS: 1.1.1.1 (Cloudflare). Client DNS is handed off to a dedicated AdGuard Home appliance (pyrite, 10.0.0.20) — see [DNS enforcement](#step-3d-dns-enforcement) and [AdGuard Home](../deploy/adguard-home.md)
@@ -47,19 +47,19 @@ Within the static range of each VLAN. Cluster nodes get their static IP from `di
 |---|---|---|---|
 | UDM | default | 10.0.0.1 | UDM default |
 | UniFi AP | default | 10.0.0.3 | UDM DHCP reservation |
-| pyrite (AdGuard Home — DNS) | default | 10.0.0.20 | dietpi.txt static |
-| marcasite (AdGuard Home — DNS failover, optional) | default | 10.0.0.21 | dietpi.txt static |
+| pyrite (AdGuard Home — DNS) | default | 10.0.0.20 | DietPi.txt static |
+| marcasite (AdGuard Home — DNS failover, optional) | default | 10.0.0.21 | DietPi.txt static |
 | Turing Pi 2 BMC | lab | 10.0.20.4 | UDM DHCP reservation |
-| ruby (k3s control plane, Tailscale subnet router) | lab | 10.0.20.10 | dietpi.txt static |
-| emerald (Tailscale subnet router failover) | lab | 10.0.20.11 | dietpi.txt static |
-| topaz | lab | 10.0.20.12 | dietpi.txt static |
-| amethyst | lab | 10.0.20.13 | dietpi.txt static |
+| ruby (k3s control plane, Tailscale subnet router) | lab | 10.0.20.10 | DietPi.txt static |
+| emerald (Tailscale subnet router failover) | lab | 10.0.20.11 | DietPi.txt static |
+| topaz | lab | 10.0.20.12 | DietPi.txt static |
+| amethyst | lab | 10.0.20.13 | DietPi.txt static |
 | slate (Mac mini — Proxmox host for Home Assistant) | lab | 10.0.20.20 | static (set at Proxmox install) |
 | Home Assistant OS (VM on slate) | lab | 10.0.20.21 | UDM DHCP reservation |
 | UGREEN DXP6800 Pro NAS | lab | 10.0.20.50 | UDM DHCP reservation |
 | Apple TV | iot | 10.0.30.10 | UDM DHCP reservation |
 
-### WiFi SSID mapping
+### Wi-Fi SSID mapping
 
 | SSID | VLAN | Devices |
 |---|---|---|
@@ -123,7 +123,7 @@ Each VLAN has a distinct trust level and a deliberate reason for existing:
 - **VLAN 30 — IoT (`10.0.30.0/24`):** smart home gear including the Apple TV. The global mDNS reflector lets phones on Trusted discover the Apple TV for AirPlay, and lets the Apple TV discover Plex on the NAS. Internet egress allowed (most IoT needs cloud services) but no inbound from anywhere except specific Home Assistant / Plex flows.
 
 !!! note "Why Apple TV is on IoT and not Trusted"
-    Apple TV is a closed-firmware appliance that talks to Apple's cloud services. Putting it on Trusted would let it reach your personal devices unnecessarily. Putting it on IoT with the mDNS reflector enabled is the Ubiquiti-recommended pattern: segmentation preserved, AirPlay still works because the reflector relays mDNS announcements across VLANs.
+    Apple TV is a closed-firmware appliance that talks to Apple's cloud services. Putting it on Trusted lets it reach your personal devices unnecessarily. Putting it on IoT with the mDNS reflector enabled is the Ubiquiti-recommended pattern: segmentation preserved, AirPlay still works because the reflector relays mDNS announcements across VLANs.
 
 ## Create VLANs on the UDM { #step-1-create-vlans-on-udm }
 
@@ -135,7 +135,7 @@ In UniFi Network → **Settings → Networks**, create one network per VLAN row 
 4. **DHCP DNS Server:** Auto (UDM). UDM forwards to upstream — set the upstream in [UDM upstream DNS](#step-1a-udm-upstream-dns).
 5. **Multicast DNS:** leave the per-network field at its default — on this controller mDNS reflection is **not** a per-network toggle but a single global gateway setting, configured in [Enable the global Multicast DNS proxy](#step-1e-enable-the-global-multicast-dns-proxy).
 6. **IGMP Snooping:** configured on the UDM in [Enable IGMP snooping](#step-1d-enable-igmp-snooping-on-the-udm) (not per-VLAN here).
-7. **IPv6 Interface Type:** None (disable).
+7. **IPv6 Interface Type:** None (turn off).
 
 ### UDM upstream DNS { #step-1a-udm-upstream-dns }
 
@@ -145,18 +145,18 @@ UDM Settings → **Internet → Primary Connection → Advanced → DNS Server**
 
 In UniFi → Networks → **Lab** → DHCP → **Advanced → DHCP Exclude IP Range**, add 10.0.20.200–10.0.20.250. The DHCP pool is already limited to .100–.199, but the exclude range belt-and-suspenders prevents an accidental DHCP-range widening from colliding with MetalLB-owned IPs.
 
-### Disable IPv6 (WAN side too) { #step-1c-disable-ipv6-wan-side-too }
+### Turn off IPv6 (WAN side too) { #step-1c-disable-ipv6-wan-side-too }
 
-UDM Settings → **Internet → Primary Connection → IPv6**: set to **Disabled**.
+UDM Settings → **Internet → Primary Connection → IPv6**: turn off.
 
 !!! warning "IPv6 has two settings — both matter"
-    The per-VLAN IPv6 toggle (item 7 in [Create VLANs](#step-1-create-vlans-on-udm)) only stops UDM from handing IPv6 to LAN clients. It does **not** stop UDM from accepting an IPv6 prefix from your ISP. Without disabling at WAN, clients can still be reachable over IPv6 through SLAAC even though you "disabled IPv6 on the LAN."
+    The per-VLAN IPv6 toggle (item 7 in [Create VLANs](#step-1-create-vlans-on-udm)) only stops UDM from handing IPv6 to LAN clients. It does **not** stop UDM from accepting an IPv6 prefix from your ISP. Without disabling at WAN, clients can still be reachable over IPv6 through SLAAC even though you "turned off IPv6 on the LAN."
 
 ### Enable IGMP snooping on the UDM { #step-1d-enable-igmp-snooping-on-the-udm }
 
 UniFi → **UniFi Devices → your UDM → Settings → Services → IGMP Snooping** → toggle on.
 
-This is a device-level setting on the UDM's built-in switch, not per-VLAN. Without IGMP snooping, the switch floods all multicast traffic (including mDNS announcements and the actual AirPlay/Chromecast streams) to every port in the VLAN — wasted bandwidth and an easy way to confuse other multicast-using devices. With snooping on, the switch tracks which ports have devices that joined a multicast group and only forwards to those ports.
+This is a device-level setting on the UDM's built-in switch, not per-VLAN. Without IGMP snooping, the switch floods all multicast traffic (including mDNS announcements and the actual AirPlay/Chromecast streams) to every port in the VLAN — wasted bandwidth and an way to confuse other multicast-using devices. With snooping on, the switch tracks which ports have devices that joined a multicast group and only forwards to those ports.
 
 !!! note "Why this matters with mDNS reflector enabled"
     The mDNS reflector (Auto) multiplies multicast traffic across every VLAN it reflects to. IGMP snooping is what keeps that traffic targeted instead of broadcast-flooding the whole switch. Enable mDNS reflector without IGMP snooping and you'll see strange symptoms — slow IoT discovery, dropped AirPlay sessions, sometimes whole switch-CPU spikes.
@@ -168,15 +168,15 @@ mDNS reflection is a single gateway-level setting, not per-network. UniFi → **
 **Auto** retransmits common mDNS service announcements (AirPlay, Chromecast, HomeKit, Bonjour) across **all** VLANs, so phones on Trusted and the Apple TV on IoT can discover Plex/AirPlay receivers on the NAS in Lab. Because Auto reflects everywhere, the Default management VLAN sees the announcements too — harmless here, but the reason Custom exists.
 
 !!! note "Custom mode — the hardening option"
-    **Custom** lets you whitelist specific service types (AirPlay, HomeKit, Matter) and scope each to chosen source/destination VLANs, instead of reflecting everything to everywhere. It's quieter on the wire, easier to audit, and keeps mDNS off VLANs that don't need it (e.g. Default). Auto is the simpler default and what this build runs today; switch to Custom when you want tighter control.
+    **Custom** lets you whitelist specific service types (AirPlay, HomeKit, Matter) and scope each to chosen source/destination VLANs, instead of reflecting everything to everywhere. It's quieter on the wire, easier to audit, and keeps mDNS off VLANs that don't need it (for example Default). Auto is the simpler default and what this build runs today; switch to Custom when you want tighter control.
 
 ## Connect devices to VLANs { #step-2-connect-devices-to-vlans }
 
-VLAN networks are inert until devices are attached. Two paths: WiFi (SSID-to-VLAN binding) and wired (switch port profile).
+VLAN networks are inert until devices are attached. Two paths: Wi-Fi (SSID-to-VLAN binding) and wired (switch port profile).
 
-### Create WiFi SSIDs { #step-2a-create-wifi-ssids }
+### Create Wi-Fi SSIDs { #step-2a-create-wifi-ssids }
 
-UniFi Network → **WiFi → Create New SSID** for each row in the SSID mapping table:
+UniFi Network → **Wi-Fi → Create New SSID** for each row in the SSID mapping table:
 
 | SSID | Network | Notes |
 |---|---|---|
@@ -187,7 +187,7 @@ For each SSID: select the matching network from the **Network** dropdown, set a 
 
 ### Configure wired switch port profiles { #step-2b-configure-wired-switch-port-profiles }
 
-Every wired device needs its switch port assigned to the right network. By default, switch ports are on the Default LAN — meaning a desktop you cable up will land on `10.0.0.0/24` regardless of which VLAN you intended.
+Every wired device needs its switch port assigned to the right network. By default, switch ports are on the Default LAN — meaning a desktop you cable up lands on `10.0.0.0/24` regardless of which VLAN you intended.
 
 UniFi → **UniFi Devices → your UDM → Ports**. For each relevant port click into it and set **Native VLAN / Network** to the right VLAN:
 
@@ -206,7 +206,7 @@ UniFi → **UniFi Devices → your UDM → Ports**. For each relevant port click
 
 Connect the Apple TV to the `home-iot` SSID. After it gets an initial DHCP lease, find it in **UniFi → Clients → Apple TV → Settings → Fixed IP Address** and set to 10.0.30.10 (per the [Static IP allocations](#static-ip-allocations) table). Reboot the Apple TV to apply.
 
-## Firewall with Policy Engine (zone-based) { #step-3-firewall-with-policy-engine-zone-based }
+## Firewall with policy engine (zone-based) { #step-3-firewall-with-policy-engine-zone-based }
 
 UniFi OS 4+ moved the firewall from the legacy `LAN IN / LAN OUT` rule list into the **Policy Engine**, which uses zones and a zone matrix. The model:
 
@@ -218,7 +218,7 @@ The big win: **default-deny between custom zones is built in.** You list only wh
 
 ### Create custom zones { #step-3a-create-custom-zones }
 
-UniFi → **Settings → Policy Engine → Zone Matrix → Add Zone** (UI labels might vary slightly between Network application versions — look for zone configuration under Policy Engine). Create three zones and assign each VLAN:
+UniFi → **Settings → Policy Engine → Zone Matrix → Add Zone** (UI labels might vary slightly between Network app versions — look for zone configuration under Policy Engine). Create three zones and assign each VLAN:
 
 | Zone | Networks |
 |---|---|
@@ -226,7 +226,7 @@ UniFi → **Settings → Policy Engine → Zone Matrix → Add Zone** (UI labels
 | Lab | VLAN 20 |
 | IoT | VLAN 30 |
 
-Leave the Default LAN in the built-in **Internal** zone — it's the management plane and should reach the custom zones by default.
+Leave the Default LAN in the built-in **Internal** zone — it's the management plane and must reach the custom zones by default.
 
 !!! note "Build zones empty first, attach networks last"
     On a live network, **create each custom zone with the Networks field empty**, then complete [Override the matrix defaults](#step-3b-override-the-matrix-defaults-that-need-to-be-allow) and [Add allow policies](#step-3c-add-allow-policies-the-explicit-exceptions) while the zones are still inert, and only attach the VLANs in a final pass. The moment a network enters a custom zone, that VLAN's traffic is subject to the new default-Block — without the override and service policies in place, you risk locking your management session out of the cluster, NAS, or BMC.
@@ -242,7 +242,7 @@ When you create the custom zones in [Create custom zones](#step-3a-create-custom
 | Override policy | Action | Source | Destination | Why |
 |---|---|---|---|---|
 | `internal-to-trusted-allow` | Allow | Internal (Any) | Trusted (Any) | UDM/AP firmware push flows initiate from the management plane out to Trusted devices |
-| `trusted-to-internal-allow` | Allow | Trusted (Any) | Internal (Any) | Daily-driver desktop admins the AP and UDM management UI on Default LAN |
+| `trusted-to-internal-allow` | Allow | Trusted (Any) | Internal (Any) | Daily driver desktop admins the AP and UDM management UI on Default LAN |
 | `trusted-to-iot-allow` | Allow | Trusted (Any) | IoT (Any) | AirPlay/Cast/HomeKit control from desktop and phones reach Apple TV; dynamic ports make whole-zone Allow simpler than enumeration |
 
 For each: UniFi → **Policy Engine → Create Policy**. Source Zone = source, Destination Zone = destination, both `Any`. Protocol = `All`. Action = `Allow`. Leave Source Port, Destination Port, and Connection State at their `Any`/`All` defaults. Save.
@@ -259,7 +259,7 @@ Target end-state matrix (after the override and allow-policy sections are both a
 
 Intra-zone (a zone to itself) is L2-switched within the VLAN — it never traverses UDM's firewall, regardless of what the cell displays. Cells marked `Block*` stay Block at the matrix level; the narrow service-specific exceptions are added in [Add allow policies](#step-3c-add-allow-policies-the-explicit-exceptions).
 
-The asymmetry around Internal is deliberate: Trusted reaches Internal (so you can admin the AP and Turing Pi BMC from your desktop), but Lab and IoT cannot (cluster workloads and smart bulbs have no business reaching the management plane).
+The asymmetry around Internal is deliberate: Trusted reaches Internal (so you can administrator the AP and Turing Pi BMC from your desktop), but Lab and IoT cannot (cluster workloads and smart bulbs have no business reaching the management plane).
 
 !!! note "Why these three and not others"
     The other matrix cells (Internal→Lab, Internal→IoT, IoT→Trusted, etc.) all want Block in the target state. UniFi already defaults them to Block for new custom zones, so no override policy is needed — the built-in default does the job.
@@ -288,7 +288,7 @@ UniFi auto-generates a matching `(Return)` policy for every Allow rule (it's sta
 
 ### Why per-service policies, not a blanket Trusted → Lab allow?
 
-A common shortcut is to make Trusted → Lab a blanket Allow and skip the per-service policies. It's less typing and easier to maintain. The argument against: if a daily-driver device on Trusted is ever compromised (browser zero-day, bad npm install, supply-chain attack on a desktop dependency), blanket Allow gives the attacker lateral access to kubelet, etcd, every internal admin UI on Lab. Per-service caps blast radius to the exact ports listed above. For a learning-focused homelab the extra friction is small and mirrors how production environments handle east-west traffic.
+A common shortcut is to make Trusted → Lab a blanket Allow and skip the per-service policies. It's less typing and easier to maintain. The argument against: if a daily driver device on Trusted is ever compromised (browser zero-day, bad npm install, supply chain attack on a desktop dependency), blanket Allow gives the attacker lateral access to kubelet, etcd, every internal administrator UI on Lab. Per-service caps blast radius to the exact ports listed preceding. For a learning-focused homelab the extra friction is small and mirrors how production environments handle east-west traffic.
 
 ### Why the matrix-then-policies model, not legacy LAN IN rules?
 
@@ -302,7 +302,7 @@ With legacy `LAN IN` rules, the implicit "allow everything else" meant you had t
 !!! tip "Forward-looking: Lab → IoT for Home Assistant local control"
     Home Assistant is live (an HAOS VM on slate, 10.0.20.21). The best-practice integration for Philips Hue, Shelly, and other local-control smart devices is HA talking to them directly on the local network — faster and works offline, unlike cloud routing. That's a **Lab → IoT** flow, which the matrix blocks by default.
 
-    Add a narrowly-scoped policy then (for example, `lab-to-hue-bridge`: Lab → 10.0.30.x of the bridge/controller, TCP 80 and/or 443). Scope to the specific device IP, not the whole IoT zone, to avoid HA reaching the printer's web UI or other unrelated IoT devices.
+    Add a narrowly scoped policy then (for example, `lab-to-hue-bridge`: Lab → 10.0.30.x of the bridge/controller, TCP 80 and/or 443). Scope to the specific device IP, not the whole IoT zone, to avoid HA reaching the printer's web UI or other unrelated IoT devices.
 
 ### DNS enforcement { #step-3d-dns-enforcement }
 
@@ -353,7 +353,7 @@ UDM accepts management on every VLAN gateway IP by default. Where you connect fr
 | Off-network (anywhere) | https://10.0.0.1 over Tailscale | Tailscale connected; default LAN route accepted |
 
 !!! warning "Consider disabling UDM management on IoT"
-    UniFi → Networks → IoT → Advanced → "Allow this network to use the Local Management Service" — turn off. There is no reason a smart bulb should be able to reach the gateway UI.
+    UniFi → Networks → IoT → Advanced → "Allow this network to use the Local Management Service" — turn off. No smart bulb needs access to the gateway UI.
 
 ## Tailscale subnet router { #step-5-tailscale-subnet-router }
 
@@ -366,7 +366,7 @@ Install Tailscale on two cluster nodes (ruby and emerald) so the subnet router s
 
 The policy file comes first: a tag can't be applied to a device — including through an auth key — until it exists in `tagOwners` (per Tailscale, *"Before assigning a tag to a device, you must create the tag in the tailnet policy file."*). Define the policy before you mint the tagged key in [Generate a pre-authorized auth key](#step-5b-generate-a-pre-authorized-auth-key). Out of the box every member can reach every advertised route; this ACL is what scopes who can reach what.
 
-Tailscale admin console → **Access Controls → Edit file**. Replace the default Allow-All with:
+Tailscale administrator console → **Access Controls → Edit file**. Replace the default Allow-All with:
 
 ```json
 {
@@ -393,9 +393,9 @@ Tailscale admin console → **Access Controls → Edit file**. Replace the defau
 
 ### Generate a pre-authorized auth key { #step-5b-generate-a-pre-authorized-auth-key }
 
-In the Tailscale admin console → **Settings → Keys → Generate auth key**:
+In the Tailscale administrator console → **Settings → Keys → Generate auth key**:
 
-- **Reusable:** on (you will use it on two nodes)
+- **Reusable:** on (you use it on two nodes)
 - **Ephemeral:** off (subnet routers must persist across reboots)
 - **Pre-approved:** on (machine joins without manual approval)
 - **Tags:** `tag:homelab-router` (defined in the ACL in [Configure Tailscale ACLs](#step-5a-configure-tailscale-acls-first))
@@ -433,19 +433,19 @@ Tailscale picks one router as primary and switches to the other automatically if
     These settings reset on reboot, so persist them with a oneshot systemd unit that runs the command at boot. (The Ansible Tailscale play does this through a `tailscale-gro.service` unit.)
 
 !!! note "Why a second subnet router matters"
-    Ruby will reboot regularly — k3s upgrades, kernel updates, Ansible runs. Without a failover router, every reboot kills your remote access to the entire homelab until ruby comes back up. The failover takes five minutes to set up now and removes a sharp foot-gun forever.
+    Ruby reboots regularly — k3s upgrades, kernel updates, Ansible runs. Without a failover router, every reboot kills your remote access to the entire homelab until ruby comes back up. The failover takes five minutes to set up now and removes a sharp foot-gun forever.
 
 ### Approve advertised routes { #step-5d-approve-advertised-routes }
 
-Pre-authorized auth keys join the Tailnet without manual approval, but **subnet routes still need per-machine approval**. In the admin console → Machines → ruby → **Edit route settings** → check all three subnets → Save. Repeat for emerald.
+Pre-authorized auth keys join the Tailnet without manual approval, but **subnet routes still need per-machine approval**. In the administrator console → Machines → ruby → **Edit route settings** → check all three subnets → Save. Repeat for emerald.
 
 Install Tailscale on your phone, laptop, or any device you want to reach the homelab from.
 
 !!! note "MagicDNS — leave off for now"
-    MagicDNS makes Tailscale's 100.100.100.100 resolver handle DNS for Tailscale-connected clients. If you later run AdGuard in-cluster as your home DNS, the two resolvers can race for clients on the Tailnet while at home. Leave MagicDNS disabled until you've decided which DNS layer wins — or scope it later with Tailscale's "Restrict to domain" feature.
+    MagicDNS makes Tailscale's 100.100.100.100 resolver handle DNS for Tailscale-connected clients. If you later run AdGuard in-cluster as your home DNS, the two resolvers can race for clients on the Tailnet while at home. Leave MagicDNS turned off until you've decided which DNS layer wins — or scope it later with Tailscale's "Restrict to domain" feature.
 
 !!! note "Why IoT is intentionally excluded from advertised routes"
-    Advertising the IoT subnet would let a compromised Tailscale client (browser zero-day, bad npm install) pivot into IoT devices. IoT firmware is rarely patched and a great place for an attacker to hide persistence. The marginal usability gain (direct IP access to smart devices from afar) is small — Home Assistant exposes IoT control with a web UI that you can reach over Tailscale through the Lab subnet.
+    Advertising the IoT subnet lets a compromised Tailscale client (browser zero-day, bad npm install) pivot into IoT devices. IoT firmware is rarely patched and a great place for an attacker to hide persistence. The marginal usability gain (direct IP access to smart devices from afar) is small — Home Assistant exposes IoT control with a web UI that you can reach over Tailscale through the Lab subnet.
 
 !!! note "UDM firewall and Tailscale"
     Tailscale uses outbound UDP 41641 (or falls back to a relay over 443/TCP). UDM's default outbound is open, so this works without rules. If you locked outbound down on Lab VLAN, explicitly allow UDP 41641 outbound from ruby and emerald.
@@ -466,7 +466,7 @@ Tailscale is easier (NAT traversal handled, no port forward needed). WireGuard o
 - [ ] DHCP exclude range 10.0.20.200–.250 configured on Lab
 - [ ] Global Multicast DNS proxy set to **Auto**
 - [ ] IGMP snooping enabled on the UDM
-- [ ] IPv6 disabled on both WAN and every VLAN
+- [ ] IPv6 turned off on both WAN and every VLAN
 - [ ] SSIDs `home` (Trusted) and `home-iot` (IoT) created and assigned
 - [ ] Wired ports for home desktop and all four cluster nodes set to the right Native VLAN
 - [ ] Policy Engine: three custom zones (Trusted, Lab, IoT) with networks attached only after policies are in place, three override Allow policies (Internal↔Trusted, Trusted→IoT), six service-specific Allow policies (trusted→lab services, trusted→nas SMB, trusted→Plex, iot→HA, iot→Plex TCP, iot→Plex UDP)
@@ -481,6 +481,6 @@ Tailscale is easier (NAT traversal handled, no port forward needed). WireGuard o
 - [ ] *(after AdGuard deploy)* From any client: `dig @8.8.8.8 example.com` times out (proves `dns-public-block` policy); `dig @10.0.0.20 example.com` succeeds
 - [ ] From a Trusted device with Tailscale connected over cellular: `ping 10.0.20.10` over Tailscale works
 - [ ] `tailscale status` on ruby AND emerald shows advertised routes accepted
-- [ ] Tailscale admin console: ACL file in place, only `autogroup:owner` has access to advertised subnets
+- [ ] Tailscale administrator console: ACL file in place, only `autogroup:owner` has access to advertised subnets
 - [ ] Failover test: `sudo tailscale down` on ruby — verify remote access still works through emerald within ~30 s, then `tailscale up` ruby to restore
 - [ ] `tailscale status` on your phone/laptop shows ruby reachable

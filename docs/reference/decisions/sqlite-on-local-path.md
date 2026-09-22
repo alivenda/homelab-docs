@@ -5,7 +5,7 @@
 
 ## Context
 
-Several cluster apps (Forgejo, Vaultwarden, linkding, Actual Budget, Donetick)
+Several cluster apps (Forgejo, Vaultwarden, Actual Budget, Donetick)
 use SQLite as their database. The cluster's default `StorageClass` is
 `nfs-storage`, backed by an NFS export from topaz.
 

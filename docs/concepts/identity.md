@@ -6,28 +6,34 @@ How the homelab's single sign-on and access control works, and which mode to use
 |---|---|
 | **Components** | Authelia (authentication gateway, OIDC provider) + lldap (lightweight LDAP user store) |
 | **Deploy** | [Authelia and lldap](../deploy/authelia.md) |
-| **Admin group** | `homelab-admins` (created in lldap; Authelia forwards it in the `groups` claim) |
+| **Administrator group** | `homelab-admins` (created in lldap; Authelia forwards it in the `groups` claim) |
 
 ## The identity stack
 
 Two services form the identity backbone:
 
 - **lldap** — a lightweight LDAP server that stores users and groups. It is the user database Authelia queries when someone logs in.
-- **Authelia** — the authentication gateway. It sits behind Traefik and enforces who can access which service, handling 2FA and acting as an OIDC provider.
+- **Authelia** — the authentication gateway. It sits behind Traefik and enforces who can access which service, handling 2FA, and acting as an OIDC provider.
 
 Every service that needs authentication goes through this stack. The choice of *how* it integrates depends on whether the app has its own login page.
 
+<!-- vale Homelab.Headings = NO -->
 ## ForwardAuth versus OIDC { #forwardauth-vs-oidc-read-this-first }
+<!-- vale Homelab.Headings = YES -->
 
 Authelia protects services in two fundamentally different ways. Using the wrong mode causes double-login prompts and breaks API and sync clients:
+
+<!-- vale Google.Quotes = NO -->
 
 | Mode | When to use | How it works | Apps using it |
 |------|-------------|-------------|----------------|
 | **ForwardAuth** | Apps with **no** login page of their own | Traefik intercepts every request, asks Authelia "is this user authenticated?", and either passes the request through or redirects to the Authelia login portal. | Homepage, and any service without its own login screen. |
-| **OIDC** | Apps with **their own** user system | The app redirects to Authelia for login, receives a token, and manages its own session — Traefik is not involved in the auth check. | Nextcloud, Forgejo, Paperless-ngx, Vikunja, Actual Budget, Mealie, Audiobookshelf, BookStack, and any app with a built-in user system. |
+| **OIDC** | Apps with **their own** user system | The app redirects to Authelia for login, receives a token, and manages its own session — Traefik is not involved in the auth check. | Nextcloud, Forgejo, Paperless-ngx, Miniflux, Actual Budget, Mealie, Audiobookshelf, BookStack, and any app with a built-in user system. |
+
+<!-- vale Google.Quotes = YES -->
 
 !!! warning "Never put ForwardAuth in front of an app with its own API clients"
-    Nextcloud, Forgejo, and Paperless have desktop sync, Git CLI, or mobile clients that send credentials directly and can't handle an intermediate redirect — ForwardAuth breaks them. Configure those apps as OIDC clients instead; each app's runbook covers its own OIDC setup.
+    Nextcloud, Forgejo, and Paperless have desktop sync, Git command-line, or mobile clients that send credentials directly and can't handle an intermediate redirect — ForwardAuth breaks them. Configure those apps as OIDC clients instead; each app's runbook covers its own OIDC setup.
 
 ## Choosing the right mode
 

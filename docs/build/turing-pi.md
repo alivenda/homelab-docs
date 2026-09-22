@@ -5,7 +5,7 @@ Initial hardware assembly, firmware update, OS flashing, and network configurati
 | | |
 |---|---|
 | **Board** | Turing Pi 2 (mini-ITX cluster board) |
-| **Modules** | 4x CM4, all with 8 GB RAM and WiFi |
+| **Modules** | 4x CM4, all with 8 GB RAM and Wi-Fi |
 | **High-storage nodes** | 2x CM4108032 (8 GB RAM, 32 GB eMMC) — ruby (Node 1), topaz (Node 3) |
 | **Low-storage nodes** | 2x CM4108016 (8 GB RAM, 16 GB eMMC) — emerald (Node 2), amethyst (Node 4) |
 | **Total cluster** | 16 cores, 32 GB RAM, 96 GB eMMC combined |
@@ -47,9 +47,9 @@ The BMC (Baseboard Management Controller) starts automatically within 10–20 se
 
 DietPi is a lightweight Debian-based OS optimized for single-board computers and recommended in the official Turing Pi k3s guide.
 
-1. Download the DietPi image for Raspberry Pi 2/3/4 (ARM 64-bit) from [dietpi.com](https://dietpi.com).
+1. Download the DietPi image for Raspberry Pi 2/3/4 (ARM 64-bit) from [DietPi.com](https://dietpi.com).
 2. Install `rpiboot` on your PC (required for the PC to see CM4 eMMC storage). Windows: [rpiboot_setup.exe](https://github.com/raspberrypi/usbboot/raw/master/win32/rpiboot_setup.exe). Mac/Linux: build from [raspberrypi/usbboot](https://github.com/raspberrypi/usbboot).
-3. Connect the vertical USB 2.0 port on the Turing Pi 2 (adjacent to HDMI) to your PC with a **USB A-to-A cable**. The Turing Pi docs explicitly note that USB A-to-C cables have caused intermittent failures — use A-to-A.
+3. Connect the vertical USB 2.0 port on the Turing Pi 2 (adjacent to HDMI) to your PC with a **USB A-to-A cable**. The Turing Pi docs explicitly USB A-to-C cables have caused intermittent failures — use A-to-A.
 4. Power on the target node (BMC UI or `tpi power on -n <node>`) before the next step — MSD mode requires the module to be running.
 5. For each node, put it into USB mass-storage mode so your PC sees the eMMC as a disk. SSH into the BMC and run:
 
@@ -58,7 +58,7 @@ DietPi is a lightweight Debian-based OS optimized for single-board computers and
     tpi usb device -n 1
     ```
 
-    Or use the BMC web UI: **Nodes → select node → USB → Device mode**. On your PC, `rpiboot` should detect the CM4 storage and present it as a new disk.
+    Or use the BMC web UI: **Nodes → select node → USB → Device mode**. On your PC, `rpiboot` detects the CM4 storage and present it as a new disk.
 
 6. Flash with Raspberry Pi Imager using "Use custom" with the DietPi image.
 7. Before completing the flash, mount the boot partition and edit `dietpi.txt`:
@@ -83,7 +83,7 @@ DietPi is a lightweight Debian-based OS optimized for single-board computers and
     ```
 
 8. Also edit `cmdline.txt` to enable cgroups (required for k3s). Append to the end of the single line: `cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1`
-9. Repeat for all 4 nodes, incrementing the static IP and hostname.
+9. Repeat for all 4 nodes. Increment the static IP and hostname for each.
 
 !!! tip "Jump to Ansible now"
     **Stop here and jump to Ansible.** The remaining sections on this page ([Boot and verify](#step-4-boot-and-verify) and [Prepare SATA SSD](#step-5-prepare-sata-ssd-on-node-3-topaz-node-3)) are MANUAL alternatives — Ansible automates the cgroups edit, NFS server install, SSD mount, and k3s install across all 4 nodes with one playbook. Only follow those sections manually if you want to understand the per-node config before letting Ansible take over.
@@ -100,7 +100,7 @@ DietPi is a lightweight Debian-based OS optimized for single-board computers and
     ```
 
 !!! note "Connect as the `dietpi` user"
-    DietPi's default admin account is `dietpi` — use it, not root (Ansible logs in as `dietpi` and escalates with `sudo`). Ansible Step 2 installs your SSH key and covers disabling root login + password auth.
+    DietPi's default administrator account is `dietpi` — use it, not root (Ansible logs in as `dietpi` and escalates with `sudo`). Ansible Step 2 installs your SSH key and covers disabling root login + password auth.
 
 ## Prepare SATA SSD on topaz (Node 3) { #step-5-prepare-sata-ssd-on-node-3-topaz-node-3 }
 
@@ -133,7 +133,7 @@ A 4-node CM4 cluster plus a NAS draws modest power, but an unscheduled power los
 | **Sizing rule of thumb** | 600–900 VA UPS → 15–30 min runtime, plenty for a graceful cluster + NAS shutdown |
 | **Common picks** | APC Back-UPS BX700U, CyberPower CP900AVR |
 
-What you actually need from the UPS is not the runtime, it is the USB or network signal that the UPS sends when on battery. [Network UPS Tools (NUT)](https://networkupstools.org/) is the open-source daemon that listens for that signal and triggers shutdown scripts across multiple hosts.
+What you actually need from the UPS is not the runtime, it is the USB or network signal that the UPS sends when on battery. [Network UPS Tools (NUT)](https://networkupstools.org/) is the open source daemon that listens for that signal and triggers shutdown scripts across multiple hosts.
 
 **Topology:**
 
@@ -209,7 +209,7 @@ Reverse the dependency order: storage before its clients, control plane before w
     ssh dietpi@10.0.20.10 'sudo k3s kubectl get nodes'
     ```
 
-4. Then the remaining workers, **emerald** and **amethyst**.
+4. Then join the remaining workers (**emerald** and **amethyst**).
 
 Once all four nodes are `Ready`, ArgoCD reconciles the workloads back on its own — give it a few minutes and confirm pods settle rather than restarting anything by hand.
 

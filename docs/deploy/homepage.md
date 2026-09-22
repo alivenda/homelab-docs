@@ -14,7 +14,7 @@ A services dashboard — one tile per deployed service, behind Authelia.
 
 Homepage ([gethomepage.dev](https://gethomepage.dev)) is a YAML-configured start page. In this stack it serves static tiles and bookmarks for every live service, reads the Kubernetes API for cluster stats, and sits entirely behind Authelia ForwardAuth.
 
-The `ghcr.io/gethomepage/homepage` image ships official multiarch builds — **pin a release tag and confirm `arm64` is on the manifest when you bump** (check the ghcr manifest list, not just the release notes). The deployed pin at time of writing is `v1.13.2`.
+The `ghcr.io/gethomepage/homepage` image ships official multiarch builds — **pin a release tag and confirm `arm64` is on the manifest when you bump** (check the ghcr manifest list, not the release notes). The deployed pin at time of writing is `v1.13.2`.
 
 !!! note "ForwardAuth — not OIDC"
     Homepage has no login page and no OIDC support. It is protected by the Authelia ForwardAuth middleware (Authelia, same recipe as lldap). Do **not** attempt to register it as an OIDC client.
@@ -41,7 +41,7 @@ Homepage's configuration is YAML — it belongs in git, not on a volume. There i
 - The only path the image insists on writing (`/app/config/logs`) is an `emptyDir`.
 - Widget API tokens (the section below) ride a `SealedSecret` as `HOMEPAGE_VAR_*` env — never values in the ConfigMap.
 
-That buys three things. The Application can run `prune: true` (an accidental manifest drop costs one re-sync, not data). A rebuild is a re-sync — there is nothing to restore. And the velero gate **inverts**: instead of proving bytes were backed up, prove *nothing* is:
+That buys three things. The App can run `prune: true` (an accidental manifest drop costs one re-sync, not data). A rebuild is a re-sync — there is nothing to restore. And the Velero gate **inverts**: instead of proving bytes were backed up, prove *nothing* is:
 
 ```bash
 kubectl get podvolumebackups -n velero \
@@ -49,11 +49,11 @@ kubectl get podvolumebackups -n velero \
   | grep homepage
 ```
 
-After the first nightly, every `homepage` row must be an emptyDir at `<none>` bytes — velero's opt-out fs-backup sweeps emptyDirs too, so the noise rows are expected (same as Collabora and Traefik). A row with **real bytes** means a PVC crept in and the statelessness claim is broken.
+After the first nightly, every `homepage` row must be an emptyDir at `<none>` bytes — Velero's opt-out fs-backup sweeps emptyDirs too, so the noise rows are expected (same as Collabora and Traefik). A row with **real bytes** means a PVC crept in and the statelessness claim is broken.
 
 ## RBAC — narrowed from upstream's example
 
-Homepage reads the Kubernetes API for two features: the **kubernetes info widget** (cluster/node CPU + memory, served by k3s's bundled metrics-server) and **route discovery**. Upstream's example ClusterRole also grants `ingresses` (extensions/networking.k8s.io) and `ingressroutes` (traefik.io) — this cluster has no such objects, routing is exclusively Gateway API `HTTPRoute`, so those grants are dropped and the matching discovery paths are switched off in `kubernetes.yaml`:
+Homepage reads the Kubernetes API for two features: the **Kubernetes info widget** (cluster/node CPU + memory, served by k3s's bundled metrics-server) and **route discovery**. Upstream's example ClusterRole also grants `ingresses` (`extensions`/`networking.kubernetes.io`) and `ingressroutes` (`traefik.io`) — this cluster has no such objects, routing is exclusively Gateway API `HTTPRoute`, so those grants are dropped and the matching discovery paths are switched off in `kubernetes.yaml`:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -86,17 +86,17 @@ ingress: false    # no Ingress objects exist — and RBAC doesn't grant them
 traefik: false    # ditto IngressRoutes
 ```
 
-Discovery is **opt-in per route**: nothing appears until an HTTPRoute carries `gethomepage.dev/enabled: "true"` (plus `name`/`group`/`icon`/`description`). The deployed dashboard annotates no routes — every tile is static in `services.yaml`, one PR, no churn across sixteen app manifests. Annotating routes is the forward path if static upkeep gets old: new apps would then tile themselves.
+Discovery is **opt-in per route**: nothing appears until an HTTPRoute carries `gethomepage.dev/enabled: "true"` (plus `name`/`group`/`icon`/`description`). The deployed dashboard annotates no routes — every tile is static in `services.yaml`, one PR, no churn across sixteen app manifests. Annotating routes is the forward path if static upkeep gets old: new apps then tile themselves.
 
 ## Configuration — the ConfigMap is the dashboard
 
 Homepage expects nine files under `/app/config`; **all nine must exist as ConfigMap keys** — `settings.yaml`, `widgets.yaml`, `services.yaml`, `bookmarks.yaml`, `kubernetes.yaml`, `docker.yaml` (`{}` — no Docker socket on k3s), `proxmox.yaml` (`{}` — no Proxmox widgets), `custom.js`, `custom.css` (empty strings) — because the mounted directory is read-only and the app cannot create missing ones.
 
 !!! warning "The required set is the skeleton directory, not the documented list"
-    What "expects" means precisely: at startup Homepage copies any file missing from `/app/config` out of its image's `src/skeleton/` directory. On a read-only mount that copy fails with `EROFS` and the process **exits 1** — *after* the web server has already bound, so the pod flashes Ready, drops, and crash-loops. The deployed v1.13.2 skeleton holds nine files (`proxmox.yaml` is the easy one to miss); on every image bump, diff `src/skeleton/` at the new tag against the ConfigMap keys before rolling.
+    What "expects" means precisely: at startup Homepage copies any file missing from `/app/config` out of its image's `src/skeleton/` directory. On a read-only mount that copy fails with `EROFS` and the process **exits 1** — *after* the web server has already bound, so the pod flashes Ready, drops, and crash-loops. The deployed v1.13.2 skeleton holds nine files (`proxmox.yaml` is the one to miss); on every image bump, diff `src/skeleton/` at the new tag against the ConfigMap keys before rolling.
 
 !!! tip "Whole-dir mount, not subPath"
-    Upstream's k8s example mounts each file with `subPath`, which **freezes** the file — kubelet never updates subPath mounts, so every config edit needs a pod restart. Mounting the ConfigMap volume whole at `/app/config` (with the `emptyDir` shadowing `logs/` inside it) keeps kubelet's atomic-symlink update path: an ArgoCD sync reaches the pod within about a minute and shows on page refresh. If an edit doesn't appear: `kubectl -n homepage rollout restart deployment homepage`.
+    Upstream's Kubernetes example mounts each file with `subPath`, which **freezes** the file — kubelet never updates subPath mounts, so every config edit needs a pod restart. Mounting the ConfigMap volume whole at `/app/config` (with the `emptyDir` shadowing `logs/` inside it) keeps kubelet's atomic-symlink update path: an ArgoCD sync reaches the pod within about a minute and shows on page refresh. If an edit doesn't appear: `kubectl -n homepage rollout restart deployment homepage`.
 
 `widgets.yaml` ships two **keyless** info widgets — `kubernetes` (cluster + node CPU/memory from the ServiceAccount) and `datetime`. `services.yaml` is the tile grid, grouped to match `settings.yaml`'s `layout` (group names must match exactly):
 
@@ -107,10 +107,10 @@ Homepage expects nine files under `/app/config`; **all nine must exist as Config
         href: https://nextcloud.yourdomain.com
         description: Files, calendar, contacts
         icon: nextcloud.png
-    - Vikunja:
-        href: https://tasks.yourdomain.com
-        description: Tasks & projects
-        icon: vikunja.png
+    - Miniflux:
+        href: https://rss.yourdomain.com
+        description: RSS reader
+        icon: miniflux.png
     # ... Immich, Paperless-ngx, Vaultwarden, Home Assistant, ntfy
 
 - Operations:
@@ -128,16 +128,16 @@ Homepage expects nine files under `/app/config`; **all nine must exist as Config
     # ... Authelia, lldap, Collabora
 ```
 
-The source of truth for *which* tiles exist is the cloudflare module's `var.services` plus the [App Catalog](../reference/app-catalog.md) — if a subdomain has an A record, it gets a tile. `bookmarks.yaml` holds the external links (GitHub, Cloudflare dash, UniFi).
+The source of truth for *which* tiles exist is the Cloudflare module's `var.services` plus the [App Catalog](../reference/app-catalog.md) — if a subdomain has an A record, it gets a tile. `bookmarks.yaml` holds the external links (GitHub, Cloudflare dash, UniFi).
 
 !!! tip "Order widget-bearing tiles first within each group"
     The `row` layout makes every tile in a row share the tallest tile's height. A widget tile (it carries a stats strip) is taller than a plain tile, so interleaving the two leaves gaps under the plain ones. Put the widget-bearing services at the **top of each group** and the plain tiles after; rows then come out even. Leave a comment saying so — "tidying" the list back into semantic order re-rags the grid.
 
-Icons resolve against the [dashboard-icons](https://github.com/homarr-labs/dashboard-icons) set by bare filename. **Verify each name exists** (a typo renders a broken image, not an error) — the two non-obvious ones in this stack are `argo-cd.png` (not `argocd`) and `lldap.png` (not `ldap`).
+Icons resolve against the [dashboard-icons]( SPAN4  set by bare filename. **Verify each name exists** (a typo renders a broken image, not an error) — the two non-obvious ones in this stack are `argo-cd.png` (not `argocd`) and `lldap.png` (not `ldap`).
 
 ## Deployment
 
-The Deployment is where the gotchas live. Pinned image, default `RollingUpdate`, and **no node pin** — with no volume binding it to a node, the scheduler may place and move it freely; this is the stack's first app where that's true.
+The Deployment is where the gotchas live. Pinned image, default `RollingUpdate`, and **no node pin** — with no volume binding it to a node, the scheduler can place and move it freely; this is the stack's first app where that's true.
 
 ```yaml
 spec:
@@ -179,7 +179,7 @@ spec:
 ```
 
 !!! warning "`enableServiceLinks: false` is load-bearing"
-    The Service is named `homepage`, so kubelet's legacy Docker-link env injection would set `HOMEPAGE_SERVICE_HOST`, `HOMEPAGE_PORT`, … — directly inside the `HOMEPAGE_*` env namespace the app itself reads. Third instance of this collision class in the stack (`PAPERLESS_PORT` and Vikunja's `VIKUNJA_*` service links before it). Any app whose env prefix matches its Service name needs this line.
+    The Service is named `homepage`, so kubelet's legacy Docker-link env injection sets `HOMEPAGE_SERVICE_HOST`, `HOMEPAGE_PORT`, … — directly inside the `HOMEPAGE_*` env namespace the app itself reads. Third instance of this collision class in the stack (`PAPERLESS_PORT` and Vikunja's `VIKUNJA_*` service links before it). Any app whose env prefix matches its Service name needs this line.
 
 !!! warning "`HOMEPAGE_ALLOWED_HOSTS` must include the pod IP"
     The variable is a mandatory Host-header allow-list (requests with any other Host get rejected). Kubelet probes address the **pod IP**, not the public hostname — omit the `$(MY_POD_IP):3000` entry and the pod fails its own health checks and never goes Ready. `MY_POD_IP` must be declared *before* the line that expands it.
@@ -207,7 +207,7 @@ The ArgoCD `Application` uses client-side apply — **no `ServerSideApply=true`*
 
 ## Widget API tokens — seven live, the rest tile-only
 
-Homepage can decorate a tile with live per-service stats, each fed by an API token. The dashboard shipped tile-only and grew widgets one at a time — the rule for *whether* a service gets one is **only when a read-only-scopable token buys a stat you'll actually read**. Seven carry a widget today:
+Homepage can decorate a tile with live per-service stats, each fed by an API token. The dashboard shipped tile-only and grew widgets one at a time — the rule for *whether* a service gets one is **only when a read-only scopable token buys a stat you'll actually read**. Seven carry a widget today:
 
 | Widget | In-cluster endpoint | Stat it earns |
 |--------|--------------------|---------------|
@@ -220,10 +220,10 @@ Homepage can decorate a tile with live per-service stats, each fed by an API tok
 
 The other live services stay **tile-only on purpose** — the stat didn't earn a stored, rotatable credential:
 
-- **Grafana** — stateless here, so its UI users are wiped on every restart; the only durable credential is an *admin* service-account token. Storing admin creds to render a panel count fails the value-vs-blast-radius test.
-- **Home Assistant** — its long-lived access tokens cannot be scoped read-only; a widget token would be full control of the home.
+- **Grafana** — stateless here, so its UI users are wiped on every restart; the only durable credential is an *administrator* service-account token. Storing administrator creds to render a panel count fails the value-vs-blast-radius test.
+- **Home Assistant** — its long-lived access tokens cannot be scoped read-only; a widget token is full control of the home.
 - **Plex** — the only stat is active-stream count, and streaming is local-only here. No remote value.
-- **Vikunja / Miniflux** — task and unread counts that duplicate what the apps surface themselves; not worth a per-app token.
+- **Miniflux** — unread counts that duplicate what the app surfaces itself; not worth a per-app token.
 
 When in doubt, leave the tile plain.
 
@@ -261,7 +261,7 @@ Rotating any widget token is reseal, merge, restart — in that order.
 
 !!! warning "A reseal touches every key — and only a restart picks it up"
     `kubeseal` re-encrypts *all* keys each run, so the whole file changes even when only
-    one token changed — have every widget's plaintext on hand, not just the one you're
+    one token changed — have every widget's plaintext on hand, not the one you're
     rotating, and store each in the password manager as you mint it. (The repo's gitleaks
     pre-commit hook flags every `encryptedData` blob as a generic API key; clear each with
     a per-line fingerprint in `.gitleaksignore` rather than weakening the hook.) Widget
@@ -271,7 +271,7 @@ Rotating any widget token is reseal, merge, restart — in that order.
     `kubectl -n homepage rollout restart deployment homepage`.
 
 !!! danger "Don't restart into the propagation race"
-    Restarting the consumer *immediately* after merging a SealedSecret change races the sealed-secrets controller: the new pod can start **before** the controller has decrypted and written the plain Secret, so it loads stale creds and the widget 401s. Diagnose by comparing the pod's `startTime` against the Secret's write time (`kubectl get secret … -o jsonpath='{.metadata.managedFields[*].time}'`); the fix is to restart **again** once that write timestamp is in the past — not to reseal. (This bit both the ntfy and homepage rollouts.)
+    Restarting the consumer *immediately* after merging a SealedSecret change races the sealed-secrets controller: the new pod can start **before** the controller has decrypted and written the plain Secret, so it loads stale creds and the widget 401s. Diagnose by comparing the pod's `startTime` against the Secret's write time (`kubectl get secret … -o jsonpath='{.metadata.managedFields[*].time}'`); the fix is to restart **again** once that write timestamp is in the past — not to reseal. (This bit both the ntfy and Homepage rollouts.)
 
 ### Two service-specific gotchas
 
@@ -284,7 +284,7 @@ accounts.readonly: apiKey
 g, readonly, role:readonly
 ```
 
-then mint against `readonly`: with the CLI, `argocd account generate-token --account readonly`; with no CLI, two REST calls — `POST /api/v1/session` (admin creds) for a session JWT, then `POST /api/v1/account/readonly/token`. **Send the bodies as JSON** — curl's `-d` defaults to form-encoding, ArgoCD answers with a non-JSON error, and the outer `jq` chokes; add `-H 'Content-Type: application/json'`.
+then mint against `readonly`: with the command-line tool, `argocd account generate-token --account readonly`; with no command-line tool, two REST calls — `POST /api/v1/session` (administrator creds) for a session JWT, then `POST /api/v1/account/readonly/token`. **Send the bodies as JSON** — curl's `-d` defaults to form-encoding, ArgoCD answers with a non-JSON error, and the outer `jq` chokes; add `-H 'Content-Type: application/json'`.
 
 **ntfy** widgets read the `alerts` topic, so the dashboard gets its own **read-only** publisher: a `homepage` user (bcrypt hash in the configmap — committable) with `homepage:alerts:ro` access, plus a `tk_…` token in the token SealedSecret. ntfy reads users and tokens only at startup, and provisioning a user doesn't change the Deployment spec — so it won't auto-roll; `kubectl -n ntfy rollout restart deployment ntfy` after merge. (See [ntfy — ntfy](ntfy.md) for the provisioning model.)
 
@@ -306,4 +306,4 @@ then mint against `readonly`: with the CLI, `argocd account generate-token --acc
     kubectl logs -n homepage deploy/homepage | grep -i forbidden
     ```
 
-- [ ] **Inverted velero gate** after the first nightly: zero PVC-backed `PodVolumeBackup` rows with real bytes in namespace `homepage` (emptyDir rows at `<none>` are expected noise).
+- [ ] **Inverted Velero gate** after the first nightly: zero PVC-backed `PodVolumeBackup` rows with real bytes in namespace `homepage` (emptyDir rows at `<none>` are expected noise).

@@ -31,9 +31,9 @@ This runbook covers:
 
 ## Prerequisites
 
-- A Raspberry Pi provisioned with DietPi (64-bit ARM) and reachable over SSH. If your `dietpi.txt` included `AUTO_SETUP_INSTALL_SOFTWARE_ID=126` (see [Turing Pi](../build/turing-pi.md) for the DietPi automation pattern), AdGuard Home is already installed *and* its web-admin login was seeded from `AUTO_SETUP_GLOBAL_PASSWORD` — there's no wizard to run. Rotate that password in [Post-install hardening](#post-install-hardening) first, then continue at [Configure upstreams and blocklists](#step-3-configure-upstreams-and-blocklists).
+- A Raspberry Pi provisioned with DietPi (64-bit ARM) and reachable over SSH. If your `dietpi.txt` included `AUTO_SETUP_INSTALL_SOFTWARE_ID=126` (see [Turing Pi](../build/turing-pi.md) for the DietPi automation pattern), AdGuard Home is already installed *and* its web-administrator login was seeded from `AUTO_SETUP_GLOBAL_PASSWORD` — there's no wizard to run. Rotate that password in [Post-install hardening](#post-install-hardening) first, then continue at [Configure upstreams and blocklists](#step-3-configure-upstreams-and-blocklists).
 - Static IP 10.0.0.20 on the Default VLAN (set in `dietpi.txt` at first boot, per Networking).
-- UDM admin access.
+- UDM administrator access.
 
 ## Install AdGuard Home { #step-1-install-adguard-home }
 
@@ -52,7 +52,7 @@ systemctl status AdGuardHome
 ```
 
 !!! warning "Port 53 conflict on DietPi"
-    DietPi may have `systemd-resolved` listening on port 53. If AdGuard fails to bind, disable it first:
+    DietPi might have `systemd-resolved` listening on port 53. If AdGuard fails to bind, turn it off first:
     ```bash
     systemctl disable --now systemd-resolved
     systemctl restart AdGuardHome
@@ -61,13 +61,13 @@ systemctl status AdGuardHome
 ## Initial setup wizard { #step-2-initial-setup-wizard }
 
 !!! note "Headless installs skip this"
-    If AdGuard came in through DietPi-Software (ID 126), there's no wizard — it was pre-configured and its admin login seeded from `AUTO_SETUP_GLOBAL_PASSWORD`. Rotate that password in [Post-install hardening](#post-install-hardening), then go to [Configure upstreams and blocklists](#step-3-configure-upstreams-and-blocklists).
+    If AdGuard came in through DietPi-Software (ID 126), there's no wizard — it was pre-configured and its administrator login seeded from `AUTO_SETUP_GLOBAL_PASSWORD`. Rotate that password in [Post-install hardening](#post-install-hardening), then go to [Configure upstreams and blocklists](#step-3-configure-upstreams-and-blocklists).
 
 Open `http://10.0.0.20:3000` from a browser on your local network and complete the wizard:
 
 1. **Listen interfaces** — accept the default (all interfaces).
 2. **DNS listen port** — leave at 53.
-3. **Admin credentials** — create a strong username and password; save both to Vaultwarden. (If you plan to add a second node later, reuse these credentials there — adguardhome-sync requires matching logins.)
+3. **Administrator credentials** — create a strong username and password; save both to Vaultwarden. (If you plan to add a second node later, reuse these credentials there — adguardhome-sync requires matching logins.)
 4. Complete the wizard. AdGuard Home now serves DNS on port 53 and its web UI on port 80 (a manual install's default).
 
 !!! info "Web-UI port: `:8083` on this build"
@@ -135,14 +135,14 @@ The Pi logs to its SD card, so cap retention in **Settings → General settings*
 
 ## Point the UDM's DHCP at AdGuard { #step-4-point-the-udms-dhcp-at-adguard }
 
-In the UniFi Network app, hand out the Pi's IP as the DNS server for each VLAN that should use AdGuard Home:
+In the UniFi Network app, hand out the Pi's IP as the DNS server for each VLAN that uses AdGuard Home:
 
 1. Go to **Settings → Networks → [VLAN name] → DHCP → DNS Server**.
 2. Set **DNS Server 1** to 10.0.0.20.
 3. Repeat for the Trusted, Lab, and IoT VLANs.
 
 !!! warning "IoT and Lab need a firewall rule to reach it"
-    AdGuard sits on the Default LAN (Internal zone). Trusted reaches it already, but with the zone-based firewall the IoT and Lab zones are blocked from Internal by default — clients there will *silently* lose DNS unless you add the allow rules in [DNS enforcement](../build/network.md#step-3d-dns-enforcement). Add those before flipping each VLAN's DNS over.
+    AdGuard sits on the Default LAN (Internal zone). Trusted reaches it already, but with the zone-based firewall the IoT and Lab zones are blocked from Internal by default — clients there *silently* lose DNS unless you add the allow rules in [DNS enforcement](../build/network.md#step-3d-dns-enforcement). Add those before flipping each VLAN's DNS over.
 
 Clients pick up AdGuard at the next DHCP renewal. Force a renewal on a test device (`sudo dhclient -r && sudo dhclient` on Linux, reconnect Wi-Fi on a phone) and verify queries appear in AdGuard's **Query Log**.
 
@@ -150,11 +150,11 @@ Clients pick up AdGuard at the next DHCP renewal. Force a renewal on a test devi
 
 A fresh DietPi + AdGuard install leaves a couple of doors wider than they need to be. Close them before the box starts resolving DNS for the whole network.
 
-### Give AdGuard its own admin password
+### Give AdGuard its own administrator password
 
-A headless install (DietPi-Software ID 126) seeds the web-admin login from `AUTO_SETUP_GLOBAL_PASSWORD` — the **same** secret as the `root` and `dietpi` OS accounts. One leaked password would then surrender both the box and its DNS config, so decouple them.
+A headless install (DietPi-Software ID 126) seeds the web-administrator login from `AUTO_SETUP_GLOBAL_PASSWORD` — the **same** secret as the `root` and `dietpi` OS accounts. One leaked password then surrenders both the box and its DNS config, so decouple them.
 
-AdGuard Home has no "change password" button in the web UI; the admin hash lives in its config file. Generate a fresh bcrypt hash (`htpasswd` ships in `apache2-utils`):
+AdGuard Home has no "change password" button in the web UI; the administrator hash lives in its config file. Generate a fresh bcrypt hash (`htpasswd` ships in `apache2-utils`):
 
 ```bash
 apt install -y apache2-utils
@@ -181,7 +181,7 @@ Save the new password to Vaultwarden, separate from the OS credentials.
 
 ### Rotate the OS logins and lock SSH to keys
 
-While you're in here, rotate `root` and `dietpi` off the shared global password too (`passwd root`, `passwd dietpi`), and switch SSH to key-only. Add your public key first (`ssh-copy-id dietpi@10.0.0.20`) and confirm a passwordless login works, **then** disable password auth with DietPi's helper:
+While you're in here, rotate `root` and `dietpi` off the shared global password too (`passwd root`, `passwd dietpi`), and switch SSH to key-only. Add your public key first (`ssh-copy-id dietpi@10.0.0.20`) and confirm a passwordless login works, **then** turn off password auth with DietPi's helper:
 
 ```bash
 sudo /boot/dietpi/func/dietpi-set_software disable_ssh_password_logins 1
@@ -196,7 +196,7 @@ sudo /boot/dietpi/func/dietpi-set_software disable_ssh_password_logins 1
     If `kbdinteractiveauthentication` is still `yes`, drop `KbdInteractiveAuthentication no` into a separate `/etc/ssh/sshd_config.d/99-hardening.conf` (DietPi won't clobber it) and restart ssh.
 
 !!! tip "This is codified"
-    All of the above lives in `homelab-ansible`: the `dns` play installs AdGuard and applies a DNS-shaped firewall, and the shared SSH play sets key-only auth **and** closes the `KbdInteractiveAuthentication` gap on every node. Re-running the playbook keeps SSH hardened — but the admin-password rotation stays a one-time manual step, since the automation never generates the secret.
+    All of the preceding lives in `homelab-ansible`: the `dns` play installs AdGuard and applies a DNS-shaped firewall, and the shared SSH play sets key-only auth **and** closes the `KbdInteractiveAuthentication` gap on every node. Re-running the playbook keeps SSH hardened — but the administrator-password rotation stays a one-time manual step, since the automation never generates the secret.
 
 ## Optional: add a second node for failover
 
@@ -204,7 +204,7 @@ A single Pi is a single point of failure for DNS. For automatic failover, add a 
 
 ### Install and set up the secondary
 
-Repeat [Install AdGuard Home](#step-1-install-adguard-home) and [Initial setup wizard](#step-2-initial-setup-wizard) on the second Pi at 10.0.0.21, using the **same** admin username and password as the primary. Do **not** configure upstreams or blocklists on it — they'll be pushed from the primary in the next step.
+Repeat [Install AdGuard Home](#step-1-install-adguard-home) and [Initial setup wizard](#step-2-initial-setup-wizard) on the second Pi at 10.0.0.21, using the **same** administrator credentials as the primary. Do **not** configure upstreams or blocklists on it — they'll be pushed from the primary in the next step.
 
 ### Sync config with adguardhome-sync
 

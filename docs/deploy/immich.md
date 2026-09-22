@@ -27,10 +27,10 @@ wget -O .env https://github.com/immich-app/immich/releases/latest/download/examp
 
 | Variable | What to set | Why |
 |---|---|---|
-| `UPLOAD_LOCATION` | Absolute path on the NAS, e.g. `/volume1/immich/library` | Where photos are stored. Must exist before launch. |
+| `UPLOAD_LOCATION` | Absolute path on the NAS, for example `/volume1/immich/library` | Where photos are stored. Must exist before launch. |
 | `DB_PASSWORD` | Strong random password | Postgres password. Generate with `openssl rand -base64 24`. Save to Vaultwarden. |
-| `IMMICH_VERSION` | Pin a release tag (e.g. `v1.107.0`) | Avoid `latest` so upgrades are deliberate. |
-| `TZ` | Your timezone, e.g. `America/New_York` | Affects scheduled jobs and timestamps. |
+| `IMMICH_VERSION` | Pin a release tag (for example `v1.107.0`) | Avoid `latest` so upgrades are deliberate. |
+| `TZ` | Your timezone, for example `America/New_York` | Affects scheduled jobs and timestamps. |
 
 ```bash
 docker compose up -d
@@ -45,7 +45,7 @@ docker exec -t immich_postgres pg_dumpall -c -U postgres \
 
 Immich's database is deliberately **not** covered by the shared NAS Postgres backup job —
 its bundled Postgres predates the [shared server](nas-postgres.md) and stays separate. The
-command above is the manual capture to run **before an update**. Routine off-box protection is
+command preceding is the manual capture to run **before an update**. Routine off-box protection is
 automated separately: Immich's own built-in backup dumps the database nightly to
 `${UPLOAD_LOCATION}/backups/`, and the [Immich database → Garage](../build/backups.md#immich-database-garage)
 sync job ships those dumps to a dedicated Garage bucket so they survive a NAS volume failure

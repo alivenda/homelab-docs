@@ -18,7 +18,9 @@ Two options: local-only with self-signed certs, or a real domain (~$10/yr) with 
 
 ## Cloudflare API token { #step-1-cloudflare-api-token }
 
-Host the domain on Cloudflare, then create an API token under **My Profile → API Tokens** with the **"Edit zone DNS"** template, scoped to your zone:
+<!-- vale Google.FirstPerson = NO -->
+Host the domain on Cloudflare, then create an API token under **My Profile → API Tokens**
+<!-- vale Google.FirstPerson = YES --> with the **"Edit zone DNS"** template, scoped to your zone:
 
 - **Permissions:** Zone → DNS → Edit
 - **Zone Resources:** Include → Specific zone → `yourdomain.com`
