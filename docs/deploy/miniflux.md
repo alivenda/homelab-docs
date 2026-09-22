@@ -117,8 +117,8 @@ Plaintexts to your password manager.
 ## SSO: OIDC client { #step-4-sso-oidc-client }
 
 The Authelia client follows the Authelia recipe — `client_id: miniflux`,
-pbkdf2 hash in `apps/authelia/values.yaml` — with one deviation from the
-Vikunja client: **`require_pkce: true` / `pkce_challenge_method: 'S256'`**.
+pbkdf2 hash in `apps/authelia/values.yaml` — and sets
+**`require_pkce: true` / `pkce_challenge_method: 'S256'`**.
 Miniflux always sends a PKCE challenge on the authorization request and the
 verifier on the exchange (`internal/oauth2/authorization.go`, verified at
 v2.3.1), so the client requires what the app already does. Scopes are

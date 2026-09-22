@@ -22,7 +22,7 @@ once and a per-app storage line never reads as arbitrary again.
     - `local-path` standalone provisioner — **live** (`infrastructure/local-path-provisioner`).
       k3s was installed with `--disable local-storage`, so the built-in class is gone; this
       separate provisioner gives SQLite apps a correct home. The SQLite apps (Vaultwarden,
-      lldap, Forgejo, linkding, and others) live on it, and a backup→restore drill confirmed
+      lldap, Forgejo, Actual Budget, and others) live on it, and a backup→restore drill confirmed
       local-path volumes round-trip through Velero (see [the local-path tier](#the-local-path-tier)).
     - NAS relational DB — **live** (PostgreSQL 18 on the NAS at 10.0.20.50:5433, see
       [NAS PostgreSQL](../deploy/nas-postgres.md)); databases are provisioned per app at each app's
@@ -154,8 +154,8 @@ One real disk means durability is **backups, not redundancy** — applied consis
 These predate this record and need to be reconciled as each app is touched:
 
 - ~~Audit the App Catalog for SQLite apps still on `nfs-storage`~~ — **done (2026-07
-  audit):** every SQLite app sits on `local-path` — Vaultwarden, lldap, linkding,
-  Actual Budget, Donetick, ntfy, Woodpecker, and Forgejo's data volume (Forgejo's *repos*
+  audit):** every SQLite app sits on `local-path` — Vaultwarden, lldap, Actual Budget,
+  Donetick, ntfy, Woodpecker, and Forgejo's data volume (Forgejo's *repos*
   deliberately stay on `nfs-storage`: flat Git files, not SQLite).
 - **BookStack and Reactive Resume assume cluster-hosted databases** — revise their DB sections to
   point at the NAS server when each app is deployed. (Nextcloud and Paperless-ngx are done —

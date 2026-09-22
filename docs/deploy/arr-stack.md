@@ -80,7 +80,7 @@ The single most important decision. Each app has **two** kinds of state:
   `local-path` class, pinned to the app-state node (emerald) with
   `nodeSelector: app-state=true` + `strategy: Recreate`. **An earlier revision
   put every `/config` on `nfs-storage` — that was wrong** and is the same trap
-  documented for linkding / Actual Budget / Donetick. See
+  documented for Actual Budget / Donetick. See
   [Storage & Data Architecture](../concepts/storage.md).
 - **`/data` (downloads + media) → one RWX NFS export on the NAS.** Bulk media is
   TB-scale and Plex reads it locally on the NAS, so the media library lives on
