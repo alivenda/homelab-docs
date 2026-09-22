@@ -27,7 +27,7 @@ undoes the design:
   the app process, not a server — there is nothing to centralize, and putting its file on
   network storage is the corruption pattern this architecture exists to prevent. These apps
   never use this server.
-- **Client/server relational databases** (Nextcloud, Paperless-ngx, Vikunja → PostgreSQL;
+- **Client/server relational databases** (Nextcloud, Paperless-ngx, Miniflux → PostgreSQL;
   BookStack → MariaDB) → a database + role **here**, connected over the Lab VLAN.
 
 If the app's docs offer both ("SQLite by default, Postgres supported"), prefer SQLite on
