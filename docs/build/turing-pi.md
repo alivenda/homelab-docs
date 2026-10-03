@@ -184,7 +184,18 @@ ssh dietpi@10.0.20.10 'sudo shutdown -h now'   # ruby     — control plane / et
 ```
 
 !!! warning "Wait for the clients to fully halt before topaz"
-    Issuing the commands in sequence is **not** the same as the nodes halting in sequence. Confirm amethyst, emerald, **and** ruby have stopped responding to ping before you shut down topaz. Kubelet's NFS mounts are `hard` mounts, so if topaz's `nfsd` stops while ruby is still unmounting, ruby blocks indefinitely on the stale handle — and that hang on your single etcd node is exactly the failure this ordering exists to prevent.
+    Issuing the commands in sequence is **not** the same as the nodes halting in sequence. Confirm amethyst, emerald, **and** ruby have stopped accepting SSH before you shut down topaz. Kubelet's NFS mounts are `hard` mounts, so if topaz's `nfsd` stops while ruby is still unmounting, ruby blocks indefinitely on the stale handle — and that hang on your single etcd node is exactly the failure this ordering exists to prevent.
+
+    Check with SSH, not `ping`. If your firewall filters ICMP between VLANs, `ping` fails while a node is still up, and a ping-based wait returns at once. This loop blocks until each node stops answering SSH. It relies on key-based login, so a failed login also ends the wait — confirm `ssh dietpi@10.0.20.10 true` works before you start:
+
+    ```bash
+    for ip in 10.0.20.13 10.0.20.11 10.0.20.10; do
+      while timeout 2 ssh -o BatchMode=yes -o ConnectTimeout=2 dietpi@$ip true 2>/dev/null; do
+        sleep 2
+      done
+      echo "$ip down"
+    done
+    ```
 
 Then the NFS *server*:
 
@@ -195,7 +206,7 @@ ssh dietpi@10.0.20.12 'sudo shutdown -h now'   # topaz — NFS server, LAST
 The standalone NAS is not part of k3s and has no ordering dependency on the cluster — shut it down through its own interface whenever it suits you.
 
 !!! warning "The BMC does not gracefully shut down nodes"
-    `tpi power off` and the front **power** button cut the slot's power rail. The CM4 has no ACPI soft-off, and nothing on the DietPi side listens for a BMC shutdown signal, so from the running OS's point of view this is identical to pulling the plug. Always run `sudo shutdown` on the OS first, wait for the node to actually halt (pings stop, ~30–60 s), and only then use `tpi power off` if you want the idle slots fully de-powered. The **reset** button power-cycles every slot at once — it reboots the cluster rather than shutting it down, so it is never the tool for this.
+    `tpi power off` and the front **power** button cut the slot's power rail. The CM4 has no ACPI soft-off, and nothing on the DietPi side listens for a BMC shutdown signal, so from the running OS's point of view this is identical to pulling the plug. Always run `sudo shutdown` on the OS first, wait for the node to actually halt (SSH stops answering, ~30–60 s), and only then use `tpi power off` if you want the idle slots fully de-powered. The **reset** button power-cycles every slot at once — it reboots the cluster rather than shutting it down, so it is never the tool for this.
 
 ### Startup { #startup }
 

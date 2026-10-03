@@ -21,7 +21,7 @@ Something is dead and you're deciding what to do first. This page is **triage an
 | Everything on-site | Fire, theft, flood | [Scenario 6](#scenario-6-total-loss) |
 
 !!! warning "Confirm the diagnosis before rebuilding anything"
-    The symptoms overlap with plain network trouble. `kubectl` timing out means ruby **or** the path to it — `ping 10.0.20.10` and check an app URL before concluding the control plane is dead. Every app hanging on storage means topaz **or** the switch/VLAN between the nodes. Reflash only after the [static-IP table](../build/network.md#static-ip-allocations) says the box itself, not the network, is the problem.
+    The symptoms overlap with plain network trouble. `kubectl` timing out means ruby **or** the path to it — `ssh dietpi@10.0.20.10 true` (not `ping`, which inter-VLAN ICMP filtering can block) and check an app URL before concluding the control plane is dead. Every app hanging on storage means topaz **or** the switch/VLAN between the nodes. Reflash only after the [static-IP table](../build/network.md#static-ip-allocations) says the box itself, not the network, is the problem.
 
 ## Scenario 1 — your machine
 
