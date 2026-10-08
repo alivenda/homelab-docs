@@ -73,6 +73,25 @@ gatewayClass:
 # Disable the chart's default Gateway; we manage our own in manifests/gateway.yaml.
 gateway:
   enabled: false
+
+# Two replicas on different nodes, so a drain leaves one serving.
+deployment:
+  replicas: 2
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+topologySpreadConstraints:
+  - labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: '{{ template "traefik.name" . }}'
+    matchLabelKeys:
+      - pod-template-hash
+    maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: DoNotSchedule
+    nodeTaintsPolicy: Honor
 ```
 
 ```bash
@@ -81,6 +100,12 @@ helm upgrade --install traefik traefik/traefik \
 ```
 
 Note what's *gone* versus the legacy setup: no `certificatesresolvers` ACME arguments, no `acme.json` persistence, no `CF_DNS_API_TOKEN` env. Certificates are cert-manager's job ([cert-manager + wildcard certificate](#step-5-cert-manager-wildcard-certificate)), not Traefik's.
+
+**Two replicas.** A node drain, such as a k3s upgrade's, evicts a pod before its replacement starts. With one Traefik replica, every route is down until the new pod pulls its image and is Ready. A chart upgrade doesn't have this gap, because the rolling update starts the new pod before it stops the old one.
+
+- **`podDisruptionBudget`:** A drain can't evict a replica while the other one isn't Ready.
+- **`matchLabelKeys`:** `pod-template-hash` counts only the current rollout's pods, so an upgrade's extra pod doesn't count against the old ones.
+- **`nodeTaintsPolicy: Honor`:** The spread leaves out nodes whose taints Traefik doesn't tolerate, such as a tainted control plane or a cordoned node. With one schedulable worker left, both replicas share it instead of one waiting in `Pending`.
 
 !!! note "Source of truth"
     This `values.yaml` lives at `homelab-manifests/apps/traefik/values.yaml` with a pinned chart version, applied by ArgoCD with the multi-source `$values` pattern. Edit the repo, not a local copy.
