@@ -136,7 +136,7 @@ actually *use* it.
 ```yaml
 startupProbe:
   enabled: true
-  failureThreshold: 60   # up to ~10 min of grace
+  failureThreshold: 120  # 30s delay + 120 × 10s: about 20 minutes of grace
 ```
 
 !!! warning "First boot does minutes of work — on ARM + NFS, many minutes"
