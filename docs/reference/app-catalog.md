@@ -122,6 +122,7 @@ Online office suite (CODE) — the editing backend for Nextcloud.
 - The compensating control for the open route is the WOPI host pin: `aliasgroup1=https://nextcloud.yourdomain.com:443` — coolwsd rejects WOPI traffic for any other origin. Plus: leave the administrator console's `username`/`password` env **unset**, which disables the console entirely (official-docs behaviour) — nothing to brute-force on the open route.
 - The image's entrypoint runs coolwsd with `--use-env-vars`, so config is plain env. Behind the TLS-terminating Gateway the trio is `extra_params=--o:ssl.enable=false --o:ssl.termination=true`, `server_name=office.yourdomain.com` (responses must carry the external hostname or WOPI handshakes fail), and `DONT_GEN_SSL_CERT=1`.
 - Pairs with [Nextcloud](../deploy/nextcloud.md): enable the Nextcloud **Office** app (richdocuments) and point it at `https://office.yourdomain.com`. Smoke test before touching Nextcloud: `https://office.yourdomain.com/hosting/discovery` must return the WOPI capability XML.
+- **Placement:** it has no volumes, but its image is about 490 MiB. Like [Nextcloud](../deploy/nextcloud.md), it requires a large-disk worker that isn't the control plane (`storage=large`, plus a `DoesNotExist` term for `node-role.kubernetes.io/control-plane`). Without that rule, a drain can leave it on a 16 GB node.
 - Stateless means the backup check **inverts**: the Velero gate is the *absence* of any `PodVolumeBackup` for the namespace — if one appears, something grew state that must not exist.
 
 ### Donetick
