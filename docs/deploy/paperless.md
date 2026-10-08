@@ -34,8 +34,8 @@ Service, an HTTPRoute — one ArgoCD `Application` in `bootstrap/paperless.yaml`
     Earlier drafts installed a community chart imperatively (`helm upgrade --install`)
     with **postgres and redis bundled in-cluster**, and pinned the pod with a
     `workload: heavy` node label. All three are wrong here: the chart URL never
-    existed, in-cluster postgres contradicts the storage architecture, and no node
-    carries that label. GitOps-only, database on the NAS, no node pin.
+    existed, in-cluster postgres contradicts the storage architecture, and the pod
+    has no node-local data to pin to. GitOps-only, database on the NAS, no node pin.
 
 ## The four data homes
 

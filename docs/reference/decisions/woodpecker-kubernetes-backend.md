@@ -27,5 +27,7 @@ Docker backend.
   container.
 - Step pods use a dedicated `woodpecker-ci-scratch` StorageClass and ephemeral
   volumes, sized at 1 GB per step.
-- Heavy CI jobs are pinned to nodes with `workload=heavy` through the backend's
-  `WOODPECKER_BACKEND_K8S_POD_NODE_SELECTOR`.
+- Step pods run on a large-disk worker that isn't the control plane, through the
+  backend's `WOODPECKER_BACKEND_K8S_POD_AFFINITY`. Until 2026-10,
+  `WOODPECKER_BACKEND_K8S_POD_NODE_SELECTOR` pinned them to the `workload=heavy`
+  node, but image GC on its 16 GB eMMC deleted their images after each run.

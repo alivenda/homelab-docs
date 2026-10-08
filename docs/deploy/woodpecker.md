@@ -105,7 +105,7 @@ server:
     storageClass: local-path
     size: 2Gi
   nodeSelector:
-    workload: heavy            # emerald — keep build spikes off the control plane
+    workload: heavy            # emerald — the node that holds the local-path DB
 
 agent:
   replicaCount: 1
@@ -115,7 +115,18 @@ agent:
   env:
     WOODPECKER_BACKEND: kubernetes
     WOODPECKER_BACKEND_K8S_NAMESPACE: woodpecker
-    WOODPECKER_BACKEND_K8S_POD_NODE_SELECTOR: '{"workload":"heavy"}'   # JSON string
+    # Step pods pull their own images, so run them on a large-disk worker.
+    # The control plane is large-disk too, so exclude it.
+    WOODPECKER_BACKEND_K8S_POD_AFFINITY: |
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: storage
+                  operator: In
+                  values: ["large"]
+                - key: node-role.kubernetes.io/control-plane
+                  operator: DoesNotExist
     # Per-pipeline scratch workspace on a dedicated non-archiving class (defined in
     # the GitOps install below) so disposable CI volumes don't accumulate.
     WOODPECKER_BACKEND_K8S_STORAGE_CLASS: woodpecker-ci-scratch
@@ -127,6 +138,20 @@ agent:
 
 The Kubernetes backend's step pods need RBAC in the namespace; the chart creates
 the Role/RoleBinding for you with `agent.serviceAccount.rbac.create` (default `true`).
+
+Step pods run on topaz, not on emerald with the server and agent. Each step pulls
+its own image. On emerald's 16 GB eMMC, image GC deleted `python:3.14` after each
+run, so the next run downloaded about 1.45 GiB again. topaz has a 32 GB eMMC and
+already serves the NFS workspace.
+
+!!! warning "A misspelled affinity key fails without an error"
+    The agent parses `WOODPECKER_BACKEND_K8S_POD_AFFINITY` with `sigs.k8s.io/yaml`,
+    which ignores unknown fields. A misspelled key leaves an empty affinity, so step
+    pods can land on any untainted node, and the agent logs nothing. Steps can't
+    override this affinity, because `WOODPECKER_BACKEND_K8S_POD_AFFINITY_ALLOW_FROM_STEP`
+    defaults to `false`. They can add tolerations, because
+    `WOODPECKER_BACKEND_K8S_POD_TOLERATIONS_ALLOW_FROM_STEP` defaults to `true`. That's
+    why the affinity excludes the control plane even though the control plane is tainted.
 
 !!! warning "Forge env vars: server only — and Forgejo vs GITEA"
     Put `WOODPECKER_FORGEJO*` on the **server**, never the agent — agent-side forge
