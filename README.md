@@ -1,12 +1,175 @@
-# homelab-docs
+# Homelab
 
-Documentation, runbooks, diagrams, and decision logs for the homelab.
+A four-node k3s cluster on Raspberry Pi CM4 hardware, built and run with the practices a
+platform team uses: infrastructure as code, GitOps delivery, pull-request CI gates,
+encrypted secrets, alerting, and drilled backups.
 
-The runbooks are authored as Markdown under `docs/` and rendered as a static site with [MkDocs Material](https://squidfunk.github.io/mkdocs-material/). The Markdown source renders natively in GitHub as a fallback view.
+This repo holds the documentation: runbooks, architecture, and decision records. It's the
+only public repo of the five. It contains no infrastructure code and no secrets. The code
+it describes lives in four private repos, summarized in [How changes ship](#how-changes-ship).
 
-This is the only public repo in the five-repo layout — it contains no infrastructure code and no secrets, so it's safe to share.
+## At a glance
 
-## Local preview
+| Practice | How this homelab does it | Read more |
+|---|---|---|
+| Infrastructure as code | Ansible provisions the nodes, their UFW rules, and k3s. OpenTofu manages Cloudflare DNS, with remote state in S3. | [Ansible](docs/build/ansible.md) · [Terraform](docs/build/terraform.md) |
+| GitOps delivery | Argo CD reconciles every cluster component from Git as an app of apps. For workloads, merging to `main` is the deploy. | [Deployment pattern](docs/deploy/index.md) |
+| Continuous integration | Woodpecker, running on the cluster, gates every pull request: `kubeconform`, `ansible-lint`, `tofu validate`, and a strict docs build. | [Woodpecker](docs/deploy/woodpecker.md) |
+| Secrets management | SOPS and age encrypt what the workstation reads. Sealed Secrets encrypts what the cluster reads. gitleaks runs as a pre-commit hook in every repo. | [Repositories](docs/concepts/repositories.md) |
+| Dependency updates | Renovate opens pull requests nightly for Helm charts, images, k3s, and hooks. Nothing merges unattended. | [Renovate](docs/deploy/woodpecker.md#renovate-keep-dependencies-and-image-tags-current) |
+| Patch management | Security updates install nightly. Kernels and reboots wait for a supervised rolling update with canary and health gates. | [OS patching](#os-patching) |
+| Observability | Prometheus, Grafana, Loki, and Alloy, plus black-box probes of the public URLs. A dead man's switch watches the alert path itself. | [Observability](docs/build/observability.md) |
+| Backup and recovery | Velero, etcd snapshots, and database dumps land in S3 on the NAS, then sync off-site nightly. Restore drills test the recovery paths. | [Backups](docs/build/backups.md) · [Disaster recovery](docs/operate/disaster-recovery.md) |
+| Identity | Authelia provides OIDC and forward-auth single sign-on, backed by an lldap directory. | [Identity](docs/concepts/identity.md) |
+| Network security | A default-deny zone firewall between VLANs, UFW on each host, and Tailscale subnet routers with failover for remote access. | [Network](docs/build/network.md) · [Firewall decision](docs/reference/decisions/zone-based-firewall.md) |
+| Docs as code | MkDocs with strict link checks and Vale prose linting, both in CI. Decision records capture each design choice. | [Decision records](docs/reference/decisions/index.md) |
+
+## How changes ship
+
+Every change, from a Helm value to a DNS record, goes through a pull request. Forgejo,
+self-hosted on the cluster, is the primary Git host. GitHub holds a read-only push mirror.
+
+```mermaid
+flowchart LR
+    ws["Workstation"] -->|"AGit push opens a PR"| fj["Forgejo"]
+    rn["Renovate CronJob"] -->|"dependency PRs"| fj
+    fj -->|"webhook"| wp["Woodpecker CI gate"]
+    wp -.->|"on failure"| nt["ntfy push alert"]
+    fj -->|"push mirror"| gh["GitHub, read-only"]
+    ac["Argo CD"] -->|"polls main over SSH"| fj
+    ac -->|"auto-sync"| k3s["k3s cluster"]
+    ws -->|"ansible-playbook"| nodes["Nodes and DNS appliance"]
+    ws -->|"tofu apply"| cf["Cloudflare DNS"]
+```
+
+Each repo has its own gate, and the change applies through the tool that owns that layer:
+
+| Repo | Holds | Pull-request gate | Applies through |
+|---|---|---|---|
+| `homelab-manifests` | Argo CD `Application`s, Helm values, raw manifests, and SealedSecrets | `kubeconform -strict` against Kubernetes and CRD schemas | Argo CD auto-sync on merge |
+| `homelab-ansible` | Node provisioning, k3s install, UFW rules, Tailscale, and patching playbooks | pre-commit: `ansible-lint`, gitleaks, and YAML checks | `ansible-playbook` from the workstation |
+| `homelab-terraform` | OpenTofu modules for Cloudflare DNS and UniFi | `tofu fmt -check` and `tofu validate` | `tofu apply` from the workstation, with state in Garage S3 |
+| `homelab-secrets` | The SOPS-encrypted backup of the Sealed Secrets signing key | pre-commit hooks, run locally | Read only during disaster recovery |
+| `homelab-docs` | This documentation | `mkdocs build --strict` and Vale | Merge to `main`, mirrored to GitHub |
+
+A failed gate sends an ntfy push notification with a link to the run.
+
+## How it's maintained
+
+Day-two work runs through the same pull-request flow, and the cluster reports when it
+needs attention.
+
+### Dependency updates
+
+Renovate runs nightly as a CronJob on the cluster. It opens pull requests against Forgejo
+for Helm charts, container images, k3s releases, pre-commit hooks, and the docs' Python
+dependencies. In `homelab-manifests`, OSV vulnerability alerts arrive labeled `security`.
+
+Nothing merges unattended. A merge to `homelab-manifests` is a deploy, and `kubeconform`
+validates schema, not behavior, so every update waits for review.
+
+### k3s upgrades
+
+The system-upgrade-controller, deployed by Argo CD, upgrades k3s from `Plan` resources.
+It drains and upgrades the control plane first, then the agents one at a time. Each
+agent waits until the control plane reports the new version, so no kubelet runs ahead of
+the API server.
+
+Renovate proposes each k3s release once it's seven days old, with minors and patches in
+separate pull requests. Merging one starts the roll.
+
+### OS patching
+
+Patching runs in two tiers:
+
+- **Nightly, unattended.** `unattended-upgrades` installs Debian security updates and
+  point releases without rebooting. Kernel and firmware packages wait for the supervised
+  tier.
+- **Supervised, on demand.** `just update-all` runs an Ansible playbook that drains,
+  updates, and reboots one node at a time.
+
+Node-exporter reports pending updates, pending reboots, and services still running
+replaced libraries. Prometheus alerts on each, so the supervised tier runs when an alert
+says it's needed.
+
+The supervised playbook stops before it can turn one bad node into a cluster outage:
+
+- The first node it changes is a canary. The playbook waits five minutes and rechecks
+  the cluster before the next drain.
+- Before and after each node, every pod must be `Ready` and every Argo CD app `Healthy`.
+- Before each drain, every other node must have 4 GiB of disk free for the pods it's
+  about to receive.
+- At the first failure, the playbook uncordons the node and stops.
+
+### Alerting
+
+Alertmanager routes alerts to ntfy as push notifications. Black-box probes check
+that each public URL answers end to end, not only that its pod is running.
+
+The `Watchdog` alert fires continuously and pings Healthchecks.io, outside the cluster,
+every minute. If Prometheus, Alertmanager, or the network path out of the cluster fails,
+the pings stop and Healthchecks.io alerts on its own channel.
+
+### Backups
+
+Every job writes to its own bucket on a Garage S3 store on the NAS, each with its own
+least-privilege key. A nightly sync copies the whole store off-site to Backblaze B2.
+
+| What | Schedule | Retention or destination |
+|---|---|---|
+| Every persistent volume (Velero with kopia) | Daily | 7 days |
+| etcd snapshots | Every 12 hours | On the control plane and in Garage |
+| Sealed Secrets signing keys, encrypted | Daily | Garage |
+| PostgreSQL dumps, one per database | Nightly | Garage |
+| The Garage store and the photo library | Nightly | Backblaze B2 |
+
+A drill on 2026-07-17 exercised the secrets recovery chain end to end. The PostgreSQL
+restore drill compares the row count and an MD5 checksum of the restored data with the
+source, not the exit code.
+
+## Known trade-offs
+
+These are deliberate, with the reasoning and mitigations in the linked pages:
+
+- **One control plane.** ruby is the only k3s server and etcd member. If it dies, the
+  apps keep serving, but nothing can deploy, scale, or restart until it's recovered.
+  Scheduled etcd snapshots and a documented restore path cover that case.
+  See [Kubernetes](docs/build/kubernetes.md) and [Disaster recovery](docs/operate/disaster-recovery.md).
+- **One NFS server.** topaz serves the default storage class from a SATA SSD, so a topaz
+  reboot stalls every NFS-backed pod. See [Storage](docs/concepts/storage.md).
+- **The UniFi firewall isn't codified.** The UniFi Terraform provider doesn't support
+  zone-based firewall policies, so the zone policies exist only as manual configuration
+  on the UDM. The `unifi/` module is a draft that no one has applied.
+- **OpenTofu applies from the workstation.** CI validates the modules but doesn't plan or
+  apply them.
+
+## Hardware
+
+| Component | Spec |
+|---|---|
+| Cluster | Turing Pi 2 with 4× Raspberry Pi CM4, 8 GB RAM each |
+| Network | Ubiquiti UDM: VLANs, zone firewall, and DHCP |
+| NAS | UGREEN DXP6800 Pro: bulk storage, PostgreSQL, Garage S3, and Immich |
+| Home Assistant | Proxmox on a repurposed Mac mini, running Home Assistant OS in a VM |
+| DNS | AdGuard Home on a dedicated Raspberry Pi 3 B, off the cluster |
+
+## What runs on it
+
+- **Platform:** Argo CD, Forgejo, Woodpecker, Renovate, Traefik on the Gateway API,
+  cert-manager, MetalLB, Sealed Secrets, Authelia, lldap, Vaultwarden, and ntfy.
+- **Applications:** Nextcloud with Collabora, Paperless-ngx, Immich, Home Assistant,
+  Miniflux, Actual Budget, Donetick, Audiobookshelf, and Homepage.
+
+The [App catalog](docs/reference/app-catalog.md) lists every app with its status, and
+[Service selection](docs/reference/service-selection.md) explains why each one won.
+
+## Work on these docs
+
+The runbooks live as Markdown under `docs/`, and
+[MkDocs Material](https://squidfunk.github.io/mkdocs-material/) renders them as a static site. The Markdown source
+renders natively in GitHub as a fallback view.
+
+### Preview locally
 
 ```bash
 python -m venv .venv
@@ -17,7 +180,7 @@ mkdocs serve
 
 Then open <http://127.0.0.1:8000>. Live-reload watches `docs/` for changes.
 
-## Build the static site
+### Build the static site
 
 ```bash
 mkdocs build --strict
@@ -27,7 +190,7 @@ mkdocs build --strict
 `--strict` is what CI runs. It fails the build on a broken internal link or anchor, so a
 local build without it passes where the pipeline won't.
 
-## Lint the prose
+### Lint the prose
 
 Prose follows the [Google developer documentation style guide](https://developers.google.com/style),
 checked with [Vale](https://vale.sh):
@@ -38,28 +201,19 @@ vale sync                          # fetches the Google style package
 vale --minAlertLevel=warning docs/
 ```
 
-CI runs both `mkdocs build --strict` and `vale --minAlertLevel=warning` — a broken link,
+CI runs both `mkdocs build --strict` and `vale --minAlertLevel=warning`. A broken link,
 anchor, or style violation fails the pipeline.
 
-## Related repos
+### Contribute
 
-| Repo | Purpose |
-|---|---|
-| homelab-docs | This repo — docs, runbooks, decisions |
-| homelab-ansible | OS provisioning playbooks for the Turing Pi 2 cluster |
-| homelab-manifests | k3s YAML / Helm values, watched by ArgoCD |
-| homelab-terraform | Cloudflare DNS, UniFi, and other cloud/network IaC |
-| homelab-secrets | sops/age-encrypted secrets (private) |
+Every change goes through a branch and a pull request, including README and runbook
+edits. No one pushes to `main` directly.
 
-## Contributing
+[STYLE.md](STYLE.md) codifies the prose style, page structure, admonition semantics,
+anchor rules, and public-repo constraints. The reference implementations are
+`docs/build/backups.md` and `docs/deploy/forgejo.md`.
 
-Branch + PR per repo convention — including for README and runbook edits. No direct pushes to `main`.
-
-Prose style, page structure, admonition semantics, anchor rules, and the public-repo
-constraints are codified in [STYLE.md](STYLE.md) — `docs/build/backups.md` and
-`docs/deploy/forgejo.md` are the reference implementations.
-
-PRs are AGit pushes to Forgejo; GitHub is a read-only mirror:
+Pull requests are AGit pushes to Forgejo. GitHub is a read-only mirror:
 
 ```bash
 git push origin HEAD:refs/for/main -o topic=TOPIC
