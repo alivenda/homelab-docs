@@ -10,7 +10,7 @@ office editing on top of the same install.
 |---|---|
 | **Difficulty** | Intermediate |
 | **Time estimate** | 1–2 hours |
-| **Runs on** | k3s — any node. Nothing pins it: files are on NFS, the DB is on the NAS, so the pod can reschedule freely |
+| **Runs on** | k3s, on a large-disk worker that isn't the control plane (topaz). Files are on NFS and the DB is on the NAS, so the pod has no node-local data |
 | **Depends on** | Traefik (Gateway), Authelia, NAS PostgreSQL, and the [GitOps deploy pattern](index.md) |
 
 Architecturally it's the poster child of the
@@ -136,15 +136,37 @@ actually *use* it.
 ```yaml
 startupProbe:
   enabled: true
-  failureThreshold: 60   # up to ~10 min of grace
+  failureThreshold: 120  # 30s delay + 120 × 10s: about 20 minutes of grace
 ```
 
 !!! warning "First boot does minutes of work — on ARM + NFS, many minutes"
     The first start unpacks the Nextcloud release onto the NFS PVC and runs the
     installer. The chart's liveness probe (10s delay) stops and restarts the pod
-    mid-install without a startup probe, looping forever. This replaces the old
-    runbook's "pin to a 32 GB node" advice — the eMMC size never mattered; probe
-    patience did.
+    mid-install without a startup probe, looping forever. The old runbook's "pin to
+    a 32 GB node" advice didn't fix that. Probe patience did. The pod does run on a
+    32 GB node, but for image room, as the next block explains.
+
+**Placement on a large-disk worker** — the image is about 480 MiB, and drains pile big
+images onto the 16 GB nodes. Require `storage=large`, and exclude the control plane,
+which has that label too:
+
+```yaml
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: storage
+              operator: In
+              values: ["large"]
+            - key: node-role.kubernetes.io/control-plane
+              operator: DoesNotExist
+```
+
+In this build, only topaz matches. Use a required rule, not a preferred one: a
+preference applies only when the pod starts, so after a drain the pod stays on
+whichever node took it. During a topaz drain, the pod waits in Pending. The files are
+on topaz's NFS export, so a topaz outage takes Nextcloud down either way.
 
 **Reverse-proxy correctness** — TLS terminates at the Traefik Gateway, so Nextcloud
 must be told it's behind an HTTPS proxy or it builds `http://` redirect URLs and
