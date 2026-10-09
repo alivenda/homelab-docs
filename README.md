@@ -18,7 +18,7 @@ it describes lives in four private repos, summarized in [How changes ship](#how-
 | Secrets management | SOPS and age encrypt what the workstation reads. Sealed Secrets encrypts what the cluster reads. gitleaks runs as a pre-commit hook in every repo. | [Repositories](docs/concepts/repositories.md) |
 | Dependency updates | Renovate opens pull requests nightly for Helm charts, images, k3s, and hooks. Nothing merges unattended. | [Renovate](docs/deploy/woodpecker.md#renovate-keep-dependencies-and-image-tags-current) |
 | Patch management | Security updates install nightly. Kernels and reboots wait for a supervised rolling update with canary and health gates. | [OS patching](#os-patching) |
-| Observability | Prometheus, Grafana, Loki, and Alloy, plus black-box probes of the public URLs. A dead man's switch watches the alert path itself. | [Observability](docs/build/observability.md) |
+| Observability | Prometheus, Grafana, Loki, and Alloy, plus black-box probes of each app's URL. A dead man's switch watches the alert path itself. | [Observability](docs/build/observability.md) |
 | Backup and recovery | Velero, etcd snapshots, and database dumps land in S3 on the NAS, then sync off-site nightly. Restore drills test the recovery paths. | [Backups](docs/build/backups.md) · [Disaster recovery](docs/operate/disaster-recovery.md) |
 | Identity | Authelia provides OIDC and forward-auth single sign-on, backed by an lldap directory. | [Identity](docs/concepts/identity.md) |
 | Network security | A default-deny zone firewall between VLANs, UFW on each host, and Tailscale subnet routers with failover for remote access. | [Network](docs/build/network.md) · [Firewall decision](docs/reference/decisions/zone-based-firewall.md) |
@@ -104,7 +104,7 @@ The supervised playbook stops before it can turn one bad node into a cluster out
 ### Alerting
 
 Alertmanager routes alerts to ntfy as push notifications. Black-box probes check
-that each public URL answers end to end, not only that its pod is running.
+that each app's URL answers end to end, not only that its pod is running.
 
 The `Watchdog` alert fires continuously and pings Healthchecks.io, outside the cluster,
 every minute. If Prometheus, Alertmanager, or the network path out of the cluster fails,
