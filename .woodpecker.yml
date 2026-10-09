@@ -17,21 +17,27 @@ when:
 
 # Full history, not Woodpecker's default shallow, treeless clone
 # (--depth=1 --filter=tree:0), so the gitleaks step can scan every commit.
-# Pinned to the server's default clone image. Any woodpeckerci/plugin-git tag
-# stays on the trusted-clone list, so the clone keeps its credentials.
+# Same tag as Woodpecker 3.19's default clone image, digest-pinned because this
+# step holds the clone credentials. Any woodpeckerci/plugin-git image stays on
+# the trusted-clone list, so the clone keeps them.
 clone:
   git:
-    image: docker.io/woodpeckerci/plugin-git:2.10.1
+    image: docker.io/woodpeckerci/plugin-git:2.10.1@sha256:550075c844fcec0af41d9d28f9860aa5d8c43e1e9419be4b9266dc02c2f29804
     settings:
       partial: false
       depth: 0
 
 steps:
-  # Secret scan over every commit. The pre-commit gitleaks hook scans only
+  # Secret scan over the full history. The pre-commit gitleaks hook scans only
   # staged changes: it guards local commits but checks nothing in a CI clone.
   # --redact keeps finding values out of the log; reviewed false positives go
-  # in .gitleaksignore. Measured on homelab-manifests' history: ~76 MiB peak,
-  # under a second.
+  # in .gitleaksignore. Measured: about 90 MiB peak and under 2 seconds on a
+  # CM4.
+  #
+  # gitleaks exits 0 when git fails or the history is missing, so a dropped
+  # clone block or a broken git would pass without scanning anything. The
+  # first two commands fail the step on a shallow or partial clone, and
+  # outside a readable repo.
   gitleaks:
     image: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
     backend_options:
@@ -43,6 +49,8 @@ steps:
           limits:
             memory: 256Mi
     commands:
+      - test "$(git rev-parse --is-shallow-repository)" = false
+      - test -z "$(git config --get remote.origin.partialclonefilter)"
       - gitleaks git --redact --no-banner --verbose .
 
   mkdocs-strict:
@@ -91,11 +99,12 @@ steps:
 
   # Push-notify on failure: ntfy topic `ci`, publisher `woodpecker` (write-only,
   # topic-scoped). `ntfy_token` is a global (instance-wide) Woodpecker secret
-  # shared by all five repos — it must be enabled for push AND pull_request events, or
-  # renovate-PR failures stay silent. Everything is $$-escaped so the shell
-  # expands at runtime; Woodpecker's parse-time substitution would splice the
-  # raw commit message into the command line. Digest-pinned: a mutable-tag
-  # rebuild has already broken a green pipeline (homelab-manifests kubeconform).
+  # shared by all five repos — it must be enabled for push AND pull_request
+  # events, or renovate-PR failures stay silent. Everything is $$-escaped so
+  # the shell expands at runtime; Woodpecker's parse-time substitution would
+  # splice the raw commit message into the command line. Digest-pinned: a
+  # mutable-tag rebuild has already broken a green pipeline (homelab-manifests
+  # kubeconform).
   notify-failure:
     image: docker.io/curlimages/curl:8.21.0@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13
     backend_options:
