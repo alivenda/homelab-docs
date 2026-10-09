@@ -15,7 +15,36 @@ when:
   - event: push
     branch: main
 
+# Full history, not Woodpecker's default shallow, treeless clone
+# (--depth=1 --filter=tree:0), so the gitleaks step can scan every commit.
+# Pinned to the server's default clone image. Any woodpeckerci/plugin-git tag
+# stays on the trusted-clone list, so the clone keeps its credentials.
+clone:
+  git:
+    image: docker.io/woodpeckerci/plugin-git:2.10.1
+    settings:
+      partial: false
+      depth: 0
+
 steps:
+  # Secret scan over every commit. The pre-commit gitleaks hook scans only
+  # staged changes: it guards local commits but checks nothing in a CI clone.
+  # --redact keeps finding values out of the log; reviewed false positives go
+  # in .gitleaksignore. Measured on homelab-manifests' history: ~76 MiB peak,
+  # under a second.
+  gitleaks:
+    image: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+    backend_options:
+      kubernetes:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            memory: 256Mi
+    commands:
+      - gitleaks git --redact --no-banner --verbose .
+
   mkdocs-strict:
     image: python:3.13-slim
     # Measured peak: ~105 MiB over a ~55s run. Requests give co-tenants a
@@ -61,8 +90,8 @@ steps:
       - vale --minAlertLevel=warning docs/
 
   # Push-notify on failure: ntfy topic `ci`, publisher `woodpecker` (write-only,
-  # topic-scoped). `ntfy_token` is an org-level Woodpecker secret shared by all
-  # four repos — it must be enabled for push AND pull_request events, or
+  # topic-scoped). `ntfy_token` is a global (instance-wide) Woodpecker secret
+  # shared by all five repos — it must be enabled for push AND pull_request events, or
   # renovate-PR failures stay silent. Everything is $$-escaped so the shell
   # expands at runtime; Woodpecker's parse-time substitution would splice the
   # raw commit message into the command line. Digest-pinned: a mutable-tag

@@ -6,3 +6,7 @@
 # generic-api-key rule fires on it; expected and accepted.
 
 docs/deploy/authelia.md:generic-api-key:314
+
+# The same key name under the page's pre-rename path. Only the full-history
+# CI scan reaches it.
+docs/18-authelia.md:generic-api-key:329
