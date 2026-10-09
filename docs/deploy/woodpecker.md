@@ -1,9 +1,9 @@
 # Woodpecker
 
 !!! success "Status — Live"
-    Live in the cluster — the CI engine gating the homelab repos (today: manifest
-    validation on `homelab-manifests`). This runbook teaches the full pipeline through
-    image builds and GitOps deploys.
+    Live in the cluster — the CI engine gating the homelab repos (today: the
+    [required checks](#required-checks-and-branch-protection) on all five). This runbook
+    teaches the full pipeline through image builds and GitOps deploys.
 
 End-to-end pipeline: push code, auto-build container images, deploy to k3s through GitOps.
 
@@ -266,7 +266,9 @@ when:
 
 steps:
   kubeconform:
-    image: ghcr.io/yannh/kubeconform:v0.7.0-alpine
+    # Pin by digest too: upstream rebuilds the -alpine tag in place, and one such
+    # rebuild broke a previously green pipeline.
+    image: ghcr.io/yannh/kubeconform:v0.8.0-alpine@sha256:<digest>
     commands:
       - |
         find apps infrastructure bootstrap -name '*.yaml' \
@@ -298,12 +300,13 @@ Every homelab repo runs a Woodpecker pipeline on each pull request and each push
 |---|---|
 | `homelab-manifests` | gitleaks, kubeconform |
 | `homelab-ansible` | gitleaks, pre-commit (`ansible-lint`, YAML, private keys) |
-| `homelab-terraform` | gitleaks, `tofu fmt -check`, `tofu validate` |
+| `homelab-terraform` | gitleaks, `tofu fmt -check -recursive`, `tofu validate` |
 | `homelab-docs` | gitleaks, `mkdocs build --strict`, Vale |
 | `homelab-secrets` | gitleaks, pre-commit (SOPS encryption checks, private keys) |
 
 A failed pipeline sends an ntfy push through its `notify-failure` step, which reads
-`ntfy_token`, a Woodpecker secret on the org.
+`ntfy_token`, a Woodpecker secret on the org. Enable the secret for both push and
+pull_request events, or failures on Renovate's PRs stay silent.
 
 ### The branch protection rule
 
@@ -313,17 +316,24 @@ A failed pipeline sends an ntfy push through its `notify-failure` step, which re
 | **Direct pushes** | Blocked, for admins too |
 | **Required status** | `ci/woodpecker/pr/woodpecker` |
 | **Approvals** | 0 — Forgejo doesn't let you approve your own PR |
-| **Outdated branches** | Allowed — CI tests the PR's head, not the merged result |
+| **Outdated branches** | Allowed, so a PR behind `main` can pass CI and still break `main` |
 
 AGit pushes still work: they go to `refs/for/main`, which Forgejo handles as a pull
 request, not as a push to `main`. To give every repo the same rule, apply it through the
-API with a Forgejo token that has `write:repository`:
+API with a Forgejo token that has `write:repository`. Replace `<org>` and the repo list
+with yours:
 
 ```fish
 read -s -P 'Forgejo token: ' tok
 set rule '{"rule_name":"main","enable_push":false,"enable_status_check":true,"status_check_contexts":["ci/woodpecker/pr/woodpecker"],"apply_to_admins":true,"required_approvals":0}'
-curl -fsS -X POST -H "Authorization: token $tok" -H 'Content-Type: application/json' -d $rule https://git.yourdomain.com/api/v1/repos/<org>/<repo>/branch_protections
+for repo in homelab-manifests homelab-ansible homelab-terraform homelab-docs homelab-secrets
+    curl -fsS -X POST -H "Authorization: token $tok" -H 'Content-Type: application/json' -d $rule https://git.yourdomain.com/api/v1/repos/<org>/$repo/branch_protections
+end
+set -e tok
 ```
+
+The create call fails if the repo already has a rule named `main`. To change an existing
+rule, send the same body with `PATCH` to `/branch_protections/main`.
 
 !!! warning "There's no direct-push escape hatch"
     With the rule applied to admins, a hotfix to `main` also needs a PR with a passing
@@ -354,7 +364,7 @@ steps:
 ```
 
 - **The clone override.** Woodpecker's default clone is shallow and treeless
-  (`--depth=1 --filter=tree:0`), which gives gitleaks one commit to scan. Any
+  (`--depth=1 --filter=tree:0`), and gitleaks can't read history from it. Any
   `woodpeckerci/plugin-git` image stays on Woodpecker's trusted-clone list, so the
   override keeps the clone credentials.
 - **The two guard commands.** gitleaks exits 0 when git fails or the history is
@@ -393,25 +403,28 @@ steps:
           --output type=image,\"name=git.yourdomain.com/youruser/myapp:${CI_COMMIT_SHA},git.yourdomain.com/youruser/myapp:latest\",push=true
 
   update-manifest:
-    image: alpine/git:latest
+    image: alpine/git:<tag>
+    environment:
+      FORGEJO_TOKEN:
+        from_secret: forgejo_token
     commands:
-      - git config user.email ci@yourdomain.com
-      - git config user.name "Woodpecker CI"
-      - git clone https://${FORGEJO_TOKEN}@git.yourdomain.com/youruser/homelab-manifests.git
+      - git config --global user.email ci@yourdomain.com
+      - git config --global user.name "Woodpecker CI"
+      # $$ defers expansion to the shell: Woodpecker substitutes ${...} when it parses
+      # the file, before the secret exists.
+      - git clone https://$${FORGEJO_TOKEN}@git.yourdomain.com/youruser/homelab-manifests.git
       - cd homelab-manifests
       - |
         sed -i "s|image: .*myapp:.*|image: git.yourdomain.com/youruser/myapp:${CI_COMMIT_SHA}|" \
           apps/myapp/deployment.yaml
       - git commit -am "ci(myapp): bump to ${CI_COMMIT_SHA}"
-      - git push
-    secrets: [ forgejo_token ]
+      # An AGit push opens a PR. A direct push to main is rejected by branch protection.
+      - git push origin HEAD:refs/for/main -o topic=bump-myapp-${CI_COMMIT_SHA}
 ```
 
-!!! warning "Branch protection rejects the bump push"
-    The `update-manifest` step pushes straight to `main`, which
-    [branch protection](#the-branch-protection-rule) rejects. Push the bump as a PR
-    instead — for example, `git push origin HEAD:refs/for/main -o topic=bump-myapp` — so
-    it goes through the same checks.
+The bump arrives as a PR, so it goes through the same
+[required checks](#the-branch-protection-rule) as any other change. Woodpecker 3 has no
+`secrets:` step key; `environment` with `from_secret` replaces it.
 
 !!! note "Registry auth for BuildKit"
     For pushes to a private Forgejo registry, mount a Docker-config-format Secret at `/home/user/.docker/config.json` in the build pod (Woodpecker `volumes:` or Kubernetes backend pod-template overrides). The same `config.json` pattern works for any OCI registry.
@@ -426,8 +439,8 @@ Your CI pipeline preceding builds your own images. Third-party versions (helm ch
 ### How it runs
 
 This build runs Renovate as a Kubernetes CronJob in `homelab-manifests`
-(`infrastructure/renovate/`). Mend's hosted Renovate app is GitHub-only, so a Forgejo
-primary needs a self-hosted runner. A CronJob keeps the schedule in Git, where Argo CD
+(`infrastructure/renovate/`). Mend's hosted Renovate app doesn't support Forgejo, so a
+Forgejo primary needs a self-hosted runner. A CronJob keeps the schedule in Git, where Argo CD
 reconciles it like everything else.
 
 | | |
@@ -461,15 +474,14 @@ that's an accepted trade-off.
 
     steps:
       renovate:
-        image: ghcr.io/renovatebot/renovate:latest
+        image: ghcr.io/renovatebot/renovate:<version>
         environment:
-          RENOVATE_PLATFORM: gitea         # Forgejo speaks Gitea API
+          RENOVATE_PLATFORM: forgejo
           RENOVATE_ENDPOINT: https://git.yourdomain.com
           RENOVATE_TOKEN:
             from_secret: renovate_token
           RENOVATE_AUTODISCOVER: "true"
           LOG_LEVEL: info
-        secrets: [ renovate_token ]
     ```
 
     In Woodpecker, schedule the cron `renovate` to run nightly. With
@@ -497,7 +509,7 @@ Every homelab repo ships a `renovate.json` that extends `config:recommended` and
 Terraform, Woodpecker pipelines, pip requirements, `ansible-galaxy`, Dockerfiles, and
 more. The `kubernetes` manager has no default file pattern, so raw manifests need the
 explicit configuration [below](#raw-manifest-image-tags). The `dependencies` label must
-exist in each repo; Renovate drops a missing label without an error.
+exist in each repo or in the org; Renovate drops a missing label without an error.
 
 ### Per-repo grouping rules
 
@@ -520,12 +532,12 @@ Each repo adds a single grouping rule for its primary manager so related bumps l
   {
     "customType": "regex",
     "managerFilePatterns": [
-      "(^|/)README\\.md$",
-      "(^|/)bootstrap/.+\\.yaml$"
+      "/(^|\\/)README\\.md$/",
+      "/(^|\\/)bootstrap\\/.+\\.yaml$/"
     ],
     "matchStrings": [
-      "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) registryUrl=(?<registryUrl>\\S+)[\\s\\S]{0,200}?--version (?<currentValue>\\S+)",
-      "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) registryUrl=(?<registryUrl>\\S+)[\\s\\S]{0,200}?targetRevision: (?<currentValue>\\S+)"
+      "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?[\\s\\S]{0,200}?--version (?<currentValue>\\S+)",
+      "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?[\\s\\S]{0,200}?targetRevision: (?<currentValue>\\S+)"
     ],
     "versioningTemplate": "semver"
   }
@@ -553,19 +565,21 @@ manager with explicit file patterns:
 }
 ```
 
-Three package rules go with it:
+Four package rules go with it:
 
 - **The CronJob's own image** stays with the custom regular expression. A rule turns the
   `kubernetes` manager off for `infrastructure/renovate/manifests/cronjob.yaml`.
 - **Homepage** PRs carry a note to diff the image's `src/skeleton/` against the
   ConfigMap keys before merging. A missing skeleton file crash-loops the pod on its
   read-only config mount.
-- **local-path-provisioner** PRs say its manifest is vendored from
-  upstream, so a bump can also need RBAC or ConfigMap changes. **Paperless-ngx** major
-  PRs carry the environment changes the new major requires.
+- **local-path-provisioner** PRs say its manifest is vendored from upstream, so a bump
+  can also need RBAC or ConfigMap changes.
+- **Paperless-ngx** major PRs list the environment changes the new major requires. Add
+  them to the PR before you merge.
 
-An image with no tag resolves to whatever `latest` was when a node first pulled it, and
-Renovate can't track it. Pin every image to a tag.
+An image with no tag means `latest`. With the default pull policy, every pod start can
+pull a different version; with `IfNotPresent`, each node keeps whatever it pulled first.
+Either way, Renovate can't track it. Pin every image to a tag.
 
 ### Update policy
 

@@ -136,7 +136,7 @@ Reverse dependency order: network → NAS → Home Assistant host → cluster.
 4. **The cluster** — follow [Turing Pi's startup](../build/turing-pi.md#startup): topaz first (NFS), then ruby (wait for `Ready`), then emerald and amethyst. ArgoCD reconciles the workloads on its own; give it a few minutes before touching anything.
 
     !!! tip "UFW can come back half-loaded"
-        If `sudo ufw status` on a node fails with *"problem running ip6tables"*, the firewall is in a half-loaded state (empty IPv6 chains). Don't reboot or retry — reset it:
+        If `sudo ufw status` on a node fails with `problem running ip6tables`, the firewall is in a half-loaded state (empty IPv6 chains). Don't reboot or retry — reset it:
 
         ```bash
         sudo ufw --force disable && sudo ufw enable

@@ -390,6 +390,10 @@ Before you merge a k3s version PR:
 1. For a minor bump, read the k3s and Kubernetes release notes, and check that the bump
    doesn't skip a minor. The controller doesn't enforce version skew. Wait until k3s's
    [stable channel](https://update.k3s.io/v1-release/channels/stable) reaches that minor.
+   Each version PR updates from the current version, so merge open minor PRs in order.
+1. For a minor bump, check the kubectl image that drains and cordons nodes
+   (`SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE` in `kustomization.yaml`). It must stay within one
+   minor version of the API server.
 1. Check the [k3s releases](https://github.com/k3s-io/k3s/releases) for a newer build of
    the same version, such as `+k3s2`. Renovate holds a newer build for 7 days, and
    switching to it later means another roll.
@@ -412,7 +416,7 @@ kubectl get nodes -o wide            # note the current version on every node
 kubectl get --raw /metrics | grep apiserver_requested_deprecated_apis
 # Anything with a non-empty removed_release= must be migrated BEFORE upgrading.
 
-# Fresh etcd snapshot — the only real rollback for a control-plane upgrade
+# On ruby: fresh etcd snapshot — the only real rollback for a control-plane upgrade
 sudo k3s etcd-snapshot save --name pre-upgrade
 
 # Confirm the nightly Velero backup actually completed
@@ -433,7 +437,12 @@ until the controller uncordons it.
 
 The upgrade image refuses downgrades. A refused or failed upgrade leaves the node
 cordoned. To recover, set the Plans to the cluster's version or newer, or delete
-the Plan and run `kubectl uncordon <node>`.
+the Plan and run `kubectl uncordon <node>`. An agent's upgrade Job that runs past its
+30-minute deadline (`jobActiveDeadlineSecs: 1800`) counts as failed.
+
+The `system-upgrade-controller` Argo CD `Application` sets `prune: false`, because
+removing the `plans.upgrade.cattle.io` CRD deletes every Plan with it. Deleting the
+`Application` still deletes the CRD, through its finalizer.
 
 !!! warning "Single control plane: the snapshot is the rollback"
     There is one server node. If the control plane fails to come back, there is no
@@ -501,6 +510,9 @@ version and the live version agree and a future rebuild joins at the cluster's v
     Repeat for `topaz` and `amethyst`. Wait for each node to return `Ready` at the new
     version before starting the next — `emerald` carries the `app-state=true` local-path
     apps, so draining two at once has nowhere to put them.
+
+    Then set both Plans' `version` to the version you installed, so Git matches the
+    cluster and the controller doesn't start a second roll.
 
 ## Verification
 

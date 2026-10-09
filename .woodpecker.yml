@@ -74,7 +74,10 @@ steps:
   # (styles/Homelab/). `vale sync` fetches the Google package at run time; it is
   # not vendored, so a package update lands without a commit here.
   #
-  # The step fails on any warning-or-above violation — the corpus is at zero.
+  # The step fails on any warning-or-above finding. Vale's own exit code covers
+  # only error-level findings, and every Homelab rule is a warning, so the step
+  # also fails whenever Vale prints anything. Findings are written to a file first
+  # so they still print when Vale exits non-zero.
   #
   # `vale ls-config` is the canary. It exits 2 on a bad StylesPath or a missing
   # style, where `vale sync` exits 0 for both. Ordering matters: validate the
@@ -95,7 +98,9 @@ steps:
     commands:
       - vale ls-config > /dev/null
       - vale sync
-      - vale --minAlertLevel=warning docs/
+      - vale --minAlertLevel=warning --output=line docs/ > /tmp/vale.out || { cat /tmp/vale.out; exit 1; }
+      - cat /tmp/vale.out
+      - test ! -s /tmp/vale.out
 
   # Push-notify on failure: ntfy topic `ci`, publisher `woodpecker` (write-only,
   # topic-scoped). `ntfy_token` is a Woodpecker secret on the `bedrock`

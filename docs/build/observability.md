@@ -424,7 +424,7 @@ What's deliberate here:
     stack runs fine without it — alerts have nowhere to go yet.
 
 Alertmanager is configured in the same `kube-prometheus-stack` `values.yaml`. Alerts
-land on ntfy (topic `alerts`), with two exceptions:
+land on ntfy (topic `alerts`), and two child routes change that default:
 
 - The `Watchdog` heartbeat, which is *meant* to fire forever, pings an external
   [dead man's switch](#dead-mans-switch-healthchecksio).
@@ -527,20 +527,22 @@ out of the cluster stops, no alert fires. The `Watchdog` route covers that gap: 
 When the pings stop, Healthchecks.io alerts on its own channel.
 
 1. In Healthchecks.io, create a check with a 1-minute period and a 5-minute grace time.
-   Send its alerts by email or through the Healthchecks.io app. Don't send them to
-   ntfy, which runs in the cluster this check watches.
+   Send its alerts by email, or through a push service outside the cluster, such as
+   Pushover. Don't send them to ntfy, which runs in the cluster this check watches.
 1. Copy the check's ping URL and seal it. The URL is a credential: anyone holding it can
-   keep the check green.
+   keep the check green. The hidden prompt keeps it out of your shell history:
 
-    ```bash
+    ```fish
+    read -s -P 'Ping URL: ' url
     kubectl create secret generic alertmanager-healthchecks-url \
       --namespace monitoring \
-      --from-literal=url=https://hc-ping.com/<check-uuid> \
+      --from-literal=url=$url \
       --dry-run=client -o yaml \
       | kubeseal --controller-name=sealed-secrets-controller \
                  --controller-namespace=sealed-secrets \
                  --format yaml \
       > infrastructure/kube-prometheus-stack/manifests/alertmanager-healthchecks-url-sealed.yaml
+    set -e url
     ```
 
 1. Commit the SealedSecret together with the `healthchecks` receiver and its

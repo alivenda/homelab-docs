@@ -227,7 +227,8 @@ delete (`Delete`), and sentence-case headings with this project's product names 
 names cased consistently — it's what catches `velero` where `Velero` is meant.
 
 The `vale` step is blocking: any warning-level finding fails the pipeline, and branch
-protection keeps a PR with a failed pipeline from merging. The step also fails on a
+protection keeps a PR with a failed pipeline from merging. Vale's own exit code covers
+only error-level findings, so the step also fails whenever Vale prints anything. The step also fails on a
 broken lint setup, because `vale ls-config` runs first and exits non-zero on a bad
 `StylesPath` or a missing style.
 
