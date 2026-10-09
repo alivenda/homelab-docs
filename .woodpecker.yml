@@ -98,8 +98,8 @@ steps:
       - vale --minAlertLevel=warning docs/
 
   # Push-notify on failure: ntfy topic `ci`, publisher `woodpecker` (write-only,
-  # topic-scoped). `ntfy_token` is a global (instance-wide) Woodpecker secret
-  # shared by all five repos — it must be enabled for push AND pull_request
+  # topic-scoped). `ntfy_token` is a Woodpecker secret on the `bedrock`
+  # org, shared by all five repos — it must be enabled for push AND pull_request
   # events, or renovate-PR failures stay silent. Everything is $$-escaped so
   # the shell expands at runtime; Woodpecker's parse-time substitution would
   # splice the raw commit message into the command line. Digest-pinned: a
