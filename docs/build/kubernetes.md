@@ -353,12 +353,24 @@ rm cf-token-plain.yaml   # never commit plaintext
 
 ## Upgrade k3s
 
-Bumping `k3s_version` in `homelab-ansible/inventory.yml` **does not upgrade a running
+The [system-upgrade-controller](https://docs.k3s.io/upgrades/automated) rolls k3s from
+two `Plan` resources in `homelab-manifests`
+(`infrastructure/system-upgrade-controller/plans.yaml`). A merge that changes their
+`version` starts the roll, and Argo CD applies it like any other change.
+
+| | |
+|---|---|
+| **Plans** | `server-plan` (ruby), then `agent-plan` (the three agents) |
+| **Concurrency** | One node at a time |
+| **Drain** | Every node, patches included, with the same flags as `update.yml` in `homelab-ansible` |
+| **Agent gate** | `agent-plan`'s `prepare` step waits until ruby reports the new version |
+| **Version PRs** | Renovate, once a release is 7 days old: one PR for patches, one per new minor |
+| **Install pin** | `k3s_version` in `homelab-ansible/inventory.yml`, for fresh installs only |
+
+Bumping `k3s_version` in `homelab-ansible/inventory.yml` **doesn't upgrade a running
 cluster**. The install task carries `creates: /usr/local/bin/k3s`, so Ansible skips it
-on any node that already has k3s. The pin governs fresh installs and rebuilds — keeping
-a reflashed node on the same version as its neighbours — while the live roll is manual
-and deliberate. Bump the pin and roll in the same sitting, or a later rebuild silently
-lands on a different version than the running fleet.
+on any node that already has k3s. The pin governs fresh installs and rebuilds, keeping a
+reflashed node on the same version as its neighbors.
 
 ### Order: control plane first { #order-control-plane-first }
 
@@ -368,71 +380,60 @@ actually break the cluster: the Kubernetes version-skew policy lets a kubelet la
 API server by up to three minors, but a kubelet must **never lead it**. Upgrade an agent
 first and it might refuse to register with the older control plane.
 
+The Plans enforce this order. The controller picks the agents' order from a hash, so it
+doesn't follow `update.yml`'s amethyst-first canary order.
+
 ### Pre-flight { #pre-flight }
 
+Before you merge a k3s version PR:
+
+1. For a minor bump, read the k3s and Kubernetes release notes, and check that the bump
+   doesn't skip a minor. The controller doesn't enforce version skew. Wait until k3s's
+   [stable channel](https://update.k3s.io/v1-release/channels/stable) reaches that minor.
+1. Check the [k3s releases](https://github.com/k3s-io/k3s/releases) for a newer build of
+   the same version, such as `+k3s2`. Renovate holds a newer build for 7 days, and
+   switching to it later means another roll.
+1. Check that `update.yml` in `homelab-ansible` isn't running. Both drain nodes.
+1. Run the checks below: the deprecated-API audit, a fresh etcd snapshot, and the last
+   Velero backup.
+1. Check free disk on every node, because drained pods pull their images on the other
+   nodes. From `homelab-ansible`, run `ansible-playbook update.yml --tags headroom`. If a
+   node is under the 4 GiB floor, free space there first with
+   `sudo k3s crictl rmi --prune`. The controller doesn't re-check between nodes.
+1. Avoid the security-upgrades window, about 01:45 to 03:15 fleet local time, and
+   Velero's daily backup at 04:00 UTC.
+
 ```bash
-# 1. What's actually running, and what are you going to?
+# What's actually running, and what are you going to?
 kubectl get nodes -o wide            # note the current version on every node
 
-# 2. Audit the target release's removals against this cluster. Check the
-#    upstream "Deprecated API Migration Guide" for the target minor, then:
+# Audit the target release's removals against this cluster. Check the
+# upstream "Deprecated API Migration Guide" for the target minor, then:
 kubectl get --raw /metrics | grep apiserver_requested_deprecated_apis
-#    Anything with a non-empty removed_release= must be migrated BEFORE upgrading.
+# Anything with a non-empty removed_release= must be migrated BEFORE upgrading.
 
-# 3. Fresh etcd snapshot — the only real rollback for a control-plane upgrade
+# Fresh etcd snapshot — the only real rollback for a control-plane upgrade
 sudo k3s etcd-snapshot save --name pre-upgrade
 
-# 4. Confirm the nightly Velero backup actually completed
+# Confirm the nightly Velero backup actually completed
 velero backup get
 ```
 
-### Roll the server (ruby)
-
-The install script **regenerates the systemd unit from the arguments you pass it**. Pass
-nothing and you lose `--disable traefik`, `--disable servicelb`, `--disable local-storage`
-and the rest — the cluster comes back up fighting itself over the ingress. Re-supply the
-*exact* argument list Ansible installed with:
+### Watch the roll
 
 ```bash
-# Drain first: workloads keep running while k3s restarts, but the API server is
-# briefly gone, and anything mid-write would rather be elsewhere.
-kubectl drain ruby --ignore-daemonsets --delete-emptydir-data
-
-# On ruby. K3S_TOKEN comes from homelab-ansible's sops secrets (k3s_token) —
-# the same value the agents joined with.
-curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=vX.Y.Z+k3s1 sh -s - \
-  --cluster-init \
-  --write-kubeconfig-mode 644 \
-  --disable servicelb \
-  --disable traefik \
-  --disable local-storage \
-  --token "$K3S_TOKEN" \
-  --node-ip 10.0.20.10
-
-kubectl uncordon ruby
-kubectl get nodes            # ruby should report the new version, Ready
+kubectl -n system-upgrade get plans,jobs
+kubectl get nodes
 ```
 
-`/etc/rancher/k3s/config.yaml` (the etcd snapshot schedule and the S3 credentials) is
-**not** touched by the install script — it persists across the upgrade.
+`KubeVersionMismatch` fires if a minor roll runs past 15 minutes, and it resolves once
+every node reports the new version. Every drain is an outage for the local-path apps
+pinned to that node. Draining topaz also stops Prometheus and Loki, so alerting is down
+until the controller uncordons it.
 
-### Roll the agents, one at a time
-
-```bash
-kubectl drain emerald --ignore-daemonsets --delete-emptydir-data
-
-# On the agent:
-curl -sfL https://get.k3s.io | \
-  INSTALL_K3S_VERSION=vX.Y.Z+k3s1 \
-  K3S_URL=https://10.0.20.10:6443 \
-  K3S_TOKEN="$K3S_TOKEN" sh -
-
-kubectl uncordon emerald
-```
-
-Repeat for `topaz` and `amethyst`. Wait for each node to return `Ready` at the new
-version before starting the next — `emerald` carries the `app-state=true` local-path
-apps, so draining two at once has nowhere to put them.
+The upgrade image refuses downgrades. A refused or failed upgrade leaves the node
+cordoned. To recover, set the Plans to the cluster's version or newer, or delete
+the Plan and run `kubectl uncordon <node>`.
 
 !!! warning "Single control plane: the snapshot is the rollback"
     There is one server node. If the control plane fails to come back, there is no
@@ -448,8 +449,58 @@ kubectl get nodes                    # all 4 at the new version, all Ready
 kubectl get pods -A | grep -v Running | grep -v Completed
 ```
 
-Then re-run the Ansible play so a future rebuild matches, and confirm the pinned version
-and the live version agree.
+Then merge Renovate's matching `k3s_version` PR in `homelab-ansible`, so the pinned
+version and the live version agree and a future rebuild joins at the cluster's version.
+
+??? note "Manual roll, for when the controller can't run"
+
+    The install script **regenerates the systemd unit from the arguments you pass it**.
+    Pass nothing and you lose `--disable traefik`, `--disable servicelb`,
+    `--disable local-storage` and the rest — the cluster comes back up fighting itself
+    over the ingress. Re-supply the *exact* argument list Ansible installed with.
+
+    **Roll the server (ruby):**
+
+    ```bash
+    # Drain first: workloads keep running while k3s restarts, but the API server is
+    # briefly gone, and anything mid-write would rather be elsewhere.
+    kubectl drain ruby --ignore-daemonsets --delete-emptydir-data
+
+    # On ruby. K3S_TOKEN comes from homelab-ansible's sops secrets (k3s_token) —
+    # the same value the agents joined with.
+    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=vX.Y.Z+k3s1 sh -s - \
+      --cluster-init \
+      --write-kubeconfig-mode 644 \
+      --disable servicelb \
+      --disable traefik \
+      --disable local-storage \
+      --token "$K3S_TOKEN" \
+      --node-ip 10.0.20.10
+
+    kubectl uncordon ruby
+    kubectl get nodes            # ruby should report the new version, Ready
+    ```
+
+    `/etc/rancher/k3s/config.yaml` (the etcd snapshot schedule and the S3 credentials) is
+    **not** touched by the install script — it persists across the upgrade.
+
+    **Roll the agents, one at a time:**
+
+    ```bash
+    kubectl drain emerald --ignore-daemonsets --delete-emptydir-data
+
+    # On the agent:
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION=vX.Y.Z+k3s1 \
+      K3S_URL=https://10.0.20.10:6443 \
+      K3S_TOKEN="$K3S_TOKEN" sh -
+
+    kubectl uncordon emerald
+    ```
+
+    Repeat for `topaz` and `amethyst`. Wait for each node to return `Ready` at the new
+    version before starting the next — `emerald` carries the `app-state=true` local-path
+    apps, so draining two at once has nowhere to put them.
 
 ## Verification
 

@@ -1,8 +1,8 @@
 # Homelab
 
 A four-node k3s cluster on Raspberry Pi CM4 hardware, built and run with the practices a
-platform team uses: infrastructure as code, GitOps delivery, CI on pull requests,
-encrypted secrets, alerting, and backups with restore drills.
+platform team uses: infrastructure as code, GitOps delivery, required CI checks on every
+pull request, encrypted secrets, alerting, and backups with restore drills.
 
 This repo holds the documentation: runbooks, architecture, and decision records. It's the
 only public repo of the five. It contains no infrastructure code and no secrets. The code
@@ -14,9 +14,9 @@ it describes lives in four private repos, summarized in [How changes ship](#how-
 |---|---|---|
 | Infrastructure as code | Ansible provisions the nodes, their UFW rules, and k3s. OpenTofu manages Cloudflare DNS, with remote state in S3. | [Ansible](docs/build/ansible.md) · [Terraform](docs/build/terraform.md) |
 | GitOps delivery | Argo CD deploys every app and platform service on the cluster from Git, as an app of apps. For cluster workloads, merging to `main` is the deploy. | [Deployment pattern](docs/deploy/index.md) |
-| Continuous integration | Woodpecker, running on the cluster, checks pull requests in four of the five repos: `kubeconform`, `ansible-lint`, `tofu validate`, and a strict docs build. | [Woodpecker](docs/deploy/woodpecker.md) |
-| Secrets management | SOPS and age encrypt what the workstation reads. Sealed Secrets encrypts what the cluster reads. gitleaks runs as a pre-commit hook in every repo. | [Repositories](docs/concepts/repositories.md) |
-| Dependency updates | Renovate opens pull requests for Helm charts, k3s, pre-commit hooks, and CI images in the manifests and Ansible repos. Nothing merges unattended. | [Renovate](docs/deploy/woodpecker.md#renovate-keep-dependencies-and-image-tags-current) |
+| Continuous integration | Woodpecker, running on the cluster, gates every pull request in all five repos: gitleaks, `kubeconform`, `ansible-lint`, `tofu validate`, and a strict docs build. Branch protection requires a passing run and blocks direct pushes to `main`. | [Required checks](docs/deploy/woodpecker.md#required-checks-and-branch-protection) |
+| Secrets management | SOPS and age encrypt what the workstation reads. Sealed Secrets encrypts what the cluster reads. gitleaks scans each commit locally and each repo's full history in CI. | [Repositories](docs/concepts/repositories.md) |
+| Dependency updates | Renovate opens pull requests in all five repos for Helm charts, container images, k3s, OpenTofu providers, and hooks. Nothing merges unattended. | [Renovate](docs/deploy/woodpecker.md#renovate-keep-dependencies-and-image-tags-current) |
 | Patch management | Security updates install nightly. Kernels and reboots wait for a supervised rolling update with canary and health gates. | [OS patching](#os-patching) |
 | Observability | Prometheus, Grafana, Loki, and Alloy, plus black-box probes of each app's URL. A dead man's switch outside the cluster catches a dead Prometheus or Alertmanager. | [Observability](docs/build/observability.md) |
 | Backup and recovery | Velero, etcd snapshots, and database dumps land in S3 on the NAS, then sync off-site nightly. Restore drills cover the secrets chain, PostgreSQL dumps, and Velero volumes. | [Backups](docs/build/backups.md) · [Disaster recovery](docs/operate/disaster-recovery.md) |
@@ -26,14 +26,15 @@ it describes lives in four private repos, summarized in [How changes ship](#how-
 
 ## How changes ship
 
-Every change to the cluster, the nodes, and DNS goes through a pull request. Forgejo,
-self-hosted on the cluster, is the primary Git host. GitHub holds a read-only push mirror.
+Every change to the cluster, the nodes, and DNS goes through a pull request, and branch
+protection enforces it. Forgejo, self-hosted on the cluster, is the primary Git host.
+GitHub holds a read-only push mirror.
 
 ```mermaid
 flowchart LR
     ws["Workstation"] -->|"AGit push opens a PR"| fj["Forgejo"]
     rn["Renovate CronJob"] -->|"dependency PRs"| fj
-    fj -->|"webhook"| wp["Woodpecker CI checks"]
+    fj -->|"webhook"| wp["Woodpecker CI, required to merge"]
     wp -.->|"on failure"| nt["ntfy push alert"]
     fj -->|"push mirror"| gh["GitHub, read-only"]
     ac["Argo CD"] -->|"polls main over SSH"| fj
@@ -42,15 +43,16 @@ flowchart LR
     ws -->|"tofu apply"| cf["Cloudflare DNS"]
 ```
 
-Each repo has its own checks, and the change applies through the tool that owns that layer:
+Each repo has its own required checks, and the change applies through the tool that owns
+that layer:
 
 | Repo | Holds | Pull-request checks | Applies through |
 |---|---|---|---|
-| `homelab-manifests` | Argo CD `Application`s, Helm values, raw manifests, and SealedSecrets | `kubeconform -strict` against Kubernetes and CRD schemas | Argo CD auto-sync on merge |
-| `homelab-ansible` | Node provisioning, k3s install, UFW rules, Tailscale, and patching playbooks | pre-commit: `ansible-lint`, gitleaks, and YAML checks | `ansible-playbook` from the workstation |
-| `homelab-terraform` | OpenTofu modules for Cloudflare DNS and UniFi | `tofu fmt -check` and `tofu validate` | `tofu apply` from the workstation, with state in Garage S3 |
-| `homelab-secrets` | The SOPS-encrypted day-zero export of the Sealed Secrets signing key | Local pre-commit hooks only | Read only in disaster recovery, if the Garage copy is gone |
-| `homelab-docs` | This documentation | `mkdocs build --strict` and Vale | Merge to `main`, mirrored to GitHub |
+| `homelab-manifests` | Argo CD `Application`s, Helm values, raw manifests, and SealedSecrets | gitleaks; `kubeconform -strict` against Kubernetes and CRD schemas | Argo CD auto-sync on merge |
+| `homelab-ansible` | Node provisioning, k3s install, UFW rules, Tailscale, and patching playbooks | gitleaks; pre-commit: `ansible-lint` and YAML checks | `ansible-playbook` from the workstation |
+| `homelab-terraform` | OpenTofu modules for Cloudflare DNS and UniFi | gitleaks; `tofu fmt -check` and `tofu validate` | `tofu apply` from the workstation, with state in Garage S3 |
+| `homelab-secrets` | The SOPS-encrypted day-zero export of the Sealed Secrets signing key | gitleaks; pre-commit: SOPS encryption checks | Read only in disaster recovery, if the Garage copy is gone |
+| `homelab-docs` | This documentation | gitleaks; `mkdocs build --strict` and Vale | Merge to `main`, mirrored to GitHub |
 
 A failed check sends an ntfy push notification with a link to the run.
 
@@ -61,11 +63,11 @@ needs attention.
 
 ### Dependency updates
 
-Renovate runs daily at 02:00 UTC as a CronJob on the cluster. It scans
-`homelab-manifests` and `homelab-ansible`, and opens pull requests against Forgejo for
-Helm charts, k3s releases, pre-commit hooks, and CI images. In `homelab-manifests`, OSV
-vulnerability alerts arrive labeled `security`. Image tags in raw app manifests stay
-hand-managed.
+Renovate runs daily at 02:00 UTC as a CronJob on the cluster and scans all five repos.
+It opens pull requests against Forgejo for Helm charts, container images in Helm values
+and raw manifests, k3s releases, OpenTofu providers, pre-commit hooks, CI images, and
+the docs' Python dependencies. In `homelab-manifests`, OSV vulnerability alerts arrive
+labeled `security`.
 
 Nothing merges unattended. A merge to `homelab-manifests` is a deploy, and `kubeconform`
 validates schema, not behavior, so every update waits for review.
@@ -156,6 +158,10 @@ The current design has these limits:
   Immich, Audiobookshelf, and PostgreSQL, or the NAS backup timers.
 - **OpenTofu applies from the workstation.** CI validates the modules but doesn't plan or
   apply them.
+- **Renovate runs on the owner's Forgejo token.** It commits as a bot identity, but a
+  separate bot account also shrinks what a stolen token can reach. For a
+  single-user Forgejo that's reachable only from the LAN and the tailnet, the account
+  isn't worth it.
 
 ## Hardware
 
@@ -219,13 +225,15 @@ vale sync                          # fetches the Google style package
 vale --minAlertLevel=warning docs/
 ```
 
-CI runs both `mkdocs build --strict` and `vale --minAlertLevel=warning`. A broken link,
-anchor, or style violation fails the pipeline.
+CI runs gitleaks, `mkdocs build --strict`, and `vale --minAlertLevel=warning`. A leaked
+secret, broken link, broken anchor, or style violation fails the pipeline, and a failed
+pipeline blocks the merge.
 
 ### Contribute
 
-By convention, every change goes through a branch and a pull request, including README
-and runbook edits. No one pushes to `main` directly.
+Every change goes through a branch and a pull request, including README and runbook
+edits. Branch protection rejects direct pushes to `main` and blocks a merge until CI
+passes.
 
 [STYLE.md](STYLE.md) codifies the prose style, page structure, admonition semantics,
 anchor rules, and public-repo constraints. The reference implementations are

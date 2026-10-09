@@ -423,9 +423,13 @@ What's deliberate here:
     Alertmanager publishes to the ntfy server, which doesn't exist until ntfy. The
     stack runs fine without it — alerts have nowhere to go yet.
 
-Alertmanager is configured in the same `kube-prometheus-stack` `values.yaml`. The
-routing: everything lands on ntfy (topic `alerts`) except the `Watchdog`
-heartbeat, which is *meant* to fire forever and goes to a null receiver.
+Alertmanager is configured in the same `kube-prometheus-stack` `values.yaml`. Alerts
+land on ntfy (topic `alerts`), with two exceptions:
+
+- The `Watchdog` heartbeat, which is *meant* to fire forever, pings an external
+  [dead man's switch](#dead-mans-switch-healthchecksio).
+- Host-maintenance alerts (`category=maintenance`) still go to ntfy, but batched into
+  one notification.
 
 ??? example "values.yaml (Alertmanager section)"
 
@@ -439,22 +443,36 @@ heartbeat, which is *meant* to fire forever and goes to a null receiver.
           repeat_interval: 12h
           receiver: ntfy
           routes:
-            - receiver: 'null'
+            - receiver: healthchecks
               matchers:
                 - alertname = "Watchdog"
+              group_wait: 0s
+              group_interval: 1m
+              repeat_interval: 1m
+            - receiver: ntfy
+              matchers:
+                - category = "maintenance"
+              group_wait: 2h
+              group_interval: 6h
+              repeat_interval: 3d
         receivers:
-          - name: 'null'
+          - name: healthchecks
+            webhook_configs:
+              - url_file: /etc/alertmanager/secrets/alertmanager-healthchecks-url/url
+                send_resolved: false
           - name: ntfy
             webhook_configs:
-              - url: http://ntfy.ntfy.svc.cluster.local/alerts?template=alertmanager
+              - url: http://ntfy.ntfy.svc.cluster.local/alerts?template=alertmanager-compact
                 send_resolved: true
+                max_alerts: 10
                 http_config:
                   authorization:
                     type: Bearer
                     credentials_file: /etc/alertmanager/secrets/alertmanager-ntfy-token/token
       alertmanagerSpec:
         secrets:
-          - alertmanager-ntfy-token   # mounted at /etc/alertmanager/secrets/<name>/
+          - alertmanager-ntfy-token        # mounted at /etc/alertmanager/secrets/<name>/
+          - alertmanager-healthchecks-url
         storage:
           volumeClaimTemplate:
             spec:
@@ -467,8 +485,12 @@ heartbeat, which is *meant* to fire forever and goes to a null receiver.
 The details that matter:
 
 - **In-cluster URL on purpose** — alert delivery keeps working when ingress or DNS
-  is down, exactly when you need alerts most. `?template=alertmanager` is ntfy's
-  built-in formatter for Alertmanager webhook payloads (firing/resolved).
+  is down, exactly when you need alerts most.
+- **A compact template, capped at 10 alerts** — `alertmanager-compact` is a custom
+  template in the ntfy ConfigMap (`apps/ntfy`). ntfy's built-in `alertmanager` template
+  overflows ntfy's 4 KB message limit at 10 alerts, and ntfy then rejects the whole
+  notification, so a large incident arrives as nothing at all. `max_alerts: 10` caps the
+  alerts listed per notification; the template prints the rest as a count.
 - **The token never appears in git:** it rides in a SealedSecret and Alertmanager
   reads it from the mounted file (`credentials_file`), not inline config. Seal the
   `alertmanager` publisher token you provisioned in ntfy:
@@ -484,12 +506,53 @@ The details that matter:
       > infrastructure/kube-prometheus-stack/manifests/alertmanager-ntfy-token-sealed.yaml
     ```
 
+- **A listed secret must exist:** Alertmanager doesn't start while a secret in
+  `alertmanagerSpec.secrets` is missing, so a new entry ships in the same commit as its
+  SealedSecret.
+- **Maintenance alerts arrive as one digest:** one nightly upgrade trips every host, but
+  each host's alert fires up to about 80 minutes apart. The 2-hour `group_wait` collects
+  them into one notification, and the template marks them 🔧 instead of 🔥.
 - **Helm merges this config shallowly:** the chart's default `inhibit_rules`
   (critical mutes warning, etc.) survive, but `route` and `receivers` replace the
   defaults wholesale — which is why both are stated in full.
 - **Alertmanager's PVC stays on `nfs-storage`** — accepted exception: its state is
   plain snapshot files (silences, notification log), not SQLite or a TSDB, and
   losing it only risks a duplicate notification or an expired silence firing once.
+
+### Dead man's switch (Healthchecks.io) { #dead-mans-switch-healthchecksio }
+
+Alerting can't report its own failure. If Prometheus, Alertmanager, or the network path
+out of the cluster stops, no alert fires. The `Watchdog` route covers that gap: it pings
+[Healthchecks.io](https://healthchecks.io/), outside the cluster, about once a minute.
+When the pings stop, Healthchecks.io alerts on its own channel.
+
+1. In Healthchecks.io, create a check with a 1-minute period and a 5-minute grace time.
+   Send its alerts by email or through the Healthchecks.io app. Don't send them to
+   ntfy, which runs in the cluster this check watches.
+1. Copy the check's ping URL and seal it. The URL is a credential: anyone holding it can
+   keep the check green.
+
+    ```bash
+    kubectl create secret generic alertmanager-healthchecks-url \
+      --namespace monitoring \
+      --from-literal=url=https://hc-ping.com/<check-uuid> \
+      --dry-run=client -o yaml \
+      | kubeseal --controller-name=sealed-secrets-controller \
+                 --controller-namespace=sealed-secrets \
+                 --format yaml \
+      > infrastructure/kube-prometheus-stack/manifests/alertmanager-healthchecks-url-sealed.yaml
+    ```
+
+1. Commit the SealedSecret together with the `healthchecks` receiver and its
+   `alertmanagerSpec.secrets` entry.
+
+The route sets its own `group_interval: 1m`, because a child route otherwise inherits the
+parent's 5 minutes and the pings slow to one every 5 minutes. Healthchecks.io accepts at
+most 5 pings a minute per check. `send_resolved` is off: `Watchdog` resolves only when
+Prometheus stops sending it, and a ping then reports the stack alive when it isn't.
+
+Expect a Healthchecks.io alert during every topaz drain, because Prometheus's storage
+lives there.
 
 ### Custom alert rules
 
@@ -730,3 +793,6 @@ next pod restart.
       -d '[{"labels":{"alertname":"TestAlert","severity":"warning"}}]'
     # → an ntfy notification on the `alerts` topic within ~30s (group_wait)
     ```
+
+- [ ] The Healthchecks.io check shows **up**, with a ping about every minute. Its
+  last-ping time stays under 2 minutes old.
