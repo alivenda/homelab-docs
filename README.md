@@ -21,7 +21,7 @@ it describes lives in four private repos, summarized in [How changes ship](#how-
 | Observability | Prometheus, Grafana, Loki, and Alloy, plus black-box probes of each app's URL. A dead man's switch outside the cluster catches a dead Prometheus or Alertmanager. | [Observability](docs/build/observability.md) |
 | Backup and recovery | Velero, etcd snapshots, and database dumps land in S3 on the NAS, then sync off-site nightly. Restore drills cover the secrets chain, PostgreSQL dumps, and Velero volumes. | [Backups](docs/build/backups.md) · [Disaster recovery](docs/operate/disaster-recovery.md) |
 | Identity | Authelia provides OIDC and forward-auth single sign-on, backed by an lldap directory. | [Identity](docs/concepts/identity.md) |
-| Network security | Zone-based firewall policies between VLANs, UFW on each node and the DNS appliance, and Tailscale subnet routers with failover for remote access. | [Network](docs/build/network.md) · [Firewall decision](docs/reference/decisions/zone-based-firewall.md) |
+| Network security | A default-deny zone firewall between VLANs, UFW on each node and the DNS appliance, and Tailscale subnet routers with failover for remote access. | [Network](docs/build/network.md) · [Firewall decision](docs/reference/decisions/zone-based-firewall.md) |
 | Docs as code | MkDocs with strict link checks and Vale prose linting, both in CI. Decision records capture the major design choices. | [Decision records](docs/reference/decisions/index.md) |
 
 ## How changes ship
