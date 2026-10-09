@@ -1,9 +1,9 @@
 # Woodpecker
 
 !!! success "Status — Live"
-    Live in the cluster — the CI engine gating the homelab repos (today: manifest
-    validation on `homelab-manifests`). This runbook teaches the full pipeline through
-    image builds and GitOps deploys.
+    Live in the cluster — the CI engine gating the homelab repos (today: the
+    [required checks](#required-checks-and-branch-protection) on all five). This runbook
+    teaches the full pipeline through image builds and GitOps deploys.
 
 End-to-end pipeline: push code, auto-build container images, deploy to k3s through GitOps.
 
@@ -136,8 +136,12 @@ agent:
     workload: heavy
 ```
 
-The Kubernetes backend's step pods need RBAC in the namespace; the chart creates
-the Role/RoleBinding for you with `agent.serviceAccount.rbac.create` (default `true`).
+The agent needs RBAC in the namespace to create step pods; the chart creates the
+Role/RoleBinding for its `woodpecker-agent` service account with
+`agent.serviceAccount.rbac.create` (default `true`). Step pods need no API access. They
+run as the namespace's `default` service account, which
+`manifests/default-serviceaccount.yaml` sets to `automountServiceAccountToken: false`, so
+pipeline code gets no Kubernetes token.
 
 Step pods run on topaz, not on emerald with the server and agent. Each step pulls
 its own image. On emerald's 16 GB eMMC, image GC deleted `python:3.14` after each
@@ -262,19 +266,22 @@ when:
 
 steps:
   kubeconform:
-    image: ghcr.io/yannh/kubeconform:v0.7.0-alpine
+    # Pin by digest too: upstream rebuilds the -alpine tag in place, and one such
+    # rebuild broke a previously green pipeline.
+    image: ghcr.io/yannh/kubeconform:v0.8.0-alpine@sha256:<digest>
     commands:
       - |
         find apps infrastructure bootstrap -name '*.yaml' \
           ! -name 'values.yaml' \
           ! -name 'kustomization.yaml' \
-          -print0 | xargs -0 -r kubeconform \
+          -print0 | xargs -0 -r /kubeconform \
             -strict -summary -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 ```
 
-Two adaptations vs the GitHub Actions version: the **`-alpine`** image tag (the
-plain `kubeconform` image is `scratch` — no shell for Woodpecker's `commands`), and
+Three adaptations vs the GitHub Actions version: the **`-alpine`** image tag (the
+plain `kubeconform` image is `scratch` — no shell for Woodpecker's `commands`), the
+full `/kubeconform` path (the binary is the image's entrypoint and isn't on `PATH`), and
 `! -name` instead of GNU `find`'s `-not -name` (alpine ships busybox `find`). The
 check validates the **whole tree** every run, so one broken manifest on `main` reds
 every subsequent PR until it's fixed — keep `main` green.
@@ -283,6 +290,91 @@ every subsequent PR until it's fixed — keep `main` green.
     With the Forgejo webhook delivering ([OAuth 2.0 app in Forgejo](#step-1-oauth2-app-in-forgejo)), an AGit pull request
     (`git push origin HEAD:refs/for/main -o topic=…`) fires a `pull_request` event
     and the gate runs **before merge** — no Forgejo Actions runner needed.
+
+## Required checks and branch protection
+
+Every homelab repo runs a Woodpecker pipeline on each pull request and each push to
+`main`, and Forgejo branch protection makes that pipeline's result required:
+
+| Repo | Checks |
+|---|---|
+| `homelab-manifests` | gitleaks, kubeconform |
+| `homelab-ansible` | gitleaks, pre-commit (`ansible-lint`, YAML, private keys) |
+| `homelab-terraform` | gitleaks, `tofu fmt -check -recursive`, `tofu validate` |
+| `homelab-docs` | gitleaks, `mkdocs build --strict`, Vale |
+| `homelab-secrets` | gitleaks, pre-commit (SOPS encryption checks, private keys) |
+
+A failed pipeline sends an ntfy push through its `notify-failure` step, which reads
+`ntfy_token`, a Woodpecker secret on the org. Enable the secret for both push and
+pull_request events, or failures on Renovate's PRs stay silent.
+
+### The branch protection rule
+
+| | |
+|---|---|
+| **Branch** | `main` |
+| **Direct pushes** | Blocked, for admins too |
+| **Required status** | `ci/woodpecker/pr/woodpecker` |
+| **Approvals** | 0 — Forgejo doesn't let you approve your own PR |
+| **Outdated branches** | Allowed, so a PR behind `main` can pass CI and still break `main` |
+
+AGit pushes still work: they go to `refs/for/main`, which Forgejo handles as a pull
+request, not as a push to `main`. To give every repo the same rule, apply it through the
+API with a Forgejo token that has `write:repository`. Replace `<org>` and the repo list
+with yours:
+
+```fish
+read -s -P 'Forgejo token: ' tok
+set rule '{"rule_name":"main","enable_push":false,"enable_status_check":true,"status_check_contexts":["ci/woodpecker/pr/woodpecker"],"apply_to_admins":true,"required_approvals":0}'
+for repo in homelab-manifests homelab-ansible homelab-terraform homelab-docs homelab-secrets
+    curl -fsS -X POST -H "Authorization: token $tok" -H 'Content-Type: application/json' -d $rule https://git.yourdomain.com/api/v1/repos/<org>/$repo/branch_protections
+end
+set -e tok
+```
+
+The create call fails if the repo already has a rule named `main`. To change an existing
+rule, send the same body with `PATCH` to `/branch_protections/main`.
+
+!!! warning "There's no direct-push escape hatch"
+    With the rule applied to admins, a hotfix to `main` also needs a PR with a passing
+    pipeline. If CI itself is broken, delete the rule, merge the fix, and re-create the
+    rule.
+
+### Secret scanning (gitleaks)
+
+The pre-commit gitleaks hook scans only staged changes, so it guards local commits but
+checks nothing in a CI clone. Each pipeline therefore runs gitleaks as its first step,
+over the full history:
+
+```yaml
+clone:
+  git:
+    image: docker.io/woodpeckerci/plugin-git:2.10.1@sha256:<digest>
+    settings:
+      partial: false
+      depth: 0
+
+steps:
+  gitleaks:
+    image: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:<digest>
+    commands:
+      - test "$(git rev-parse --is-shallow-repository)" = false
+      - test -z "$(git config --get remote.origin.partialclonefilter)"
+      - gitleaks git --redact --no-banner --verbose .
+```
+
+- **The clone override.** Woodpecker's default clone is shallow and treeless
+  (`--depth=1 --filter=tree:0`), and gitleaks can't read history from it. Any
+  `woodpeckerci/plugin-git` image stays on Woodpecker's trusted-clone list, so the
+  override keeps the clone credentials.
+- **The two guard commands.** gitleaks exits 0 when git fails or the history is
+  missing, so without the clone block the step passes without scanning anything. The
+  guards fail the step on a shallow or partial clone, and outside a readable repo.
+- **`--redact`** keeps finding values out of the pipeline log.
+- **False positives** go in `.gitleaksignore`. SealedSecret ciphertext is the usual
+  one. A finding that only one old commit holds gets the commit-scoped form,
+  `<commit>:<file>:<rule-id>:<line>`, so the entry can't hide a later secret on the same
+  line.
 
 ## Sample pipeline (build → push → bump manifest)
 
@@ -311,19 +403,28 @@ steps:
           --output type=image,\"name=git.yourdomain.com/youruser/myapp:${CI_COMMIT_SHA},git.yourdomain.com/youruser/myapp:latest\",push=true
 
   update-manifest:
-    image: alpine/git:latest
+    image: alpine/git:<tag>
+    environment:
+      FORGEJO_TOKEN:
+        from_secret: forgejo_token
     commands:
-      - git config user.email ci@yourdomain.com
-      - git config user.name "Woodpecker CI"
-      - git clone https://${FORGEJO_TOKEN}@git.yourdomain.com/youruser/homelab-manifests.git
+      - git config --global user.email ci@yourdomain.com
+      - git config --global user.name "Woodpecker CI"
+      # $$ defers expansion to the shell: Woodpecker substitutes ${...} when it parses
+      # the file, before the secret exists.
+      - git clone https://$${FORGEJO_TOKEN}@git.yourdomain.com/youruser/homelab-manifests.git
       - cd homelab-manifests
       - |
         sed -i "s|image: .*myapp:.*|image: git.yourdomain.com/youruser/myapp:${CI_COMMIT_SHA}|" \
           apps/myapp/deployment.yaml
       - git commit -am "ci(myapp): bump to ${CI_COMMIT_SHA}"
-      - git push
-    secrets: [ forgejo_token ]
+      # An AGit push opens a PR. A direct push to main is rejected by branch protection.
+      - git push origin HEAD:refs/for/main -o topic=bump-myapp-${CI_COMMIT_SHA}
 ```
+
+The bump arrives as a PR, so it goes through the same
+[required checks](#the-branch-protection-rule) as any other change. Woodpecker 3 has no
+`secrets:` step key; `environment` with `from_secret` replaces it.
 
 !!! note "Registry auth for BuildKit"
     For pushes to a private Forgejo registry, mount a Docker-config-format Secret at `/home/user/.docker/config.json` in the build pod (Woodpecker `volumes:` or Kubernetes backend pod-template overrides). The same `config.json` pattern works for any OCI registry.
@@ -335,10 +436,58 @@ steps:
 
 Your CI pipeline preceding builds your own images. Third-party versions (helm charts, Terraform providers, GitHub Actions, pip and Ansible deps, image tags) need a different update strategy. [Renovate](https://docs.renovatebot.com/) watches your repos for outdated versions and opens PRs to bump them.
 
-### Hosted vs self-hosted
+### How it runs
 
-- **Mend Renovate hosted (recommended):** install the [Mend Renovate GitHub App](https://github.com/marketplace/renovate), grant it access to the repos you want scanned, drop a `renovate.json` in each. No infra to run.
-- **Self-hosted with Woodpecker:** a scheduled cron pipeline (shown at the end of this section). Use this if you want Renovate inside your cluster.
+This build runs Renovate as a Kubernetes CronJob in `homelab-manifests`
+(`infrastructure/renovate/`). Mend's hosted Renovate app doesn't support Forgejo, so a
+Forgejo primary needs a self-hosted runner. A CronJob keeps the schedule in Git, where Argo CD
+reconciles it like everything else.
+
+| | |
+|---|---|
+| **Schedule** | 02:00 UTC daily |
+| **Platform** | `forgejo`, through the in-cluster Forgejo API, so a run never depends on ingress or DNS |
+| **Repos** | All five, as an explicit list in `RENOVATE_REPOSITORIES` — no autodiscover |
+| **Onboarding** | Off; each repo already has a `renovate.json` |
+| **Token** | The owner's Forgejo token (`read:user`, `write:repository`, `write:issue`, `read:organization`), sealed into the `renovate` namespace |
+| **Commit author** | `Renovate Bot <bot@renovateapp.com>` (`RENOVATE_GIT_AUTHOR`) |
+| **Automerge** | None — every update waits for review |
+| **Dependency Dashboard** | One issue per repo |
+
+**Why a separate commit author:** Renovate otherwise commits as the token's owner. With
+the owner's email on its commits, Renovate can't tell a human edit on one of its
+branches from its own commit, so a rebase can overwrite that edit.
+
+**Why the owner's token:** a separate bot account shrinks what a stolen token can
+reach. For a single-user Forgejo that's reachable only from the LAN and the tailnet,
+that's an accepted trade-off.
+
+??? note "Alternative: a scheduled Woodpecker pipeline"
+
+    Renovate can also run as a Woodpecker cron pipeline in each repo:
+
+    ```yaml
+    # .woodpecker/renovate.yml
+    when:
+      - event: cron
+        cron: renovate
+
+    steps:
+      renovate:
+        image: ghcr.io/renovatebot/renovate:<version>
+        environment:
+          RENOVATE_PLATFORM: forgejo
+          RENOVATE_ENDPOINT: https://git.yourdomain.com
+          RENOVATE_TOKEN:
+            from_secret: renovate_token
+          RENOVATE_AUTODISCOVER: "true"
+          LOG_LEVEL: info
+    ```
+
+    In Woodpecker, schedule the cron `renovate` to run nightly. With
+    `RENOVATE_AUTODISCOVER=true`, Renovate walks every repo the token has access to —
+    scope the token to the repos you actually want scanned. The CronJob won out because
+    its schedule lives in Git instead of Woodpecker's cron table.
 
 ### Base config (every repo)
 
@@ -356,7 +505,11 @@ Every homelab repo ships a `renovate.json` that extends `config:recommended` and
 }
 ```
 
-`config:recommended` auto-discovers Kubernetes manifests, helm values, Terraform, GitHub Actions, pip requirements, `ansible-galaxy`, Dockerfile, and more — no explicit `fileMatch` overrides needed for the standard cases.
+`config:recommended` turns on the managers with a default file pattern: Helm values,
+Terraform, Woodpecker pipelines, pip requirements, `ansible-galaxy`, Dockerfiles, and
+more. The `kubernetes` manager has no default file pattern, so raw manifests need the
+explicit configuration [below](#raw-manifest-image-tags). The `dependencies` label must
+exist in each repo or in the org; Renovate drops a missing label without an error.
 
 ### Per-repo grouping rules
 
@@ -367,23 +520,24 @@ Each repo adds a single grouping rule for its primary manager so related bumps l
 | `homelab-ansible` | `matchManagers: ["ansible-galaxy"]` → `groupName: "ansible collections"` |
 | `homelab-docs` | `matchManagers: ["pip_requirements"]` → `groupName: "mkdocs python deps"` |
 | `homelab-terraform` | `matchManagers: ["terraform"]` → `groupName: "terraform providers"` |
-| `homelab-manifests` | (none — see custom regular expression below) |
+| `homelab-secrets` | (none — pre-commit hooks and CI images only) |
+| `homelab-manifests` | (none — see the custom regular expression and raw-manifest rules below) |
 
 ### Custom regular expression for pinned chart versions
 
-`homelab-manifests` pins helm chart versions in two non-standard places — a `--version` flag in a README install snippet, and a `targetRevision:` line in an ArgoCD `bootstrap/*.yaml` App. Neither is a path the built-in managers scan. A `customManagers` regular expression keyed off a `# renovate:` annotation makes those pins trackable:
+`homelab-manifests` pins helm chart versions in two non-standard places — a `--version` flag in a README install snippet, and a `targetRevision:` line in an ArgoCD `bootstrap/*.yaml` App. Neither is a path the built-in managers scan. A `customManagers` regular expression keyed off a `# renovate:` annotation makes those pins trackable. This excerpt shows the chart pins; the full config also tracks the Renovate CronJob's own image and the k3s version in the upgrade Plans:
 
 ```json
 "customManagers": [
   {
     "customType": "regex",
     "managerFilePatterns": [
-      "(^|/)README\\.md$",
-      "(^|/)bootstrap/.+\\.yaml$"
+      "/(^|\\/)README\\.md$/",
+      "/(^|\\/)bootstrap\\/.+\\.yaml$/"
     ],
     "matchStrings": [
-      "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) registryUrl=(?<registryUrl>\\S+)[\\s\\S]{0,200}?--version (?<currentValue>\\S+)",
-      "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) registryUrl=(?<registryUrl>\\S+)[\\s\\S]{0,200}?targetRevision: (?<currentValue>\\S+)"
+      "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?[\\s\\S]{0,200}?--version (?<currentValue>\\S+)",
+      "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: registryUrl=(?<registryUrl>\\S+))?[\\s\\S]{0,200}?targetRevision: (?<currentValue>\\S+)"
     ],
     "versioningTemplate": "semver"
   }
@@ -397,30 +551,44 @@ To use it, drop a comment directly preceding the pin:
 targetRevision: 40.2.0
 ```
 
-### Self-hosted: schedule with Woodpecker
+### Raw-manifest image tags
 
-If you'd rather not depend on Mend, run Renovate as a scheduled Woodpecker pipeline in each repo:
+Images pinned in raw manifests, outside any Helm values file, need the `kubernetes`
+manager with explicit file patterns:
 
-```yaml
-# .woodpecker/renovate.yml
-when:
-  - event: cron
-    cron: renovate
-
-steps:
-  renovate:
-    image: ghcr.io/renovatebot/renovate:latest
-    environment:
-      RENOVATE_PLATFORM: gitea         # Forgejo speaks Gitea API
-      RENOVATE_ENDPOINT: https://git.yourdomain.com
-      RENOVATE_TOKEN:
-        from_secret: renovate_token
-      RENOVATE_AUTODISCOVER: "true"
-      LOG_LEVEL: info
-    secrets: [ renovate_token ]
+```json
+"kubernetes": {
+  "managerFilePatterns": [
+    "/^apps\\/[^/]+\\/manifests\\/.+\\.ya?ml$/",
+    "/^infrastructure\\/[^/]+\\/manifests\\/.+\\.ya?ml$/"
+  ]
+}
 ```
 
-In Woodpecker, schedule the cron `renovate` to run nightly. With `RENOVATE_AUTODISCOVER=true`, Renovate walks every repo the token has access to — scope the token to the repos you actually want scanned.
+Four package rules go with it:
+
+- **The CronJob's own image** stays with the custom regular expression. A rule turns the
+  `kubernetes` manager off for `infrastructure/renovate/manifests/cronjob.yaml`.
+- **Homepage** PRs carry a note to diff the image's `src/skeleton/` against the
+  ConfigMap keys before merging. A missing skeleton file crash-loops the pod on its
+  read-only config mount.
+- **local-path-provisioner** PRs say its manifest is vendored from upstream, so a bump
+  can also need RBAC or ConfigMap changes.
+- **Paperless-ngx** major PRs list the environment changes the new major requires. Add
+  them to the PR before you merge.
+
+An image with no tag means `latest`. With the default pull policy, every pod start can
+pull a different version; with `IfNotPresent`, each node keeps whatever it pulled first.
+Either way, Renovate can't track it. Pin every image to a tag.
+
+### Update policy
+
+- **Nothing merges unattended,** in any repo. In `homelab-manifests` a merge is a
+  deploy, and `kubeconform` validates schema, not behavior.
+- **OSV vulnerability alerts** run in `homelab-manifests` only, with a `security` label.
+  `config:recommended` doesn't turn them on.
+- **k3s** gets one PR per minor and one for patches, each held until the release is 7
+  days old. See [Upgrade k3s](../build/kubernetes.md#upgrade-k3s).
 
 ## Container registry: Forgejo built-in vs Harbor
 
@@ -456,11 +624,7 @@ Pin `--version` to a current release listed on [goharbor/harbor-helm](https://gi
     # In Forgejo registry under Packages, a new image tag appears
     ```
 
-- [ ] Manifest-bump step pushes a commit to `homelab-manifests`:
-
-    ```bash
-    git -C ~/homelab/homelab-manifests log --oneline -1
-    # Expected: 'ci(myapp): bump to <sha>'
-    ```
+- [ ] Manifest-bump step opens a PR in `homelab-manifests` titled
+  `ci(myapp): bump to <sha>`, and its pipeline passes.
 
 - [ ] ArgoCD reconciles the new image. In ArgoCD UI, the App status briefly shows `OutOfSync` then returns to `Synced`. The pod is now running the new tag.

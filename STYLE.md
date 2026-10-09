@@ -212,8 +212,8 @@ grep -c '^```' docs/build/backups.md
    The topic is the PR's identity. Reusing it updates that PR; a different topic opens a
    duplicate.
 
-5. The Woodpecker pipeline runs `mkdocs build --strict` and `vale`. The build must be
-   green before merge.
+5. The Woodpecker pipeline runs gitleaks, `mkdocs build --strict`, and `vale`. Branch
+   protection blocks the merge until the pipeline passes.
 
 ### What Vale checks, and what it doesn't
 
@@ -226,10 +226,11 @@ delete (`Delete`), and sentence-case headings with this project's product names 
 `Vale.Terms` draws on `styles/config/vocabularies/Homelab/accept.txt` to keep product
 names cased consistently — it's what catches `velero` where `Velero` is meant.
 
-Vale reports findings without failing on them: the `vale` step runs with `--no-exit`
-while the rewrite is in flight. The step still fails on a broken lint setup, because
-`vale ls-config` runs first and exits non-zero on a bad `StylesPath` or a missing style.
-Dropping `--no-exit` makes the lint blocking, once the corpus reaches zero.
+The `vale` step is blocking: any warning-level finding fails the pipeline, and branch
+protection keeps a PR with a failed pipeline from merging. Vale's own exit code covers
+only error-level findings, so the step also fails whenever Vale prints anything. The step also fails on a
+broken lint setup, because `vale ls-config` runs first and exits non-zero on a bad
+`StylesPath` or a missing style.
 
 Five Google rules are turned off or downgraded in `.vale.ini`, four of them with their
 measured hit count in a comment. Vale can't judge whether a sentence is *true*, whether a fact belongs

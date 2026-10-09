@@ -12,7 +12,8 @@ How this build's Git repos are structured, hosted, and kept secret-free.
 | **GitHub's role** | Push mirror only — offsite IaC backup, not where you push or open PRs |
 <!-- vale Google.OxfordComma = YES -->
 | **PR workflow** | AGit — `git push origin HEAD:refs/for/main -o topic=TOPIC` |
-| **CI gate** | Woodpecker's `pull_request` pipeline runs on the AGit PR before merge — see [Woodpecker](../deploy/woodpecker.md) |
+| **CI gate** | Woodpecker's `pull_request` pipeline must pass before merge — see [Required checks and branch protection](../deploy/woodpecker.md#required-checks-and-branch-protection) |
+| **Branch protection** | `main` in every repo: no direct pushes (admins included), passing CI required |
 | **ArgoCD wiring** | App-of-apps over SSH — one `Application` per component, reconciled by `bootstrap/root.yaml` — see the `homelab-manifests` README |
 | **Setup** | [Set up Git](../get-started/set-up-git.md) |
 
@@ -68,7 +69,9 @@ git push origin HEAD:refs/for/main -o topic=add-paperless
 
 The Forgejo webhook (configured in [Woodpecker](../deploy/woodpecker.md)) fires a `pull_request`
 event on the push, so the lint and validation gate runs **before** merge — the same
-guarantee GitHub Actions gave, now self-hosted.
+guarantee GitHub Actions gave, now self-hosted. Branch protection on `main` makes it
+binding: Forgejo blocks the merge until the pipeline passes and rejects direct pushes,
+yours included. An AGit push isn't a push to `main`, so it still opens the PR.
 
 !!! warning "A different topic opens a duplicate PR"
     Re-running the AGit push with a **different** `-o topic=` value opens a second PR

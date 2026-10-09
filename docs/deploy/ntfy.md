@@ -138,7 +138,7 @@ Each service uses *its own* token against *its own* topic:
 - **Prometheus Alertmanager** — configured in `kube-prometheus-stack`'s values, not
   by hand; [Alerting → ntfy](../build/observability.md#step-4-alerting-ntfy) has the full
   wiring. Two details differ from the other publishers: it uses the **in-cluster**
-  URL (`http://ntfy.ntfy.svc.cluster.local/alerts?template=alertmanager`) so alert
+  URL (`http://ntfy.ntfy.svc.cluster.local/alerts?template=alertmanager-compact`) so alert
   delivery survives an ingress/DNS outage, and the token rides in a SealedSecret
   read through `credentials_file` rather than inline config.
 
