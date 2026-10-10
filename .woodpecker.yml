@@ -86,7 +86,7 @@ steps:
   # Digest-pinned like the notify step; jdkato/vale:v3.18.0 is multi-arch and
   # runs on the arm64 agents.
   vale:
-    image: docker.io/jdkato/vale:v3.18.0@sha256:a947680f6e98ef8bbfcb0323293bcac8a8f4cbffcdf2401c7bf5e13c4bc2cb57
+    image: docker.io/jdkato/vale:v3.24.0@sha256:f5a09410093936d4919d868120786da9789e2652ac321c66a895403eca020ae4
     backend_options:
       kubernetes:
         resources:
