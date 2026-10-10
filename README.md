@@ -158,10 +158,6 @@ The current design has these limits:
   Immich, Audiobookshelf, and PostgreSQL, or the NAS backup timers.
 - **OpenTofu applies from the workstation.** CI validates the modules but doesn't plan or
   apply them.
-- **Renovate runs on the owner's Forgejo token.** It commits as a bot identity, but a
-  separate bot account also shrinks what a stolen token can reach. For a
-  single-user Forgejo that's reachable only from the LAN and the tailnet, the account
-  isn't worth it.
 
 ## Hardware
 
