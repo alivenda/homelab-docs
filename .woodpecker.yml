@@ -54,7 +54,7 @@ steps:
       - gitleaks git --redact --no-banner --verbose .
 
   mkdocs-strict:
-    image: python:3.13-slim
+    image: python:3.14-slim
     # Measured peak: ~105 MiB over a ~55s run. Requests give co-tenants a
     # proportional CPU share; no CPU limit, matching the renovate CronJob.
     backend_options:
