@@ -35,7 +35,8 @@ Service, an HTTPRoute — one ArgoCD `Application` in `bootstrap/paperless.yaml`
     with **postgres and redis bundled in-cluster**, and pinned the pod with a
     `workload: heavy` node label. All three are wrong here: the chart URL never
     existed, in-cluster postgres contradicts the storage architecture, and the pod
-    has no node-local data to pin to. GitOps-only, database on the NAS, no node pin.
+    has no node-local data to pin to. GitOps-only, database on the NAS, and placed
+    on a large-disk worker for image room, not by `workload: heavy`.
 
 ## The four data homes
 
@@ -63,9 +64,13 @@ Service, an HTTPRoute — one ArgoCD `Application` in `bootstrap/paperless.yaml`
     `enableServiceLinks: false` — keep it. (Caught live at bring-up: init
     completed in 56 s, then the webserver died on its first instruction.)
 
-There is deliberately **no nodeSelector**: documents are on NFS, the database is on
-the NAS, the broker is ephemeral — nothing node-local exists to reschedule back to.
-Resource requests steer placement; the 2 Gi memory limit absorbs OCR spikes.
+Paperless has no node-local data: documents are on NFS, the database is on the NAS,
+and the broker is ephemeral. Its image still needs room: about 425 MiB to download
+and 1.4 GiB unpacked, which the 16 GB nodes can't spare. So the Deployment requires
+a large-disk worker that isn't the control plane, the same rule as
+[Nextcloud](nextcloud.md). Only topaz matches. Topaz serves the NFS volumes too, so
+the rule adds no new dependency. During a topaz drain, the pod waits in Pending. The
+2 Gi memory limit absorbs OCR spikes.
 
 ## Database on the NAS { #step-1-database-on-the-nas }
 
