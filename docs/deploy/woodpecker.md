@@ -587,8 +587,14 @@ Either way, Renovate can't track it. Pin every image to a tag.
   deploy, and `kubeconform` validates schema, not behavior.
 - **OSV vulnerability alerts** run in `homelab-manifests` only, with a `security` label.
   `config:recommended` doesn't turn them on.
+- **A release waits 3 days** before Renovate opens a PR for it, in every repo, because
+  quick follow-up patches are common. OSV security fixes skip the wait. When a
+  registry gives no publish date, Renovate opens the PR right away and warns on the
+  Dependency Dashboard.
 - **k3s** gets one PR per minor and one for patches, each held until the release is 7
   days old. See [Upgrade k3s](../build/kubernetes.md#upgrade-k3s).
+- **Renovate's own image** updates once a week, in the Monday run. It releases several
+  times a week, and each new version otherwise moves its open PR to a new commit.
 
 ## Container registry: Forgejo built-in vs Harbor
 
