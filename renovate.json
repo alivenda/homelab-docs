@@ -6,6 +6,8 @@
   ],
   "dependencyDashboard": true,
   "labels": ["dependencies"],
+  "minimumReleaseAge": "3 days",
+  "minimumReleaseAgeBehaviour": "timestamp-optional",
   "packageRules": [
     {
       "matchManagers": ["pre-commit"],
