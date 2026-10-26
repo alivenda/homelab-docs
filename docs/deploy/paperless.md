@@ -50,8 +50,9 @@ Service, an HTTPRoute — one ArgoCD `Application` in `bootstrap/paperless.yaml`
 !!! danger "The consume dir is NFS — polling is not optional"
     inotify events don't propagate across NFS clients, so a consumer relying on
     filesystem notifications **never sees new files** and scan-to-archive silently
-    does nothing. `PAPERLESS_CONSUMER_POLLING=60` is set in the Deployment; keep it
-    when touching env.
+    does nothing. `PAPERLESS_CONSUMER_POLLING_INTERVAL=60` is set in the Deployment;
+    keep it when touching env. Paperless-ngx v3 renamed it from
+    `PAPERLESS_CONSUMER_POLLING` and ignores the old name.
 
 !!! danger "A Service named `paperless` poisons `PAPERLESS_PORT`"
     Kubernetes injects Docker-link-style discovery env
@@ -140,9 +141,9 @@ change one, change both. `PAPERLESS_APPS=allauth.socialaccount.providers.openid_
 
     Two restart rules while iterating here: Authelia reads its config **at startup
     only** (a values/ConfigMap sync does *not* roll the StatefulSet — `kubectl
-    rollout restart statefulset -n Authelia Authelia`), and the same goes for
+    rollout restart statefulset -n authelia authelia`), and the same goes for
     Paperless env after a Secret change (`kubectl rollout restart deployment -n
-    Paperless Paperless`).
+    paperless paperless`).
 
 !!! warning "Link the administrator account after first OIDC login"
     An OIDC login that doesn't match an existing Paperless user **creates a new
