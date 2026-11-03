@@ -200,9 +200,6 @@ saved per browser.
   `local-path` volume to its PodVolumeBackup by the `velero.io/pvc-uid` label,
   because pod names change on every reschedule. The ServiceAccount token is
   projected into the collector container only.
-- Alpine images ship no tzdata. Set `TZ` to a POSIX rule such as
-  `PST8PDT,M3.2.0,M11.1.0`, which musl reads directly. A zone name like
-  `America/Los_Angeles` silently falls back to UTC.
 - The token Secret is mounted with `optional: true`, so the pod starts before
   it's sealed and the page lists a task instead. Forgejo gates `/pulls`,
   `/pulls/{n}/files`, and `/commits/{ref}/status` under the repository scope, so
