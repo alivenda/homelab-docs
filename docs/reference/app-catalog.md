@@ -171,6 +171,46 @@ React PWA + API). Verified against **v0.1.75** (latest stable; newer tags are
   from the **ID token**, so it needs the `groups` scope + an Authelia
   `claims_policy` — left unused here.
 
+### Homelab brief
+
+One page of the day's homelab tasks: failing Argo CD apps, firing alerts,
+gaps in the nightly backup, failed CI on `main`, and pull requests waiting on you. It's
+rebuilt from live sources every 15 minutes, and each task has a checkbox that's
+saved per browser.
+
+| Field | Value |
+|---|---|
+| Workload | raw manifests + kustomize `configMapGenerator`. One pod, two containers: a standard-library Python collector (`python:3.14-alpine`) and `nginxinc/nginx-unprivileged` |
+| Namespace / hostname | `homelab-brief` / `brief.yourdomain.com` |
+| Service port | 8080 |
+| Storage | none: an `emptyDir` shared by the two containers. **Inverted** Velero gate: zero PodVolumeBackups |
+| Secret keys | `token` (optional): a Forgejo token limited to the homelab repos, `read:repository` only |
+| Auth | ForwardAuth (Authelia), no OIDC |
+| Health | `GET /healthz` on nginx |
+
+**Gotchas**
+
+- The code ships as real files through `configMapGenerator` with
+  `disableNameSuffixHash`, mounted as a whole directory. The collector re-reads
+  it on every pass, so a code edit lands without a rollout. Don't set the
+  kustomization's `namespace:` field: it moves the Roles in `argocd` and `velero`
+  into the app's namespace.
+- RBAC is `list` only: Applications in `argocd`, Backups and PodVolumeBackups in
+  `velero`, and PVCs plus running pods cluster-wide. The pods and PVCs match each
+  `local-path` volume to its PodVolumeBackup by the `velero.io/pvc-uid` label,
+  because pod names change on every reschedule. The ServiceAccount token is
+  projected into the collector container only.
+- Alpine images ship no tzdata. Set `TZ` to a POSIX rule such as
+  `PST8PDT,M3.2.0,M11.1.0`, which musl reads directly. A zone name like
+  `America/Los_Angeles` silently falls back to UTC.
+- The token Secret is mounted with `optional: true`, so the pod starts before
+  it's sealed and the page lists a task instead. Forgejo gates `/pulls`,
+  `/pulls/{n}/files`, and `/commits/{ref}/status` under the repository scope, so
+  `read:repository` covers every call.
+- The page pins its one inline script with a `sha256-` hash in a CSP `meta` tag,
+  computed when it renders. nginx sends only `frame-ancestors` as a header,
+  because a header CSP intersects with the page's own.
+
 ## Planned
 
 ### Kavita
