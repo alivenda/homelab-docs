@@ -171,9 +171,9 @@ React PWA + API). Verified against **v0.1.75** (latest stable; newer tags are
   from the **ID token**, so it needs the `groups` scope + an Authelia
   `claims_policy` — left unused here.
 
-### Homelab brief
+### Homelab queue
 
-One page of the day's homelab tasks: failing Argo CD apps, firing alerts,
+A live queue of the homelab's open tasks: failing Argo CD apps, firing alerts,
 gaps in the nightly backup, failed CI on `main`, and pull requests waiting on you. It's
 rebuilt from live sources every 15 minutes, and each task has a checkbox that's
 saved per browser.
@@ -181,7 +181,7 @@ saved per browser.
 | Field | Value |
 |---|---|
 | Workload | raw manifests + kustomize `configMapGenerator`. One pod, two containers: a standard-library Python collector (`python:3.14-alpine`) and `nginxinc/nginx-unprivileged` |
-| Namespace / hostname | `homelab-brief` / `brief.yourdomain.com` |
+| Namespace / hostname | `homelab-queue` / `queue.yourdomain.com` |
 | Service port | 8080 |
 | Storage | none: an `emptyDir` shared by the two containers. **Inverted** Velero gate: zero PodVolumeBackups |
 | Secret keys | `token` (optional): a Forgejo token limited to the homelab repos, `read:repository` only |
