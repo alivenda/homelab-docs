@@ -591,8 +591,9 @@ Either way, Renovate can't track it. Pin every image to a tag.
   quick follow-up patches are common. OSV security fixes skip the wait. When a
   registry gives no publish date, Renovate opens the PR right away and warns on the
   Dependency Dashboard.
-- **k3s** gets one PR per minor and one for patches, each held until the release is 7
-  days old. See [Upgrade k3s](../build/kubernetes.md#upgrade-k3s).
+- **k3s** versions come from k3s's stable channel, not GitHub releases: one PR per
+  minor once it's stable, and one for patches. The descheduler chart stays on the
+  cluster's minor. See [Upgrade k3s](../build/kubernetes.md#upgrade-k3s).
 - **Renovate's own image** updates once a week, in the Monday run. It releases several
   times a week, and each new version otherwise moves its open PR to a new commit.
 

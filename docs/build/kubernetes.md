@@ -364,7 +364,7 @@ two `Plan` resources in `homelab-manifests`
 | **Concurrency** | One node at a time |
 | **Drain** | Every node, patches included, with the same flags as `update.yml` in `homelab-ansible` |
 | **Agent gate** | `agent-plan`'s `prepare` step waits until ruby reports the new version |
-| **Version PRs** | Renovate, once a release is 7 days old: one PR for patches, one per new minor |
+| **Version PRs** | Renovate, from k3s's stable channel: one PR for patches, one per new minor |
 | **Install pin** | `k3s_version` in `homelab-ansible/inventory.yml`, for fresh installs only |
 
 Bumping `k3s_version` in `homelab-ansible/inventory.yml` **doesn't upgrade a running
@@ -388,14 +388,17 @@ doesn't follow `update.yml`'s amethyst-first canary order.
 Before you merge a k3s version PR:
 
 1. For a minor bump, read the k3s and Kubernetes release notes, and check that the bump
-   doesn't skip a minor. The controller doesn't enforce version skew. Wait until k3s's
-   [stable channel](https://update.k3s.io/v1-release/channels/stable) reaches that minor.
-   Each version PR updates from the current version, so merge open minor PRs in order.
+   doesn't skip a minor. The controller doesn't enforce version skew. Renovate proposes
+   only the [stable channel](https://update.k3s.io/v1-release/channels/stable)'s version
+   plus the newest patch of each minor up to it, so a minor reaches you only once it's
+   stable. Each version PR updates from the current version, so merge open minor PRs in
+   order. After the roll, raise the descheduler chart's `allowedVersions` bound in the
+   `homelab-manifests` `renovate.json` to the new minor.
 1. For a minor bump, check the kubectl image that drains and cordons nodes
    (`SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE` in `kustomization.yaml`). It must stay within one
    minor version of the API server.
 1. Check the [k3s releases](https://github.com/k3s-io/k3s/releases) for a newer build of
-   the same version, such as `+k3s2`. Renovate holds a newer build for 7 days, and
+   the same version, such as `+k3s2`. The stable channel can lag a rebuild, and
    switching to it later means another roll.
 1. Check that `update.yml` in `homelab-ansible` isn't running. Both drain nodes.
 1. Run the checks below: the deprecated-API audit, a fresh etcd snapshot, and the last
