@@ -65,7 +65,7 @@ kubectl create secret generic woodpecker-secrets \
 
 !!! warning "Verify the seal captured real values"
     A classic bring-up bug: running `kubeseal` with the `<CLIENT_ID…>` placeholders
-    left in literally — login then fails with *"Client ID not registered"*. After
+    left in literally — login then fails with `Client ID not registered`. After
     sealing, decode and eyeball the result:
     ```bash
     kubectl -n woodpecker get secret woodpecker-secrets \
