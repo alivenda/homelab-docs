@@ -5,8 +5,8 @@
     needed it. The runbook below describes the deployment as it ran, and it still
     works if you want a self-hosted task manager.
 
-Task management — lists, kanban, labels, due dates, reminders, with mobile and
-desktop clients.
+Task management with lists, kanban boards, labels, due dates, and reminders.
+Vikunja also has mobile and desktop clients.
 
 | | |
 |---|---|

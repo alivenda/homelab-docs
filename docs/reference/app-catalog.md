@@ -43,8 +43,8 @@ Personal budgeting (envelope method) with OIDC login.
 
 Audiobook + podcast server with native iOS/Android apps and a browser player.
 Verified against **v2.35.1** (latest stable GitHub release). **Runs as a Docker
-container on the NAS — not on the cluster** — next to its library, the same model
-as Immich and Plex. The only thing in `apps/audiobookshelf/` is the Kubernetes glue that
+container on the NAS — not on the cluster** — next to its library. Immich and
+Plex use the same model. The only thing in `apps/audiobookshelf/` is the Kubernetes glue that
 fronts the NAS container for TLS on the cluster domain.
 
 | Field | Value |
